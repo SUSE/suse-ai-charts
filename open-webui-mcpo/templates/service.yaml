@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "open-webui-mcpo.fullname" . }}
+  labels:
+    {{- include "open-webui-mcpo.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "open-webui-mcpo.selectorLabels" . | nindent 4 }}
