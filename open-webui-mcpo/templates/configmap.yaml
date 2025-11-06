@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "open-webui-mcpo.fullname" . }}
+  labels:
+    {{- include "open-webui-mcpo.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- include "open-webui-mcpo.config" . | nindent 4 }}

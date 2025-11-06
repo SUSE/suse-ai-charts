@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+#!BuildTag: charts/open-webui-mcpo:1.0.0-%RELEASE%
+#!BuildTag: charts/open-webui-mcpo:1.0.0
+annotations:
+  helm.sh/images: |
+    - image: dp.apps.rancher.io/containers/open-webui-mcpo:0.0.17
+      name: open-webui-mcpo
+  license: MIT
+apiVersion: v2
+appVersion: 0.0.17
+description: A simple, secure MCP-to-OpenAPI proxy server.
+home: https://apps.rancher.io/applications/open-webui-mcpo
+icon: https://apps.rancher.io/logos/open-webui-mcpo.png
+keywords:
+  - ai
+  - mcp
+sources:
+  - https://github.com/open-webui/mcpo
+name: open-webui-mcpo
+version: 1.0.0
+maintainers:
+  - url: https://www.suse.com/
+    name: SUSE LLC
