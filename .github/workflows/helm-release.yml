@@ -7,7 +7,7 @@ on:
       - '**/Chart.yaml'
       - '**/values.yaml'
       - '**/templates/**'
-
+  workflow_dispatch:
 permissions:
   contents: write
   packages: write
