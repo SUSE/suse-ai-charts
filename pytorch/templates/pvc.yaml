@@ -1,0 +1,35 @@
+{{- /*
+Copyright (c) 2025 SUSE LLC All Rights Reserved.
+SPDX-License-Identifier: APACHE-2.0
+*/}}
+
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pytorch.name" . }}
+  labels:
+    {{- include "pytorch.selectorLabels" . | nindent 4 }}
+  {{- with .Values.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- range .Values.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: "{{ .Values.persistence.size }}"
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: "{{ .Values.persistence.storageClass }}"
+  {{- end }}
+  {{- if .Values.persistence.volumeMode }}
+  volumeMode: "{{ .Values.persistence.volumeMode }}"
+  {{- end }}
+  {{- if .Values.persistence.volumeName }}
+  volumeName: "{{ .Values.persistence.volumeName }}"
+  {{- end }}
+{{- end }}
+
