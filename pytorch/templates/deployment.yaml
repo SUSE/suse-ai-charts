@@ -1,0 +1,220 @@
+{{- /*
+Copyright (c) 2025 SUSE LLC All Rights Reserved.
+SPDX-License-Identifier: APACHE-2.0
+*/}}
+
+apiVersion: apps/v1
+{{- if .Values.persistence.enabled }}
+kind: StatefulSet
+{{- else }}
+kind: Deployment
+{{- end }}
+metadata:
+  name: {{ include "pytorch.fullname" . }}
+  labels:
+    {{- include "pytorch.labels" . | nindent 4 }}
+  {{- with .Values.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}  
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      {{- include "pytorch.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "pytorch.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "pytorch.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.runtimeClassName }}
+      runtimeClassName: {{ .Values.runtimeClassName | quote }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.gitClone.enabled }}
+        - name: clone-files-git-repository
+          image: "{{ with (coalesce .Values.global.imageRegistry .Values.image.registry) }}{{ . }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag |  default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- $gitUrl :=  printf "https://%s" .Values.gitClone.repository }}
+          {{- with $.Values.gitClone.secretName }}
+          {{- $gitUrl = printf "https://$(GIT_USERNAME):$(GIT_PASSWORD)@%s" $.Values.gitClone.repository }}
+          env:
+          - name: GIT_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: username
+                name: {{ $.Values.gitClone.secretName }}
+          - name: GIT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: token 
+                name: {{ $.Values.gitClone.secretName }}
+          {{- end }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+               git clone {{ $gitUrl }} --branch {{ .Values.gitClone.revision }} /workspace
+          volumeMounts:
+            - name: clone-dir
+              mountPath: /workspace
+        {{- end }} 
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ with (coalesce .Values.global.imageRegistry .Values.image.registry) }}{{ . }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag |  default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+               {{- if .Values.entrypointscript.filename }}
+               python3.11 {{ .Values.entrypointscript.filename }} {{ if .Values.entrypointscript.arguments }} {{ .Values.entrypointscript.arguments }} {{ end }}
+               {{- end }}
+               sleep infinity
+          env:
+            {{- if and .Values.gpu.enabled (or (eq .Values.gpu.type "nvidia") (not .Values.gpu.type))}}
+            - name: PATH
+              value: /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            {{- end }}
+          {{- if .Values.resources }}
+          resources:
+            {{- $limits := default dict .Values.resources.limits }}
+            {{- if .Values.gpu.enabled }}
+          # If gpu is enabled, it can either be a NVIDIA card or a AMD card
+              {{- if or (eq .Values.gpu.type "nvidia") (not .Values.gpu.type) }}
+          # NVIDIA is assumed by default if no value is set and GPU is enabled
+          # NVIDIA cards can have mig enabled (i.e., the card is sliced into parts
+          # Therefore, the first case is no migs enabled
+                {{- if or (not .Values.gpu.mig) (not .Values.gpu.mig.enabled ) }}
+                  {{- $gpuLimit := dict (.Values.gpu.nvidiaResource | default "nvidia.com/gpu") (.Values.gpu.number | default 1) }}
+                  {{- $limits = merge $limits $gpuLimit }}
+          # Second case is mig is enabled
+                {{- else if or (.Values.gpu.mig.enabled) }}
+          # Initialize empty dictionary
+                  {{- $migDevices := dict -}}
+          # Loop over the entries in the mig devices
+                  {{- range $key, $value := .Values.gpu.mig.devices }}
+                    {{- $migKey := printf "nvidia.com/mig-%s" $key -}}
+                    {{- $migDevices = merge $migDevices (dict $migKey $value) -}}
+                  {{- end }}
+                  {{- $limits = merge $limits $migDevices}}
+                {{- end }}
+              {{- end }}
+              {{- if eq .Values.gpu.type "amd" }}
+                {{- $gpuLimit := dict "amd.com/gpu" (.Values.gpu.number | default 1) }}
+                {{- $limits = merge $limits $gpuLimit }}
+              {{- end }}
+            {{- end }}
+            {{- $ressources := deepCopy (dict "limits" $limits) | mergeOverwrite .Values.resources }}
+            {{- toYaml $ressources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.configMapExtFiles }}
+            - name: ext-files-folder
+              mountPath: /workspace
+            {{- else if .Files.Glob "scripts/*" }}
+            - name: local-scripts
+              mountPath: /workspace
+            {{- else }}
+            - name: clone-dir
+              mountPath: /workspace
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /pytorch
+            {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - python3.11
+                - -c
+                - import torch; print(torch.__version__)
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - python3.11
+                - -c
+                - import torch; print(torch.__version__)
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          {{- end }}
+      volumes:
+        {{- if .Values.configMapExtFiles }}
+        - name: ext-files-folder
+          configMap:
+            name: {{ .Values.configMapExtFiles }}
+        {{- else if .Files.Glob "scripts/*" }}
+        - name: local-scripts
+          configMap:
+            name: {{ include "pytorch.fullname" . }}
+        {{- else }}
+        - name: clone-dir
+          emptyDir: {} 
+        {{- end }}
+        {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+        {{- else if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- else if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "pytorch.name" . }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.gpu.enabled .Values.tolerations }}
+      tolerations:
+        {{- if and .Values.gpu.enabled (and 
+              ( or (eq .Values.gpu.type "nvidia") (not .Values.gpu.type)) 
+              ( or (not .Values.gpu.mig) (not .Values.gpu.mig.enabled))
+            ) }}
+        - key: "{{(.Values.gpu.nvidiaResource | default "nvidia.com/gpu")}}"
+          operator: Exists
+          effect: NoSchedule
+          {{- else if and .Values.gpu.enabled (and 
+              ( or (eq .Values.gpu.type "nvidia") (not .Values.gpu.type)) 
+              (( .Values.gpu.mig.enabled))
+            ) }}
+            {{- range $key, $value := .Values.gpu.mig.devices }}
+        - key: nvidia.com/mig-{{ $key }}
+          operator: Exists
+          effect: NoSchedule
+            {{- end }}
+        {{- end }}
+        {{- with .Values.tolerations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+

@@ -1,0 +1,38 @@
+{{- /*
+Copyright (c) 2025 SUSE LLC All Rights Reserved.
+SPDX-License-Identifier: APACHE-2.0
+*/}}
+
+{{- if .Values.service.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pytorch.fullname" . }}
+  labels:
+    {{- include "pytorch.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    {{- include "pytorch.selectorLabels" . | nindent 6 }}
+  type: {{ .Values.service.type | default "ClusterIP" }}
+  ports:
+  - protocol: TCP
+    name: http
+    port: {{ .Values.service.port }}
+    targetPort: http
+    {{- if .Values.service.nodePort }}
+    nodePort: {{ .Values.service.nodePort | int }}
+    {{- end }}
+  {{- if .Values.service.loadBalancerClass }}
+  loadBalancerClass: {{ .Values.service.loadBalancerClass | quote }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "ClusterIP") (.Values.service.clusterIP) }}
+  clusterIP: {{ .Values.service.clusterIP }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "LoadBalancer") (.Values.service.loadBalancerIP) }}
+  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+  {{- end }}
+{{- end }}

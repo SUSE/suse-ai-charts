@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: APACHE-2.0
+#!BuildTag: charts/pytorch:0.3.0-%RELEASE%
+#!BuildTag: charts/pytorch:0.3.0
+annotations:
+  helm.sh/images: |
+    - image: dp.apps.rancher.io/containers/pytorch:2.8.0-nvidia
+      name: pytorch
+  license: Apache-2.0
+apiVersion: v2
+appVersion: 2.8.0
+description: PyTorch is a machine learning library based on the Torch library, used for applications such as computer vision and natural language processing
+home: https://apps.rancher.io/applications/pytorch
+icon: https://apps.rancher.io/logos/pytorch.png
+keywords:
+  - ai
+  - pytorch
+  - python
+  - machine
+  - learning
+kubeVersion: ^1.16.0-0
+maintainers:
+  - url: https://www.suse.com
+    name: SUSE LLC
+name: pytorch
+sources:
+  - https://github.com/pytorch/pytorch
+type: application
+version: 0.3.0
