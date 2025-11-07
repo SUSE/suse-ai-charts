@@ -3,10 +3,6 @@ name: Helm Chart OCI Publisher and Github Release for each chart
 on:
   push:
     branches: [ main ]
-    paths:
-      - '**/Chart.yaml'
-      - '**/values.yaml'
-      - '**/templates/**'
   workflow_dispatch:
 permissions:
   contents: write
