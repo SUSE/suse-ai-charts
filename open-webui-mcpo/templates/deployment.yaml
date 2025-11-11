@@ -22,7 +22,7 @@ spec:
         {{- toYaml .Values.podAnnotations | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "open-webui-mcpo.selectorLabels" . | nindent 8 }}
+        {{- include "open-webui-mcpo.labels" . | nindent 8 }}
     spec:
       {{- include "open-webui-mcpo.imagePullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "open-webui-mcpo.serviceAccountName" . }}
