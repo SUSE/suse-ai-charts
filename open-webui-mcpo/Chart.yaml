@@ -3,7 +3,7 @@
 #!BuildTag: charts/open-webui-mcpo:1.0.0
 annotations:
   helm.sh/images: |
-    - image: dp.apps.rancher.io/containers/open-webui-mcpo:0.0.17
+    - image: dp.apps.rancher.io/containers/open-webui-mcpo:0.0.17-1.22
       name: open-webui-mcpo
   license: MIT
 apiVersion: v2

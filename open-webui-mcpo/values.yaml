@@ -14,7 +14,7 @@ image:
   registry: dp.apps.rancher.io
   repository: containers/open-webui-mcpo
   pullPolicy: IfNotPresent
-  tag: 0.0.17
+  tag: 0.0.17-1.22
 
 imagePullSecrets: []
 nameOverride: ""
