@@ -1,11 +1,11 @@
 apiVersion: v0
 kind: ImagesLock
 metadata:
-  generatedAt: "2026-01-21T19:03:38.960797773Z"
+  generatedAt: "2026-02-03T19:51:36.140365161Z"
   generatedBy: SUSE LLC
 chart:
   name: open-webui-mcpo
-  version: 1.0.0
+  version: 1.0.1
   appVersion: 0.0.17
 images:
   - name: open-webui-mcpo

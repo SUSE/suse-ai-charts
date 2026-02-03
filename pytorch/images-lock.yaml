@@ -1,14 +1,14 @@
 apiVersion: v0
 kind: ImagesLock
 metadata:
-  generatedAt: "2026-01-21T19:02:16.706314764Z"
+  generatedAt: "2026-02-03T19:50:10.794880566Z"
   generatedBy: SUSE LLC
 chart:
   name: pytorch
-  version: 0.3.0
+  version: 0.3.1
   appVersion: 2.8.0
 images:
-  - name: pytorch
+  - name: pytorch-nvidia
     image: dp.apps.rancher.io/containers/pytorch:2.8.0-nvidia-3.28
     chart: pytorch
     digests:

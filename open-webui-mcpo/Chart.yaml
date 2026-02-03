@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
-#!BuildTag: charts/open-webui-mcpo:1.0.0-%RELEASE%
-#!BuildTag: charts/open-webui-mcpo:1.0.0
+#!BuildTag: charts/open-webui-mcpo:1.0.1-%RELEASE%
+#!BuildTag: charts/open-webui-mcpo:1.0.1
 annotations:
   helm.sh/images: |
     - image: dp.apps.rancher.io/containers/open-webui-mcpo:0.0.17-1.22
@@ -17,7 +17,7 @@ keywords:
 sources:
   - https://github.com/open-webui/mcpo
 name: open-webui-mcpo
-version: 1.0.0
+version: 1.0.1
 maintainers:
   - url: https://www.suse.com/
     name: SUSE LLC
