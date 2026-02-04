@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: APACHE-2.0
-#!BuildTag: charts/pytorch:0.3.0-%RELEASE%
-#!BuildTag: charts/pytorch:0.3.0
+#!BuildTag: charts/pytorch:0.3.1-%RELEASE%
+#!BuildTag: charts/pytorch:0.3.1
 annotations:
   helm.sh/images: |
     - image: dp.apps.rancher.io/containers/pytorch:2.8.0-nvidia-3.28
-      name: pytorch
+      name: pytorch-nvidia
   license: Apache-2.0
 apiVersion: v2
 appVersion: 2.8.0
@@ -25,4 +25,4 @@ name: pytorch
 sources:
   - https://github.com/pytorch/pytorch
 type: application
-version: 0.3.0
+version: 0.3.1
