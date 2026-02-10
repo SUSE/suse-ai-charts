@@ -1,18 +1,18 @@
 apiVersion: v0
 kind: ImagesLock
 metadata:
-  generatedAt: "2026-02-03T19:51:36.140365161Z"
+  generatedAt: "2026-02-10T19:19:12.106399379Z"
   generatedBy: SUSE LLC
 chart:
   name: open-webui-mcpo
-  version: 1.0.1
+  version: 1.0.2
   appVersion: 0.0.17
 images:
   - name: open-webui-mcpo
-    image: dp.apps.rancher.io/containers/open-webui-mcpo:0.0.17-1.22
+    image: dp.apps.rancher.io/containers/open-webui-mcpo:0.0.17-2.18
     chart: open-webui-mcpo
     digests:
-      - digest: sha256:e6c5ec2d09405b7753ecdb9ff1a4c3c7f7c1ad4b3ddfefd0172db4fe06fb585b
+      - digest: sha256:0b72afc4d8bab97584b6a76302e1fb0fac0afa233a718e8ee81d31b278b7b343
         arch: linux/amd64
-      - digest: sha256:99f77fc98af1b40a9c473572aab76549e501b682938cfdb56c61d8190d110b82
+      - digest: sha256:50d388a8dd0e2978a900312a62896273ced3fd451f1795b8b60a5445a8aad8d5
         arch: linux/arm64
