@@ -14,6 +14,9 @@ metadata:
 spec:
   backoffLimit: 0
   template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
     spec:
       serviceAccountName: kubeflow-preflight
       restartPolicy: Never

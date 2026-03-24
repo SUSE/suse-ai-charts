@@ -91,6 +91,11 @@ check_http() {
         -n "$NS" \
         --overrides='
 {
+  "metadata": {
+    "annotations": {
+      "sidecar.istio.io/nativeSidecar": "true"
+    }
+  },
   "spec": {
     "imagePullSecrets": [
       { "name": "application-collection" }
@@ -116,6 +121,11 @@ check_tcp() {
       -n "$NS" \
       --overrides='
 {
+  "metadata": {
+    "annotations": {
+      "sidecar.istio.io/nativeSidecar": "true"
+    }
+  },
   "spec": {
     "imagePullSecrets": [
       { "name": "application-collection" }

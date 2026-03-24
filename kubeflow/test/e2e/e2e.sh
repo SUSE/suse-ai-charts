@@ -256,6 +256,7 @@ kubectl run e2e-model-builder \
   --image=kserve/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}}}' \
   --command -- python3 -c "
 import pickle, boto3
 from sklearn.linear_model import LinearRegression
@@ -337,6 +338,13 @@ spec:
       modelFormat:
         name: sklearn
       storageUri: s3://e2e-models/sklearn
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
 EOF
 
   info "InferenceService created, waiting for Ready..."

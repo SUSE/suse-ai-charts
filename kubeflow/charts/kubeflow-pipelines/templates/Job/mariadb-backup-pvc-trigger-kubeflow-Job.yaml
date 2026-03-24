@@ -16,6 +16,8 @@ spec:
   backoffLimit: 3
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
       labels:
         app: mariadb-backup-pvc-trigger
     spec:

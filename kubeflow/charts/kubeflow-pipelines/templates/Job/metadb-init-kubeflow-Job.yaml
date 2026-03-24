@@ -13,6 +13,8 @@ spec:
   backoffLimit: 10
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/nativeSidecar: 'true'
     spec:
       restartPolicy: OnFailure
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
