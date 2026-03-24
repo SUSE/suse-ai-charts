@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pvcviewer-serving-cert
+  namespace: kubeflow
+  labels:
+    app: pvcviewer
+spec:
+  dnsNames:
+  - pvcviewer-webhook-service.kubeflow.svc
+  - pvcviewer-webhook-service.kubeflow.svc.cluster.local
+  privateKey:
+    rotationPolicy: Always
+  issuerRef:
+    kind: Issuer
+    name: pvcviewer-selfsigned-issuer
+  secretName: pvcviewer-webhook-server-cert

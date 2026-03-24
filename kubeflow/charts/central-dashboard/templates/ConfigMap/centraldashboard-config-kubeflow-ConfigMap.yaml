@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: centraldashboard-config
+  labels:
+    {{- include "central-dashboard.labels" . | nindent 4 }}
+data:
+  links: |-
+    {{ .Values.dashboardLinks | nindent 4 }}
+  settings: |-
+    {{ .Values.dashboardSettings | nindent 4 }}

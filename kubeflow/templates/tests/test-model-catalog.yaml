@@ -1,0 +1,28 @@
+{{- if and .Values.modelRegistry.enabled .Values.modelRegistry.catalog.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-model-catalog"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/inject: "false"
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.busybox.registry "repository" .Values.testImages.busybox.repository "tag" .Values.testImages.busybox.tag "Values" .Values) }}
+    command:
+    - sh
+    - -c
+    - |
+      nc -zw 5 model-catalog-postgres.kubeflow 5432 \
+        && echo "Model Catalog PostgreSQL TCP ok" \
+        || (echo "Model Catalog PostgreSQL TCP check failed" && exit 1)
+      nc -zw 5 model-catalog.kubeflow 8080 \
+        && echo "Model Catalog API TCP ok" \
+        || (echo "Model Catalog API TCP check failed" && exit 1)
+{{- end }}

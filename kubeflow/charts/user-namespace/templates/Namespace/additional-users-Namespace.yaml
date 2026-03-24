@@ -1,0 +1,20 @@
+{{- range .Values.additionalUsers }}
+{{- /*
+  Namespace name resolution order:
+  1. .namespace field (explicit override — recommended to avoid slug collisions)
+  2. Auto-generated slug: local-part--domain (@ → "--", . → "-")
+     WARNING: emails that differ only in "." vs "-" produce the same slug.
+     Example: alice.smith@corp.com and alice-smith@corp.com both → alice-smith--corp-com
+     Use the explicit .namespace field to disambiguate.
+*/}}
+{{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
+{{- $namespaceName := .namespace | default $emailSlug }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespaceName }}
+  annotations:
+    # Pre-set owner annotation so the profiles controller can reconcile immediately.
+    owner: {{ .email }}
+{{- end }}

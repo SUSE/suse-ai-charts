@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: notebook-controller
+    kustomize.component: notebook-controller
+  name: notebook-controller-deployment
+  namespace: kubeflow
+spec:
+  selector:
+    matchLabels:
+      app: notebook-controller
+      kustomize.component: notebook-controller
+  template:
+    metadata:
+      labels:
+        app: notebook-controller
+        kustomize.component: notebook-controller
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - command:
+        - /manager
+        env:
+        - name: USE_ISTIO
+          valueFrom:
+            configMapKeyRef:
+              key: USE_ISTIO
+              name: notebook-controller-config-mf8876789d
+        - name: ISTIO_GATEWAY
+          valueFrom:
+            configMapKeyRef:
+              key: ISTIO_GATEWAY
+              name: notebook-controller-config-mf8876789d
+        - name: CLUSTER_DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              key: CLUSTER_DOMAIN
+              name: notebook-controller-config-mf8876789d
+        - name: ENABLE_CULLING
+          valueFrom:
+            configMapKeyRef:
+              key: ENABLE_CULLING
+              name: notebook-controller-config-mf8876789d
+        - name: CULL_IDLE_TIME
+          valueFrom:
+            configMapKeyRef:
+              key: CULL_IDLE_TIME
+              name: notebook-controller-config-mf8876789d
+        - name: IDLENESS_CHECK_PERIOD
+          valueFrom:
+            configMapKeyRef:
+              key: IDLENESS_CHECK_PERIOD
+              name: notebook-controller-config-mf8876789d
+        image: {{ include "notebook-controller.image" .Values.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: true
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: manager
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+      serviceAccountName: notebook-controller-service-account
+      volumes:
+      - emptyDir: {}
+        name: tmp

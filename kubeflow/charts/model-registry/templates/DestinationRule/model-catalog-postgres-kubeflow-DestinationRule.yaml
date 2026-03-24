@@ -1,0 +1,20 @@
+{{- if .Values.catalog.enabled }}
+# PostgreSQL pod runs without Istio sidecar (sidecar.istio.io/inject: 'false').
+# Without DISABLE mode the Istio sidecar on the catalog-server pod will attempt
+# mTLS toward a non-mesh endpoint and the TCP handshake will fail.
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-catalog-postgres
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-catalog-postgres
+  namespace: kubeflow
+spec:
+  host: model-catalog-postgres.kubeflow.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+{{- end }}

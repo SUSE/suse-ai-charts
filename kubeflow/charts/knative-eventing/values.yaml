@@ -1,0 +1,56 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+  # -- Global override for image pull policy
+  imagePullPolicy: IfNotPresent
+
+controller:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/eventing/cmd/controller
+    tag: ""  # unused when digest is set
+    digest: sha256:202f2c203154f30b642ddbd3843fad12637389a84bf097c22c216039469f704b
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+  env:
+    APISERVER_RA_IMAGE:
+      registry: gcr.io
+      repository: knative-releases/knative.dev/eventing/cmd/apiserver_receive_adapter
+      tag: ""  # unused when digest is set
+      digest: sha256:9cf675814667090fdb72be469c0854b3480c13b3338a461cb6e11977777840b3
+      pullPolicy: IfNotPresent
+
+webhook:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/eventing/cmd/webhook
+    tag: ""  # unused when digest is set
+    digest: sha256:b857ca0d0467c27b25b6efd555dee45281ca639eba06333c20e6adc9146002d8
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 50Mi
+
+pingsource:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/eventing/cmd/mtping
+    tag: ""  # unused when digest is set
+    digest: sha256:8624b33e7a4126a562b410baa807ebf9f83fd057b2118e5e55b3a069111856ef
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2048Mi
+    requests:
+      cpu: 125m
+      memory: 64Mi

@@ -1,0 +1,6 @@
+dependencies:
+- name: mariadb
+  repository: oci://dp.apps.rancher.io/charts
+  version: 0.1.7
+digest: sha256:29b8240e76f8ec2d7f13aca5840d3ac51930900605f36c35a326fe04a7d29588
+generated: "2026-02-24T21:50:30.9380356-08:00"

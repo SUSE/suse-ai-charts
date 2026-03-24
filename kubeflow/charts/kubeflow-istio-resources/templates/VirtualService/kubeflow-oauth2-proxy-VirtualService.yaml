@@ -1,0 +1,21 @@
+{{- if .Values.global.oauth2Proxy.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: kubeflow-oauth2-proxy
+  namespace: {{ .Release.Namespace }}
+spec:
+  gateways:
+  - {{ .Values.global.gateway.name | default "kubeflow/kubeflow-gateway" }}
+  hosts:
+  - '*'
+  http:
+  - match:
+    - uri:
+        prefix: /oauth2/
+    route:
+    - destination:
+        host: kubeflow-oauth2-proxy.{{ .Release.Namespace }}.svc.cluster.local
+        port:
+          number: 80
+{{- end }}

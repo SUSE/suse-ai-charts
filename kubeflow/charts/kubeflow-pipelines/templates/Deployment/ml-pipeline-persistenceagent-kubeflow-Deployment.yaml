@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: ml-pipeline-persistenceagent
+    app.kubernetes.io/component: ml-pipeline
+    app.kubernetes.io/name: kubeflow-pipelines
+    application-crd-id: kubeflow-pipelines
+  name: ml-pipeline-persistenceagent
+  namespace: kubeflow
+spec:
+  selector:
+    matchLabels:
+      app: ml-pipeline-persistenceagent
+      app.kubernetes.io/component: ml-pipeline
+      app.kubernetes.io/name: kubeflow-pipelines
+      application-crd-id: kubeflow-pipelines
+  template:
+    metadata:
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: 'true'
+        sidecar.istio.io/inject: 'true'
+      labels:
+        app: ml-pipeline-persistenceagent
+        app.kubernetes.io/component: ml-pipeline
+        app.kubernetes.io/name: kubeflow-pipelines
+        application-crd-id: kubeflow-pipelines
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 2000
+      containers:
+      - name: ml-pipeline-persistenceagent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+        env:
+        - name: NAMESPACE
+          value: ''
+        - name: KUBEFLOW_USERID_HEADER
+          value: kubeflow-userid
+        - name: KUBEFLOW_USERID_PREFIX
+          value: ''
+        - name: TTL_SECONDS_AFTER_WORKFLOW_FINISH
+          value: '86400'
+        - name: NUM_WORKERS
+          value: '2'
+        - name: DBCONFIG_USER
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: mysql-secret
+        - name: DBCONFIG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-secret
+        - name: DBCONFIG_DBNAME
+          valueFrom:
+            configMapKeyRef:
+              key: pipelineDb
+              name: pipeline-install-config
+        - name: DBCONFIG_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: dbHost
+              name: pipeline-install-config
+        - name: DBCONFIG_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: dbPort
+              name: pipeline-install-config
+        envFrom:
+        - configMapRef:
+            name: persistenceagent-config-hkgkmd64bh
+        image: {{ include "kubeflow-pipelines.image" .Values.persistenceAgent.image }}
+        imagePullPolicy: {{ .Values.persistenceAgent.image.pullPolicy }}
+        name: ml-pipeline-persistenceagent
+        {{- with .Values.persistenceAgent.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /var/run/secrets/kubeflow/tokens
+          name: persistenceagent-sa-token
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      serviceAccountName: ml-pipeline-persistenceagent
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: persistenceagent-sa-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              audience: pipelines.kubeflow.org
+              expirationSeconds: 3600
+              path: persistenceagent-sa-token

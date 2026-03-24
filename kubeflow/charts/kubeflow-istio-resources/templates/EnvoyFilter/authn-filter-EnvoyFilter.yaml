@@ -1,0 +1,145 @@
+{{- if .Values.global.oauth2Proxy.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: authn-filter
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      istio: istio
+  configPatches:
+
+  # ── Patch 1 ──────────────────────────────────────────────────────────────────
+  # Lua redirect filter (inserted first → sits at the FRONT of the chain).
+  # Sits BEFORE ext_authz, so its envoy_on_response fires when ext_authz denies:
+  #   403 (unauthenticated) → 302 → /oauth2/sign_in
+  # With skip_provider_button=true, /oauth2/sign_in instantly 302s to Dex.
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inline_code: |
+            function envoy_on_request(request_handle)
+              -- Save original path so after login oauth2-proxy redirects back here
+              local path = request_handle:headers():get(":path")
+              request_handle:streamInfo():dynamicMetadata():set(
+                "envoy.filters.http.lua", "original_path", path)
+            end
+            function envoy_on_response(response_handle)
+              local status = response_handle:headers():get(":status")
+              if status == "403" then
+                -- Only redirect to login for oauth2-proxy auth denials.
+                -- oauth2-proxy sets a CSRF set-cookie on auth denial (passed via
+                -- allowed_client_headers); Istio sidecar AuthorizationPolicy 403s
+                -- and other app-level 403s have no set-cookie. Without this guard
+                -- a sidecar-level deny would loop: login → notebook sidecar 403 → login.
+                local set_cookie = response_handle:headers():get("set-cookie")
+                if not set_cookie then
+                  return
+                end
+                local md = response_handle:streamInfo():dynamicMetadata():get(
+                  "envoy.filters.http.lua")
+                local rd = "/"
+                if md and md["original_path"] then
+                  rd = md["original_path"]
+                end
+                response_handle:headers():replace(":status", "302")
+                response_handle:headers():add("location", "/oauth2/sign_in?rd=" .. rd)
+                response_handle:headers():replace("content-length", "0")
+                response_handle:headers():remove("content-type")
+              end
+            end
+
+  # ── Patch 2 ──────────────────────────────────────────────────────────────────
+  # ext_authz filter: calls oauth2-proxy /oauth2/auth to check every request.
+  # Inserted before router → lands between Lua-redirect and router.
+  # Chain so far: [Lua-redirect → ext_authz → router]
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.ext_authz
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+          http_service:
+            server_uri:
+              uri: http://kubeflow-oauth2-proxy.{{ .Release.Namespace }}.svc.cluster.local:80
+              cluster: outbound|80||kubeflow-oauth2-proxy.{{ .Release.Namespace }}.svc.cluster.local
+              timeout: 10s
+            path_prefix: /oauth2/auth
+            authorization_request:
+              allowed_headers:
+                patterns:
+                  - exact: "authorization"
+                  - exact: "cookie"
+                  - exact: "x-auth-request-redirect"
+                  - prefix: "x-forwarded-"
+            authorization_response:
+              allowed_upstream_headers:
+                patterns:
+                  - exact: "kubeflow-userid"
+                  - exact: "x-auth-request-user"
+                  - exact: "x-auth-request-email"
+                  - exact: "x-auth-request-groups"
+                  - exact: "x-auth-request-preferred-username"
+                  - exact: "authorization"
+              allowed_client_headers:
+                patterns:
+                  - exact: "set-cookie"
+                  - exact: "location"
+                  - exact: "content-type"
+                  - exact: "cache-control"
+          failure_mode_allow: false
+          status_on_error:
+            code: ServiceUnavailable
+
+  # ── Patch 3 ──────────────────────────────────────────────────────────────────
+  # Lua header-copy filter: runs AFTER ext_authz on the request path.
+  # When ext_authz allows the request it adds x-auth-request-email; this Lua
+  # filter copies that to kubeflow-userid which all Kubeflow apps expect.
+  # Chain: [Lua-redirect → ext_authz → Lua-header → router]
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inline_code: |
+            function envoy_on_request(request_handle)
+              local email = request_handle:headers():get("x-auth-request-email")
+              if email then
+                request_handle:headers():add("kubeflow-userid", email)
+              end
+            end
+            function envoy_on_response(response_handle)
+            end
+{{- end }}

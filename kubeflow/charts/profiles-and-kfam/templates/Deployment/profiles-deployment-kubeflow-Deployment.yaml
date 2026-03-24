@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    kustomize.component: profiles
+  name: profiles-deployment
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      kustomize.component: profiles
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+      labels:
+        kustomize.component: profiles
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - command:
+        - /access-management
+        - -cluster-admin
+        - $(ADMIN)
+        - -userid-header
+        - $(USERID_HEADER)
+        - -userid-prefix
+        - $(USERID_PREFIX)
+        envFrom:
+        - configMapRef:
+            name: profiles-config-46c7tgh6fd
+        image: {{ include "profiles-and-kfam.image" .Values.kfam.image }}
+        imagePullPolicy: {{ .Values.kfam.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: true
+        {{- with .Values.kfam.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: kfam
+        ports:
+        - containerPort: {{ .Values.kfam.containerPort }}
+          name: kfam-http
+          protocol: TCP
+        {{- with .Values.kfam.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      - command:
+        - /manager
+        - -userid-header
+        - $(USERID_HEADER)
+        - -userid-prefix
+        - $(USERID_PREFIX)
+        - -workload-identity
+        - $(WORKLOAD_IDENTITY)
+        envFrom:
+        - configMapRef:
+            name: profiles-config-46c7tgh6fd
+        image: {{ include "profiles-and-kfam.image" .Values.profileController.image }}
+        imagePullPolicy: {{ .Values.profileController.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: true
+        {{- with .Values.profileController.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: manager
+        ports:
+        - containerPort: {{ .Values.profileController.containerPort }}
+        {{- with .Values.profileController.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.profileController.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /etc/profile-controller
+          name: namespace-labels
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      serviceAccountName: profiles-controller-service-account
+      volumes:
+      - configMap:
+          name: namespace-labels-data-4df5t8mdgf
+        name: namespace-labels
+      - emptyDir: {}
+        name: tmp

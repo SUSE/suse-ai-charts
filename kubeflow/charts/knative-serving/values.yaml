@@ -1,0 +1,120 @@
+# Knative Serving component configuration
+# Images use registry/repository/pullPolicy/digest format
+
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+  # -- Global override for image pull policy
+  imagePullPolicy: IfNotPresent
+
+controller:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/serving/cmd/controller
+    tag: ""  # unused when digest is set
+    digest: sha256:3718bf2e2f135ac70699db930145b22e52fb49bdd47a613b58cd0732853576da
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1000Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+activator:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/serving/cmd/activator
+    tag: ""  # unused when digest is set
+    digest: sha256:701507d9c480ff87dcfa4755ca7d3d6b727438cc78c21a32164750654aa08e67
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 600Mi
+    requests:
+      cpu: 300m
+      memory: 60Mi
+
+autoscaler:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/serving/cmd/autoscaler
+    tag: ""  # unused when digest is set
+    digest: sha256:485c0a009cede9138a7ec1e5ab5a5ef22ff9ddbbc7f278571211f33c505ca596
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1000Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+webhook:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/serving/cmd/webhook
+    tag: ""  # unused when digest is set
+    digest: sha256:0d9c4d4971d9b67eaf5ce1359f6ff334145d32b3c0cb9e650ab9fab687396696
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 500Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+netIstioController:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/net-istio/cmd/controller
+    tag: ""  # unused when digest is set
+    digest: sha256:52453d71844b8b0f9d23139bde9080c39e123d109f6f9aacdbf8d49321e87cfa
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 300m
+      memory: 400Mi
+    requests:
+      cpu: 30m
+      memory: 40Mi
+
+netIstioWebhook:
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/net-istio/cmd/webhook
+    tag: ""  # unused when digest is set
+    digest: sha256:dfc23229b2a377c593063cabdc0fdd6906bd0955c3a6dbd8462031b18b55e67c
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 20m
+      memory: 20Mi
+
+# Queue sidecar image used in config-deployment ConfigMap
+queueSidecarImage:
+  registry: gcr.io
+  repository: knative-releases/knative.dev/serving/cmd/queue
+  tag: ""
+  digest: sha256:b78cfa015872b12cf64f01fc21f29190c6f2fa69aadbb90162fa98e843781777
+  pullPolicy: IfNotPresent
+
+# Queue proxy image used in the queue-proxy Image resource
+queueProxy:
+  registry: gcr.io
+  repository: knative-releases/knative.dev/serving/cmd/queue
+  tag: ""
+  digest: sha256:179c0c4892ea4a70e78bc52ac21b03cd7f1a763d2ecc78e7bbaa1ae59c86c
+  pullPolicy: IfNotPresent
+
+# Domain for InferenceService external URLs.
+# Override with <node-ip>.nip.io or your real domain.
+domain: "example.com"

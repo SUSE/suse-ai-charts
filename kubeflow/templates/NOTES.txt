@@ -1,0 +1,152 @@
+
+===============================================================================
+  Kubeflow has been installed!
+===============================================================================
+
+Kubeflow version: {{ .Chart.AppVersion }}
+Release name: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+{{- $unsCreds := (index .Values "user-namespace").pipelines.seaweedfs }}
+{{- $usingDemoSeaweedCreds  := and (eq ($unsCreds.accessKey | default "kubeflow") "kubeflow") (eq ($unsCreds.secretKey | default "kubeflow123") "kubeflow123") }}
+{{- $usingDemoDexSecret     := contains "pUBnBOY80Sn" (.Values.dex.config.staticClients | toJson) }}
+{{- $usingDemoUserCreds     := eq .Values.auth.initialUser.email "user@example.com" }}
+{{- if or $usingDemoSeaweedCreds $usingDemoDexSecret $usingDemoUserCreds }}
+⚠ ⚠ ⚠  SECURITY WARNING  ⚠ ⚠ ⚠
+-------------------------------------------------------------------------------
+The following DEMO DEFAULTS are still in use. Change them before exposing
+this deployment to any network or storing sensitive data.
+
+{{- if $usingDemoUserCreds }}
+  • Default login credentials (user@example.com / 12341234) are active.
+    Update dex.config.staticPasswords in your values override.
+{{- end }}
+{{- if $usingDemoDexSecret }}
+  • Dex OIDC client secret is the well-known demo value.
+    Update dex.config.staticClients[0].secret in your values override.
+{{- end }}
+{{- if $usingDemoSeaweedCreds }}
+  • SeaweedFS credentials are kubeflow / kubeflow123.
+    Update pipelines.seaweedfs.accessKey/secretKey in your values override.
+{{- end }}
+-------------------------------------------------------------------------------
+{{- end }}
+
+GETTING STARTED
+---------------
+
+1. Wait for all pods to be ready:
+
+   kubectl get pods -n {{ .Release.Namespace }} -w
+
+2. Get the Kubeflow dashboard URL:
+
+{{- $kir := index .Values "kubeflow-istio-resources" }}
+{{- if $kir.hostname }}
+   Hostname: {{ $kir.hostname }}
+{{- if ne $kir.tls.source "" }}
+   Dashboard URL: https://{{ $kir.hostname }}
+{{- else }}
+   Dashboard URL: http://{{ $kir.hostname }}
+{{- end }}
+{{- if .Values.externaldns.enabled }}
+   DNS: managed automatically by external-dns
+{{- else }}
+   ⚠ DNS not managed automatically. Add one of:
+     /etc/hosts:   <node-ip>  {{ $kir.hostname }}
+     DNS provider: A record {{ $kir.hostname }} → <node-ip>
+     Auto:         set externalDns.enabled=true with provider credentials
+{{- end }}
+{{- else }}
+   # Port-forward to access locally:
+   kubectl port-forward svc/istio -n istio-system 8080:80
+
+   Dashboard URL: http://localhost:8080
+{{- end }}
+
+3. Default credentials (CHANGE IMMEDIATELY in production):
+
+   Email: {{ .Values.auth.initialUser.email }}
+   Password: 12341234  (update hash in dex.config.staticPasswords to change)
+
+COMPONENTS INSTALLED
+--------------------
+
+{{- if .Values.pipelines.enabled }}
+✓ Kubeflow Pipelines
+{{- end }}
+{{- if .Values.notebooks.enabled }}
+✓ Jupyter Notebooks
+{{- end }}
+{{- if .Values.katib.enabled }}
+✓ Katib (Hyperparameter Tuning)
+{{- end }}
+{{- if .Values.kserve.enabled }}
+✓ KServe (Model Serving)
+{{- end }}
+{{- if .Values.trainingOperator.enabled }}
+✓ Training Operator (TFJob, PyTorchJob, etc.)
+{{- end }}
+{{- if .Values.tensorboard.controller.enabled }}
+✓ TensorBoard
+{{- end }}
+
+NEXT STEPS
+----------
+
+1. Create your first notebook:
+   - Go to Notebooks in the dashboard
+   - Click "New Notebook"
+   - Select a container image and resources
+
+2. Create a pipeline:
+   - Go to Pipelines in the dashboard
+   - Upload a pipeline or use the SDK
+
+3. For production:
+   - Change ALL default credentials (see SECURITY WARNING above)
+   - Configure OIDC authentication with an external identity provider
+   - Set up TLS certificates (set kubeflow-istio-resources.tls.source=selfSigned|letsEncrypt|secret)
+   - Configure persistent storage with a production-grade StorageClass
+   - Set resource quotas per namespace
+   - Review NetworkPolicies (set networkPolicies.enabled=true)
+
+DOCUMENTATION
+-------------
+
+- Kubeflow: https://www.kubeflow.org/docs/
+- Kubeflow Pipelines: https://www.kubeflow.org/docs/components/pipelines/
+- KServe: https://kserve.github.io/website/
+- Chart README: See README.md for full configuration reference
+
+BACKUP & RESTORE (MariaDB / KFP metadata)
+-----------------------------------------
+
+Backups run daily at 02:00 UTC (configurable via pipelines.mariadb.backup.schedule).
+Backup files are stored on PVC mariadb-backup-pvc in namespace {{ .Release.Namespace }}.
+
+To list backups:
+  kubectl exec -n {{ .Release.Namespace }} deploy/mysql -- ls /backup/
+
+To restore a backup:
+  kubectl exec -n {{ .Release.Namespace }} deploy/mysql -- \
+    sh -c "mariadb --ssl=false -u root < /backup/<filename>.sql"
+
+To disable backups (resource-constrained clusters):
+  Set pipelines.mariadb.backup.enabled=false in your values override.
+
+TROUBLESHOOTING
+---------------
+
+If you encounter issues:
+
+1. Check pod status:
+   kubectl get pods -n {{ .Release.Namespace }}
+
+2. Check logs:
+   kubectl logs -n {{ .Release.Namespace }} deployment/<component-name>
+
+3. Check Istio ingress:
+   kubectl get svc -n istio-system istio
+
+===============================================================================

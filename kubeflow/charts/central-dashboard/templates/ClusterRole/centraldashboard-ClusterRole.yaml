@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "central-dashboard.fullname" . }}-{{ .Release.Namespace }}
+  labels:
+    {{- include "central-dashboard.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - events
+  - namespaces
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch

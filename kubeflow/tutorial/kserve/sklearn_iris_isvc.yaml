@@ -1,0 +1,58 @@
+# Tutorial — Part 7b: KServe InferenceService — sklearn Iris classifier
+# =======================================================================
+# Deploys the model uploaded by train_and_upload.py as a REST endpoint
+# using KServe's Serverless deployment mode (backed by Knative).
+#
+# Prerequisites
+# -------------
+#   1. kserve-s3-secret.yaml applied (kserve-sa ServiceAccount exists).
+#   2. Model uploaded to SeaweedFS: s3://kserve-models/sklearn/iris/model.joblib
+#      (run train_and_upload.py first).
+#
+# Apply
+# -----
+#   kubectl apply -f sklearn_iris_isvc.yaml
+#
+# Monitor
+# -------
+#   kubectl get inferenceservice sklearn-iris -n kubeflow-user-example-com
+#   # Wait for READY=True — typically 1–3 min (image pull + model download)
+#
+#   kubectl get pods -n kubeflow-user-example-com \
+#       -l serving.kserve.io/inferenceservice=sklearn-iris
+#
+# Query (from inside the cluster)
+# --------------------------------
+#   # The in-cluster hostname follows: <name>.<namespace>.svc.cluster.local
+#   kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it -- \
+#     curl -s -X POST \
+#       http://sklearn-iris.kubeflow-user-example-com.svc.cluster.local/v1/models/sklearn-iris:predict \
+#       -H "Content-Type: application/json" \
+#       -d '{"instances": [[5.1, 3.5, 1.4, 0.2], [6.7, 3.1, 4.7, 1.5]]}'
+#   # Expected: {"predictions": [0, 1]}
+#
+# Clean up
+# --------
+#   kubectl delete inferenceservice sklearn-iris -n kubeflow-user-example-com
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sklearn-iris
+  namespace: kubeflow-user-example-com
+  annotations:
+    serving.kserve.io/deploymentMode: Serverless
+spec:
+  predictor:
+    serviceAccountName: kserve-sa     # attaches kserve-s3-secret
+    sklearn:
+      # storageUri points to the directory containing model.joblib
+      storageUri: "s3://kserve-models/sklearn/iris"
+      # protocolVersion: v1 is the default for sklearn (REST /v1/models/…:predict)
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "512Mi"

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-ui
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-ui-service
+  namespace: kubeflow
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-ui
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry

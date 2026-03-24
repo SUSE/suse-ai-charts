@@ -1,0 +1,29 @@
+{{- $kir := index .Values "kubeflow-istio-resources" }}
+{{- if eq $kir.tls.source "letsEncrypt" }}
+{{- $le := $kir.tls.letsEncrypt }}
+{{- $server := "https://acme-v02.api.letsencrypt.org/directory" }}
+{{- if eq $le.server "staging" }}
+{{-   $server = "https://acme-staging-v02.api.letsencrypt.org/directory" }}
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: kubeflow-letsencrypt
+spec:
+  acme:
+    server: {{ $server }}
+    email: {{ $le.email | quote }}
+    privateKeySecretRef:
+      name: kubeflow-letsencrypt-key
+    solvers:
+    {{- if eq $le.solver "cloudflare" }}
+    - dns01:
+        {{- with $kir.tls.cloudflare }}
+        cloudflare: {{- toYaml . | nindent 10 }}
+        {{- end }}
+    {{- else }}
+    - http01:
+        ingress:
+          class: istio
+    {{- end }}
+{{- end }}

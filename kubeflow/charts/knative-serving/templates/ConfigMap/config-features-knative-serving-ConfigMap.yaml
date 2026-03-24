@@ -1,0 +1,12 @@
+apiVersion: v1
+data:
+kind: ConfigMap
+metadata:
+  annotations:
+    knative.dev/example-checksum: 691a192e
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/name: knative-serving
+    app.kubernetes.io/version: 1.8.0
+  name: config-features
+  namespace: knative-serving

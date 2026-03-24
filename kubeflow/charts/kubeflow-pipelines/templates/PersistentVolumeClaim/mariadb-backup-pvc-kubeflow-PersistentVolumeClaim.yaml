@@ -1,0 +1,20 @@
+{{- if .Values.mariadb.backup.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-backup-pvc
+  namespace: kubeflow
+  labels:
+    application-crd-id: kubeflow-pipelines
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.mariadb.backup.storageClass }}
+  storageClassName: {{ .Values.mariadb.backup.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mariadb.backup.storageSize }}
+{{- end }}

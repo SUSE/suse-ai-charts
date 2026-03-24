@@ -1,0 +1,100 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+# NOTE: Trainer CRDs (TrainJob, TrainingRuntime, ClusterTrainingRuntime) live in crds/ and are
+# applied automatically on helm install. They are NOT re-applied on helm upgrade (Helm limitation).
+# To skip CRD installation (e.g. CRDs already exist): helm install --skip-crds
+# To update CRDs on upgrade: kubectl apply -f charts/apps/trainer/crds/
+
+image:
+  registry: ghcr.io
+  repository: kubeflow/trainer/trainer-controller-manager
+  tag: v2.1.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8081
+  initialDelaySeconds: 15
+  periodSeconds: 20
+  failureThreshold: 3
+  timeoutSeconds: 3
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8081
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+  timeoutSeconds: 3
+
+# JobSet configuration
+jobset:
+  # -- Install the JobSet CRD
+  installCRDs: true
+  # -- Deploy the jobset-controller-manager alongside the trainer
+  controller:
+    enabled: true
+  image:
+    registry: registry.k8s.io
+    repository: jobset/jobset
+    tag: v0.10.1
+    pullPolicy: IfNotPresent
+
+# ClusterTrainingRuntime instances bundled with the chart
+runtimes:
+  enabled: true
+  deepspeed:
+    image:
+      registry: ghcr.io
+      repository: kubeflow/trainer/deepspeed-runtime
+      tag: v2.1.0
+      pullPolicy: IfNotPresent
+  mlx:
+    image:
+      registry: ghcr.io
+      repository: kubeflow/trainer/mlx-runtime
+      tag: v2.1.0
+      pullPolicy: IfNotPresent
+  torch:
+    distributed:
+      image:
+        registry: pytorch
+        repository: pytorch
+        tag: 2.7.1-cuda12.8-cudnn9-runtime
+        pullPolicy: IfNotPresent
+  # TorchTune fine-tuning runtimes (Llama3, Qwen2.5) — requires GPU + HuggingFace token
+  # Disabled by default; enable when running LLM fine-tuning workloads
+  torchtune:
+    enabled: false
+    images:
+      trainer:
+        registry: ghcr.io
+        repository: kubeflow/trainer/torchtune-trainer
+        tag: v2.1.0
+        pullPolicy: IfNotPresent
+      datasetInitializer:
+        registry: ghcr.io
+        repository: kubeflow/trainer/dataset-initializer
+        tag: v2.1.0
+        pullPolicy: IfNotPresent
+      modelInitializer:
+        registry: ghcr.io
+        repository: kubeflow/trainer/model-initializer
+        tag: v2.1.0
+        pullPolicy: IfNotPresent

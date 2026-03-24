@@ -1,0 +1,46 @@
+{{- if and .Values.mariadb.enabled .Values.mariadb.backup.enabled }}
+# One-shot Job that mounts the backup PVC immediately so the local-path provisioner
+# (volumeBindingMode: WaitForFirstConsumer) binds it during helm install --wait,
+# rather than waiting for the first CronJob run at backup schedule time.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mariadb-backup-pvc-trigger
+  namespace: kubeflow
+  labels:
+    application-crd-id: kubeflow-pipelines
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: mariadb-backup-pvc-trigger
+    spec:
+      restartPolicy: OnFailure
+      {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: bind
+        image: {{ include "kubeflow-pipelines.image" .Values.metadbInit.image }}
+        imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
+        command: ["sh", "-c", "echo 'Backup PVC bound and ready.' && ls /backup/"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: backup
+          mountPath: /backup
+      volumes:
+      - name: backup
+        persistentVolumeClaim:
+          claimName: mariadb-backup-pvc
+{{- end }}

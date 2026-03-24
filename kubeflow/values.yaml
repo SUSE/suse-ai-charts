@@ -1,0 +1,813 @@
+# Default values for Kubeflow umbrella chart
+# This is a YAML-formatted file.
+#
+# Prerequisites:
+#   1. Create required namespaces:
+#      kubectl create namespace cert-manager
+#      kubectl create namespace istio-system
+#      kubectl create namespace kubeflow
+#
+#   2. Create image pull secret in each namespace (for Rancher registry):
+#      for ns in cert-manager istio-system kubeflow; do
+#        kubectl create secret docker-registry application-collection \
+#          --docker-server=dp.apps.rancher.io \
+#          --docker-username=<username> \
+#          --docker-password=<token> \
+#          -n $ns
+#      done
+#
+#   3. Label kubeflow namespace for Helm:
+#      kubectl label namespace kubeflow app.kubernetes.io/managed-by=Helm
+#      kubectl annotate namespace kubeflow meta.helm.sh/release-name=kubeflow meta.helm.sh/release-namespace=kubeflow
+#
+#   4. Install cert-manager (required):
+#      helm install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
+#        --version 1.13.1 \
+#        --namespace cert-manager \
+#        --set crds.enabled=true \
+#        --set crds.keep=true \
+#        --set global.imagePullSecrets[0].name=application-collection
+#
+#   5. Install Istio (required):
+#      helm install istio oci://dp.apps.rancher.io/charts/istio \
+#        --version 1.1.3 \
+#        --namespace istio-system \
+#        --set global.imagePullSecrets[0].name=application-collection \
+#        --set gateway.enabled=true
+#
+#   6. Ensure storage provisioner (K3s/RKE2 clusters):
+#      # Option A: Local Path Provisioner (development/testing)
+#      kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+#      kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+#
+#      # Option B: Longhorn (production)
+#      helm install longhorn oci://dp.apps.rancher.io/charts/longhorn \
+#        --namespace longhorn-system --create-namespace \
+#        --set defaultSettings.defaultDataPath="/var/lib/longhorn" \
+#        --set persistence.defaultClassReplicaCount=1
+#
+#      Note: Delete any AWS-specific storage classes (e.g., gp2) before installing:
+#      kubectl delete storageclass gp2
+#
+# Installation (from project root):
+#   helm install kubeflow ./charts/kubeflow -n kubeflow
+#
+# Or from charts/kubeflow directory:
+#   helm install kubeflow . -n kubeflow
+#
+# Access:
+#   kubectl port-forward svc/istio -n istio-system 8080:80
+#   Open http://localhost:8080
+#
+# Default credentials:
+#   Email: user@example.com
+#   Password: 12341234
+
+# Global configuration applied to all sub-charts
+global:
+  # Storage class for PVCs (leave empty for cluster default)
+  storageClass: ""
+
+  # Image pull policy
+  imagePullPolicy: IfNotPresent
+
+  # Common labels applied to all resources
+  labels: {}
+
+  # Image pull secrets applied to every Deployment/StatefulSet in all sub-charts.
+  # Third-party Bitnami-style sub-charts (mariadb) read this automatically.
+  # Custom sub-chart templates reference .Values.global.imagePullSecrets directly.
+  # Argo workflow executor pods are covered separately via workflowDefaults in
+  # the workflow-controller-configmap (that configmap is rendered at pod-create time,
+  # not Helm time, so it cannot use Helm values).
+  imagePullSecrets:
+    - name: application-collection
+
+  # Private/air-gapped registry prefix.
+  # When set, sub-chart image helpers will prepend this value to all image references.
+  # Example (Rancher registry mirror): dp.apps.rancher.io/containers
+  # Example (air-gapped mirror):       my-registry.corp.com/kubeflow
+  # Leave empty to use the default registry specified in each sub-chart's values.
+  imageRegistry: ""
+
+  # oauth2-proxy enablement
+  oauth2Proxy:
+    enabled: true
+
+  gateway:
+    name: "kubeflow/kubeflow-gateway"
+
+# ============================================================================
+# Secrets / Credentials
+# ============================================================================
+# Chart-managed credentials with lookup-idempotent patterns (random on first
+# install, preserved on upgrade). Override with pre-created secrets for production.
+auth:
+  # OIDC client secret shared between Dex (staticClients) and oauth2-proxy.
+  # Both components MUST use the same value.
+  # DEMO DEFAULT — CHANGE IN PRODUCTION.
+  # This is the single source of truth: it is referenced by dex.config.staticClients[0].secret
+  # and passed to the oauth2-proxy sub-chart below.
+  oidc:
+    clientSecret: &oidcClientSecret "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok"  # DEMO DEFAULT
+    cookieSecret: &oidcCookieSecret "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" # DEMO DEFAULT
+
+  # Initial admin user for Dex login.
+  # WARNING: Change these credentials immediately after first login.
+  initialUser:
+    email: "user@example.com"           # DEMO DEFAULT — CHANGE IN PRODUCTION
+    # bcrypt hash of the password. Default password: 12341234
+    # Generate: htpasswd -nbBC 12 "" <password> | tr -d ':\n' | sed 's/$2y/$2a/'
+    passwordHash: "$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm"  # DEMO DEFAULT
+
+# ============================================================================
+# Infrastructure Components
+# ============================================================================
+
+# cert-manager - TLS certificate management
+# NOTE: cert-manager must be installed separately to cert-manager namespace (see prerequisites above)
+# Uses oci://dp.apps.rancher.io/charts/cert-manager
+certManager:
+  install: false  # Set true only if installing cert-manager via this chart (not recommended)
+  crds:
+    enabled: true
+    keep: true
+
+# Istio service mesh
+# NOTE: Istio must be installed separately to istio-system namespace (see prerequisites above)
+# Uses oci://dp.apps.rancher.io/charts/istio
+istio:
+  install: false  # Set true only if installing Istio via this chart (not recommended)
+  gateway:
+    enabled: true
+
+# KServe / Knative external access — single source of truth.
+# domain: Knative Serving domain for InferenceService URLs.
+#         Override with <NODE_IP>.nip.io or a real DNS name.
+_kserveAccess:
+  domain: &kserveInferenceDomain "example.com"
+
+# Knative Serving (required for KServe)
+knativeServing:
+  enabled: true  # Required for KServe inference
+  domain: *kserveInferenceDomain
+
+# Knative Eventing
+knativeEventing:
+  enabled: false  # Optional - for event-driven pipelines
+
+# ============================================================================
+# Authentication
+# ============================================================================
+
+# Dex OIDC provider (official dexidp chart)
+dex:
+  enabled: true
+  # OIDC client credentials — wired from auth.oidc.clientSecret anchor above.
+  # Override oidcClientSecret here or set existingOidcClientSecret to skip chart-managed secret.
+  oidcClientId: "kubeflow-oidc-authservice"
+  oidcClientSecret: *oidcClientSecret
+  existingOidcClientSecret: ""  # set to a pre-existing Secret name to skip chart creation
+  config:
+    issuer: "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex"
+    oauth2:
+      skipApprovalScreen: true
+    storage:
+      type: kubernetes
+      config:
+        inCluster: true
+    web:
+      http: 0.0.0.0:5556
+    staticClients:
+      - id: kubeflow-oidc-authservice
+        redirectURIs:
+          - /oauth2/callback
+        name: kubeflow-oidc-authservice
+        # References auth.oidc.clientSecret — change it there, not here.
+        secret: *oidcClientSecret
+    staticPasswords:
+      # Default credentials (Email: user@example.com / Password: 12341234)
+      # DEMO DEFAULT — CHANGE IN PRODUCTION.
+      # In production, use auth.initialUser.email / auth.initialUser.passwordHash
+      # or configure an external LDAP/OIDC connector via dex.config.connectors.
+      - email: user@example.com  # DEMO DEFAULT
+        hash: "$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm"  # DEMO DEFAULT
+        username: user
+        userID: "15841185641784"
+    enablePasswordDB: true
+  # Resource limits for the Dex container (via Rancher dex-idp chart)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # PodDisruptionBudget — enable in production to protect against voluntary disruptions.
+  # Dex is in the critical auth path; losing it during a node drain blocks all logins.
+  podDisruptionBudget:
+    enabled: false
+    maxUnavailable: 1
+
+
+# oauth2-proxy sub-chart values
+# clientSecret MUST match dex.config.staticClients[0].secret — both reference auth.oidc.clientSecret
+oauth2-proxy:
+  replicaCount: 2
+  # Enable Istio sidecar injection for oauth2-proxy
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  # Extra environment variables to pass to the oauth2-proxy container
+  extraEnv:
+    - name: OAUTH2_PROXY_COOKIE_SECURE
+      value: "false"
+    - name: OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY
+      value: "true"
+    - name: OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS
+      value: "true"
+    - name: OAUTH2_PROXY_EXTRA_JWT_ISSUERS
+      value: "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex=kubeflow-oidc-authservice"
+
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: null
+    minAvailable: 1
+    unhealthyPodEvictionPolicy: ""
+  config:
+    clientID: "kubeflow-oidc-authservice"
+    clientSecret: *oidcClientSecret
+    cookieSecret: *oidcCookieSecret
+    configFile: |-
+      provider = "oidc"
+      oidc_issuer_url = "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex"
+      scope = "profile email groups openid"
+      email_domains = [ "*" ]
+
+      # serve a static HTTP 200 upstream on for authentication success
+      # we are using oauth2-proxy as an ExtAuthz to "check" each request, not pass it on
+      upstreams = [ "static://200" ]
+
+      # skip_auth_routes patterns are matched against the FULL ext_authz check path,
+      # which is /oauth2/auth/<original-path>. So to allow /dex/ and /oauth2/ paths
+      # through without auth, we must match the full prefixed path.
+      skip_auth_routes = [
+        "^/oauth2/auth/dex/",    # allows /dex/* (Dex login, OIDC discovery)
+        "^/oauth2/auth/oauth2/", # allows /oauth2/* (sign_in, callback, static assets)
+      ]
+
+      # requests to paths matching these regex patterns will receive a 401 Unauthorized response
+      # when not authenticated, instead of being redirected to the login page with a 302,
+      # this prevents background requests being redirected to the login page,
+      # and the accumulation of CSRF cookies
+      api_routes = [
+        # Generic
+        # NOTE: included because most background requests contain these paths
+        "/api/",
+        "/apis/",
+
+        # Kubeflow Pipelines
+        # NOTE: included because KFP UI makes MANY background requests to these paths but because they are
+        #       not `application/json` requests, oauth2-proxy will redirect them to the login page
+        "^/ml_metadata",
+      ]
+
+      # OIDC Discovery has to be skipped and login url has to be provided directly
+      # in order to enable relative auth redirect. Using OIDC Discovery would set
+      # the redirect location to http://dex.auth.svc.cluster.local:5556 in the example
+      # installation. This address is usually not available through the Web Browser.
+      # If you have a setup where dex has it's url as other than the in-cluster
+      # service, this is optional.
+      skip_oidc_discovery = true
+      login_url = "/dex/auth"
+      redeem_url = "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex/token"
+      oidc_jwks_url = "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex/keys"
+
+      # if `false`, a sign-in page is displayed before starting the login flow
+      # prevents background requests starting their own login flow on token expiry,
+      # which can lead to many CSRF cookies, potentially exceeding the cookie limit
+      skip_provider_button = true
+
+      # style the sign-in page
+      provider_display_name = "Dex"
+      #custom_sign_in_logo = "/custom-theme/kubeflow-logo.svg"
+      #banner = "-"
+      #footer = "-"
+
+      # oauth2-proxy sends "force" by default, which causes dex to always prompt for login
+      # https://github.com/dexidp/dex/pull/3086
+      prompt = "none"
+
+      # set Authorization Bearer response header. This is needed in order to
+      # forward the Authorization Bearer token to Istio and enable authorization
+      # based on JWT.
+      set_authorization_header = true
+
+      # set X-Auth-Request-User, X-Auth-Request-Groups, X-Auth-Request-Email and
+      # X-Auth-Request-Preferred-Username. This is optional for Kubeflow but you
+      # may have other services that use standard auth headers.
+      set_xauthrequest = true
+
+      cookie_name = "oauth2_proxy_kubeflow"
+
+      # Dex default cookie expiration is 24h.
+      # If set to 168h (default oauth2-proxy), Istio will not be able to use the JWT after 24h,
+      # but oauth2-proxy will still consider the cookie valid.
+      # It's possible to configure the JWT Refresh Token to enable longer login session.
+      cookie_expire = "24h"
+      cookie_refresh = 0
+
+      code_challenge_method = "S256"
+
+      redirect_url = "/oauth2/callback"
+      relative_redirect_url = true
+
+# ============================================================================
+# Kubeflow Applications
+# ============================================================================
+
+# Central Dashboard
+centralDashboard:
+  enabled: true
+
+# Kubeflow Pipelines
+pipelines:
+  enabled: true
+  # Set to the model-registry DB name when modelRegistry.enabled=true so KFP knows which DB to use.
+  # Automatically populated here; override to "" to disable.
+  embedmdDb: "modelregistry"
+  # Rancher MariaDB sub-chart (oci://dp.apps.rancher.io/charts/mariadb 0.1.7)
+  # MariaDB 11.x supports mysql_native_password natively, no compat flags needed
+  mariadb:
+    enabled: true
+    fullnameOverride: "mysql"
+    auth:
+      existingSecret: "mysql-secret"
+      rootPasswordKey: "password"
+      database: "mlpipeline"
+      username: ""
+      # Disable replication user - single node setup
+      replicationUsername: ""
+    persistence:
+      enabled: true
+      storageClassName: ""
+      resources:
+        requests:
+          storage: 20Gi
+    podTemplates:
+      containers:
+        mariadb:
+          env:
+            MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+    metrics:
+      enabled: false
+    # Scheduled backup CronJob + PVC. Enabled by default.
+    # Set enabled: false on resource-constrained clusters.
+    backup:
+      enabled: false
+      schedule: "0 2 * * *"  # daily at 02:00 UTC
+      storageSize: 10Gi
+      storageClass: ""        # empty = cluster default
+
+  seaweedfs:
+    enabled: true
+    storageClass: ""
+    storageSize: 20Gi
+    accessKey: &seaweedfsAccessKey kubeflow      # DEMO DEFAULT
+    secretKey: &seaweedfsSecretKey kubeflow123   # DEMO DEFAULT
+
+# Jupyter Notebooks
+notebooks:
+  enabled: true
+  controller:
+    enabled: true
+  webApp:
+    enabled: true
+
+# Katib - Hyperparameter Tuning
+katib:
+  enabled: true
+  mariadb:
+    persistence:
+      storageSize: 10Gi
+
+# KServe - Model Serving
+kserve:
+  enabled: true
+  ingressDomain: *kserveInferenceDomain
+
+# Model Registry - Model versioning and metadata
+# Requires pipelines.enabled=true (shares KFP's MariaDB and mysql-secret)
+modelRegistry:
+  enabled: true
+  catalog:
+    # Disabled by default: catalog deploys a PostgreSQL StatefulSet and is only useful
+    # when HuggingFace credentials are configured. Enable explicitly when needed.
+    enabled: false
+
+# Training Operator
+trainingOperator:
+  enabled: true
+
+# Trainer V2 — TrainJob / TrainingRuntime / ClusterTrainingRuntime
+# Distinct from Training Operator V1 (trainingOperator) which provides PyTorchJob/TFJob/etc.
+# Requires JobSet v0.10.1 (installed automatically; set trainer.jobset.installCRDs=false if already present)
+trainer:
+  enabled: true
+  runtimes:
+    enabled: true
+    torchtune:
+      enabled: false
+
+# Profiles & KFAM - Multi-tenancy
+profiles:
+  enabled: true
+
+# Volumes Web App
+# pvcviewer-controller is automatically deployed together with volumes-web-app
+# (Chart.yaml condition: volumesWebApp.enabled) — no separate toggle needed.
+volumesWebApp:
+  enabled: true
+
+# Tensorboard
+tensorboard:
+  controller:
+    enabled: true
+  webApp:
+    enabled: true
+
+# ============================================================================
+# Security / Network
+# ============================================================================
+
+# NetworkPolicies — deny-all-ingress by default with explicit allow rules.
+# Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal, etc.).
+# Set enabled: false for CNIs without NetworkPolicy support (bare Flannel).
+networkPolicies:
+  enabled: false  # set true once your CNI is confirmed to enforce NetworkPolicy
+
+# Pre-install preflight checks (Helm hook Job).
+# Validates: default StorageClass exists, cert-manager CRDs present.
+preflightChecks:
+  enabled: false  # set true to enable preflight validation on install/upgrade
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/kubectl
+    tag: "1.34.5"
+    pullPolicy: IfNotPresent
+
+# Observability — ServiceMonitors + PrometheusRules.
+# Requires Rancher Monitoring (kube-prometheus-stack) to be installed first.
+monitoring:
+  enabled: false  # set true after Rancher Monitoring is installed
+
+# Additional user namespaces (multi-tenancy).
+# Each entry creates a Profile CR and Namespace with proper owner annotation.
+# namespace: (optional) explicit namespace name — RECOMMENDED to avoid slug collisions.
+#   If omitted, the namespace is auto-generated from the email (@ → "--", . → "-").
+#   WARNING: emails differing only in "." vs "-" (e.g. alice.smith@corp.com vs
+#   alice-smith@corp.com) produce the same auto-generated slug. Use explicit
+#   namespace names to disambiguate.
+# Example:
+#   additionalUsers:
+#     - email: alice.smith@corp.com
+#       namespace: alice-smith        # explicit — avoids collision
+#       resourceQuota:
+#         requests.cpu: "4"
+#         requests.memory: 8Gi
+#     - email: alice-smith@corp.com
+#       namespace: alice-smith-ext    # must differ from above
+additionalUsers: []
+
+# ============================================================================
+# Subchart Overrides
+# ============================================================================
+# Uncomment sections below to override default values of individual subcharts.
+# The key must match the dependency name (or alias) from Chart.yaml.
+#
+# For full reference, see each subchart's values.yaml:
+#   charts/apps/<chart>/values.yaml
+#   charts/common/<chart>/values.yaml
+
+# --- Central Dashboard ---
+# central-dashboard:
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/kubeflow/central-dashboard
+#     tag: v1.10.0
+#     pullPolicy: IfNotPresent
+#   replicaCount: 1
+#   resources: {}
+#   service:
+#     type: ClusterIP
+#     port: 80
+#     targetPort: 8082
+
+# --- Jupyter Web App ---
+# jupyter-web-app:
+#   nvidiaGPU:
+#     enabled: false
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/kubeflow/jupyter-web-app
+#     tag: v1.10.0
+#     pullPolicy: IfNotPresent
+#   replicaCount: 1
+#   resources: {}
+
+# --- Notebook Controller ---
+# notebook-controller:
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/kubeflow/notebook-controller
+#     tag: v1.10.0
+#     pullPolicy: IfNotPresent
+#   resources: {}
+#   configMapData:
+#     USE_ISTIO: "true"
+#     ISTIO_GATEWAY: kubeflow/kubeflow-gateway
+#     CLUSTER_DOMAIN: cluster.local
+
+# --- Volumes Web App ---
+# volumes-web-app:
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/kubeflow/volumes-web-app
+#     tag: v1.10.0
+#     pullPolicy: IfNotPresent
+#   replicaCount: 1
+#   resources: {}
+
+# --- Tensorboards Web App ---
+# tensorboards-web-app:
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/kubeflow/tensorboards-web-app
+#     tag: v1.10.0
+#     pullPolicy: IfNotPresent
+#   replicaCount: 1
+#   resources: {}
+
+# --- Models Web App ---
+# models-web-app:
+#   image:
+#     registry: "docker.io"
+#     repository: kserve/models-web-app
+#     tag: v0.13.0
+#     pullPolicy: IfNotPresent
+#   replicaCount: 1
+#   resources: {}
+
+# --- Admission Webhook ---
+# admission-webhook:
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/kubeflow/poddefaults-webhook
+#     tag: v1.10.0
+#     pullPolicy: IfNotPresent
+#   resources: {}
+
+# --- Training Operator ---
+# training-operator:
+#   image:
+#     registry: ghcr.io
+#     repository: kubeflow/training-v1/training-operator
+#     tag: v1-d6eb98e
+#     pullPolicy: IfNotPresent
+#   replicaCount: 1
+#   resources: {}
+
+# --- Profiles and KFAM ---
+# profiles-and-kfam:
+#   replicaCount: 1
+#   kfam:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/kubeflow/kfam
+#       tag: v1.10.0
+#     resources: {}
+#   profileController:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/kubeflow/profile-controller
+#       tag: v1.10.0
+#     resources: {}
+
+# --- Tensorboard Controller ---
+# tensorboard-controller:
+#   replicaCount: 1
+#   manager:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/kubeflow/tensorboard-controller
+#       tag: v1.10.0
+#     resources: {}
+
+# --- Katib ---
+# katib:
+#   controller:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/katib/katib-controller
+#       tag: v0.19.0
+#     resources: {}
+#   ui:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/katib/katib-ui
+#       tag: v0.19.0
+#     resources: {}
+#   mariadb:
+#     image:
+#       registry: ""
+#       repository: mariadb
+#       tag: "11.8"
+#     persistence:
+#       storageSize: 10Gi
+
+# --- Kubeflow Pipelines (alias: pipelines) ---
+# pipelines:
+#   apiServer:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/kfp-api-server
+#       tag: "2.15.0"
+#     resources: {}
+#   frontend:
+#     image:
+#       registry: ghcr.io
+#       repository: kubeflow/kfp-frontend
+#       tag: "2.15.0"
+#     resources: {}
+
+# --- KServe ---
+# kserve:
+#   controllerManager:
+#     image:
+#       registry: "docker.io"
+#       repository: kserve/kserve-controller
+#       tag: v0.16.0
+#       pullPolicy: Always
+#     resources:
+#       limits:
+#         cpu: 100m
+#         memory: 300Mi
+#       requests:
+#         cpu: 100m
+#         memory: 200Mi
+
+# --- Knative Serving ---
+# knative-serving:
+#   controller:
+#     image:
+#       registry: gcr.io
+#       repository: knative-releases/knative.dev/serving/cmd/controller
+#       tag: ""  # unused when digest is set
+#       digest: sha256:3718bf2e2f135ac70699db930145b22e52fb49bdd47a613b58cd0732853576da
+#       pullPolicy: IfNotPresent
+#     resources:
+#       limits:
+#         cpu: 1000m
+#         memory: 1000Mi
+#       requests:
+#         cpu: 100m
+#         memory: 100Mi
+
+# --- Knative Eventing ---
+# knative-eventing:
+#   controller:
+#     image:
+#       registry: gcr.io
+#       repository: knative-releases/knative.dev/eventing/cmd/controller
+#       tag: "" # unused when digest is set
+#       digest: sha256:202f2c203154f30b642ddbd3843fad12637389a84bf097c22c216039469f704b
+#       pullPolicy: IfNotPresent
+#     resources:
+#       requests:
+#         cpu: 100m
+#         memory: 100Mi
+
+# --- Kubeflow Istio Resources ---
+kubeflow-istio-resources:
+  # Hostname for the Kubeflow web UI (e.g. kubeflow.example.com).
+  # Leave empty for wildcard / IP+NodePort access.
+  # Independent of TLS — a named hostname works over plain HTTP.
+  hostname: ""                        # CHANGE: set to your FQDN
+
+  # Indicate whether external-dns is enabled and that a DNS records shall be
+  # created for the given hostname. If hostname is not specified or have an
+  # empty value. Enabling external-dns has no effect.
+  externalDNSEnabled: false
+
+  tls:
+    source: ""          # "" | "selfSigned" | "letsEncrypt" | "secret"
+    issuer: ""          # Override ClusterIssuer name; auto-set to kubeflow-letsencrypt when source=letsEncrypt
+    existingSecret: ""  # Pre-existing Secret in istio-system (source: secret)
+    credentialName: kubeflow-gateway-tls
+    httpsRedirect: true
+    # Let's Encrypt ACME configuration (used when source: letsEncrypt).
+    # The chart creates a `kubeflow-letsencrypt` ClusterIssuer automatically —
+    # no manual kubectl steps required.
+    letsEncrypt:
+      email: ""               # Required: ACME account email (e.g. admin@example.com)
+      server: prod            # prod | staging
+      solver: cloudflare      # cloudflare (dns01, requires externalDns.cloudflare.apiToken) | http01
+
+    # If solver is cloudfare, you need to configure the cloudflare here.
+    # Make sure the apiTokenSecretRef is correctly configured with the
+    # name and key values. The email field must contain the valid email
+    # you have registered with CloudFlare.
+    #
+    # cloudflare:
+    #   email: your-email@example.com
+    #   apiTokenSecretRef:
+    #     name: cloudflare-api-token-secret
+    #     key: api-token
+
+# --- External DNS (optional) ---
+# Automatically creates/updates DNS records for kubeflow-istio-resources.hostname.
+# Watches the kubeflow-gateway Istio Gateway resource for the hostname.
+externaldns:
+  enabled: false
+
+# see https://github.com/kubernetes-sigs/external-dns/tree/master/charts/external-dns
+# for more information
+
+  provider:
+    name: cloudflare   # cloudflare | aws | azure | google | etc.
+
+  # Cloudflare API token. When set (and provider.name=cloudflare), the chart:
+  #   1. Creates a chart-managed `cloudflare-api-token` Secret in the kubeflow namespace.
+  #   2. Auto-injects CF_API_TOKEN into the external-dns pod (via the bitnami chart's
+  #      cloudflare.apiToken support — no manual env block needed).
+  #   3. Reuses the same Secret for the `kubeflow-letsencrypt` ClusterIssuer when
+  #      tls.source: letsEncrypt and tls.letsEncrypt.solver: cloudflare.
+  cloudflare:
+    apiToken: ""   # Set to your Cloudflare API token — chart manages the Secret
+
+  # Limit DNS management to this domain (strongly recommended).
+  domainFilters: []
+
+  # Unique TXT record owner ID — prevents conflicts in shared clusters.
+  txtOwnerId: "kubeflow"
+
+  # istio-gateway: reads hostnames directly from Istio Gateway resources.
+  sources:
+    - istio-gateway
+
+  # Advanced: extra provider env vars appended after auto-wired vars.
+  # Cloudflare: not needed — set cloudflare.apiToken above instead.
+  # AWS Route53 (with pod IAM role — no env vars needed):
+  #   env: []
+  # Other provider example:
+  #   env:
+  #     - name: SOME_PROVIDER_TOKEN
+  #       valueFrom:
+  #         secretKeyRef:
+  #           name: my-provider-secret
+  #           key: token
+  env: []
+
+# --- Kubeflow Namespace ---
+# kubeflow-namespace:
+#   namespace:
+#     labels: {}
+#     annotations: {}
+
+# --- User Namespace ---
+user-namespace:
+  # KFP per-namespace resources — credentials must match pipelines.seaweedfs above.
+  pipelines:
+    seaweedfs:
+      accessKey: *seaweedfsAccessKey
+      secretKey: *seaweedfsSecretKey
+    visualizationServer:
+      registry: ghcr.io
+      repository: kubeflow/kfp-visualization-server
+      tag: "2.16.0"
+    frontend:
+      registry: ghcr.io
+      repository: kubeflow/kfp-frontend
+      tag: "2.16.0"
+
+# Test images for Helm hook test Pods.
+# These are used in charts/kubeflow/templates/tests/ for connectivity checks.
+testImages:
+  # Default bci-busybox image for basic connectivity tests
+  busybox:
+    registry: dp.apps.rancher.io
+    repository: containers/bci-busybox
+    tag: "15.7"
+    pullPolicy: IfNotPresent
+  # MariaDB client for database connectivity tests
+  mariadb:
+    registry: dp.apps.rancher.io
+    repository: containers/mariadb
+    tag: "11.8.6-5.1"
+    pullPolicy: IfNotPresent
+  # kubectl for Kubernetes API tests
+  kubectl:
+    registry: dp.apps.rancher.io
+    repository: containers/kubectl
+    tag: "1.34.5"
+    pullPolicy: IfNotPresent
+

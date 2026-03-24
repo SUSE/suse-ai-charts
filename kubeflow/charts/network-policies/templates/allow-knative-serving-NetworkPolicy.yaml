@@ -1,0 +1,18 @@
+# Allow ingress from knative-serving namespace to KServe controller and webhook only.
+# Scoped to kserve pods to prevent knative components from reaching MariaDB or SeaweedFS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-knative-serving
+  namespace: kubeflow
+spec:
+  podSelector:
+    matchLabels:
+      app: kserve
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: knative-serving

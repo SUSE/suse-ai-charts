@@ -1,0 +1,8 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "admission-webhook.fullname" . }}-selfsigned-issuer
+  labels:
+    {{- include "admission-webhook.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}

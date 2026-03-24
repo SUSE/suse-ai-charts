@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: volumes-web-app
+    kustomize.component: volumes-web-app
+  name: volumes-web-app-deployment
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: volumes-web-app
+      kustomize.component: volumes-web-app
+  template:
+    metadata:
+      labels:
+        app: volumes-web-app
+        kustomize.component: volumes-web-app
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - env:
+        - name: APP_PREFIX
+          value: {{ .Values.env.APP_PREFIX | quote }}
+        - name: USERID_HEADER
+          value: {{ .Values.env.USERID_HEADER | quote }}
+        - name: USERID_PREFIX
+          value: {{ .Values.env.USERID_PREFIX | quote }}
+        - name: APP_SECURE_COOKIES
+          value: {{ .Values.env.APP_SECURE_COOKIES | quote }}
+        - name: VOLUME_VIEWER_IMAGE
+          value: {{ .Values.viewerImage | quote }}
+        image: {{ include "volumes-web-app.image" .Values.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        name: volumes-web-app
+        ports:
+        - containerPort: {{ .Values.service.targetPort }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: false  # Flask app writes session/temp files
+        volumeMounts:
+        - name: viewer-spec
+          mountPath: /etc/config/viewer-spec.yaml
+          subPath: viewer-spec.yaml
+        - mountPath: /tmp
+          name: tmp
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.startupProbe }}
+        startupProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      volumes:
+      - name: viewer-spec
+        configMap:
+          name: volumes-web-app-viewer-spec
+      - emptyDir: {}
+        name: tmp
+      serviceAccountName: volumes-web-app-service-account

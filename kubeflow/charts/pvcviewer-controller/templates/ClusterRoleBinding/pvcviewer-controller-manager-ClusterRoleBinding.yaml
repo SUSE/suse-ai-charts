@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pvcviewer-controller-manager
+  labels:
+    app: pvcviewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pvcviewer-controller-manager
+subjects:
+- kind: ServiceAccount
+  name: pvcviewer-controller-manager
+  namespace: kubeflow

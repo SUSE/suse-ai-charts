@@ -1,0 +1,5 @@
+# Default values for kubeflow-namespace
+
+namespace:
+  labels: {}
+  annotations: {}

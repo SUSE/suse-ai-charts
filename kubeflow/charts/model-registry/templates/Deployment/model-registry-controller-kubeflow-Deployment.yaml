@@ -1,0 +1,78 @@
+{{- if .Values.controller.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-controller
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-controller
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.controller.replicaCount }}
+  selector:
+    matchLabels:
+      app: model-registry
+      app.kubernetes.io/component: model-registry-controller
+      app.kubernetes.io/name: model-registry
+      kustomize.component: model-registry
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+      labels:
+        app: model-registry
+        app.kubernetes.io/component: model-registry-controller
+        app.kubernetes.io/name: model-registry
+        kustomize.component: model-registry
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      {{- include "model-registry.imagePullSecrets" . | nindent 6 }}
+      containers:
+      - command:
+        - /manager
+        args:
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        env:
+        - name: INFERENCE_SERVICE_CONTROLLER
+          value: {{ .Values.controller.env.inferenceServiceController | quote }}
+        - name: REGISTRIES_NAMESPACE
+          value: {{ .Values.controller.env.registriesNamespace | quote }}
+        - name: SKIP_TLS_VERIFY
+          value: {{ .Values.controller.env.skipTlsVerify | quote }}
+        image: {{ include "model-registry.image" (dict "image" .Values.controller.image "global" .Values.global) }}
+        imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: false
+        {{- with .Values.controller.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.controller.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: model-registry-controller
+        ports:
+        - containerPort: 8081
+          name: health
+        {{- with .Values.controller.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      serviceAccountName: model-registry-controller
+{{- end }}

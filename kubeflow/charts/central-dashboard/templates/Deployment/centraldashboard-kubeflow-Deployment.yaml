@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "central-dashboard.fullname" . }}
+  labels:
+    {{- include "central-dashboard.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "central-dashboard.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "central-dashboard.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "central-dashboard.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: centraldashboard
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: centraldashboard
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: {{ include "central-dashboard.image" .Values.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: USERID_HEADER
+          value: {{ .Values.env.USERID_HEADER | quote }}
+        - name: USERID_PREFIX
+          value: {{ .Values.env.USERID_PREFIX | quote }}
+        - name: PROFILES_KFAM_SERVICE_HOST
+          value: {{ .Values.env.PROFILES_KFAM_SERVICE_HOST | quote }}
+        - name: REGISTRATION_FLOW
+          value: {{ .Values.env.REGISTRATION_FLOW | quote }}
+        - name: DASHBOARD_LINKS_CONFIGMAP
+          value: centraldashboard-config
+        - name: LOGOUT_URL
+          value: {{ .Values.env.LOGOUT_URL | quote }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.targetPort }}
+          protocol: TCP
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /home/node
+          name: home-node
+        - mountPath: /tmp
+          name: tmp
+      volumes:
+      - name: home-node
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}

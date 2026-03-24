@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-katib-db-manager"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/inject: "false"
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.busybox.registry "repository" .Values.testImages.busybox.repository "tag" .Values.testImages.busybox.tag "Values" .Values) }}
+    command:
+    - sh
+    - -c
+    - |
+      # TCP connectivity check — katib-db-manager speaks gRPC so we just verify the port is open
+      nc -zw 5 katib-db-manager.kubeflow.svc.cluster.local 6789 \
+        && echo "katib-db-manager port reachable" \
+        || (echo "katib-db-manager TCP check failed" && exit 1)

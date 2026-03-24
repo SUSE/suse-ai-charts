@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "admission-webhook.fullname" . }}
+  labels:
+    {{- include "admission-webhook.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "admission-webhook.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "admission-webhook.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "admission-webhook.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "admission-webhook.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: admission-webhook
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        args:
+        - --tlsCertFile=/etc/webhook/certs/tls.crt
+        - --tlsKeyFile=/etc/webhook/certs/tls.key
+        image: {{ include "admission-webhook.image" .Values.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.containerPort }}
+          name: https-webhook
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /etc/webhook/certs
+          name: webhook-cert
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      volumes:
+      - name: webhook-cert
+        secret:
+          secretName: webhook-certs
+      - name: tmp
+        emptyDir: {}

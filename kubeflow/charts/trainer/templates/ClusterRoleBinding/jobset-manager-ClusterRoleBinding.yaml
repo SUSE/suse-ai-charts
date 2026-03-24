@@ -1,0 +1,16 @@
+{{- if .Values.jobset.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    control-plane: jobset-controller-manager
+  name: jobset-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jobset-manager-role
+subjects:
+- kind: ServiceAccount
+  name: jobset-controller-manager
+  namespace: kubeflow
+{{- end }}

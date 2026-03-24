@@ -1,0 +1,22 @@
+{{- if .Values.controller.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-controller
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-controller-metrics
+  namespace: kubeflow
+spec:
+  ports:
+  - name: health
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-controller
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+{{- end }}

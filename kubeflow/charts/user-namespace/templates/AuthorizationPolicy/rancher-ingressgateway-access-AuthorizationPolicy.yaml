@@ -1,0 +1,21 @@
+{{- if .Values.istio.ingressGateway.principal }}
+# Supplementary AuthorizationPolicy for Rancher Istio gateway access.
+# The profiles controller hardcodes the upstream Istio gateway service account
+# (istio-ingressgateway-service-account) in ns-owner-access-istio. Rancher Istio
+# uses SA 'istio' instead, so we add this policy to allow gateway traffic.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: rancher-ingressgateway-access
+  namespace: kubeflow-user-example-com
+spec:
+  rules:
+  - from:
+    - source:
+        principals:
+        - {{ .Values.istio.ingressGateway.principal | quote }}
+    when:
+    - key: request.headers[{{ .Values.userIdHeader }}]
+      values:
+      - {{ .Values.profile.owner.name | quote }}
+{{- end }}

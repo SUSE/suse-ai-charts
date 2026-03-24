@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    katib.kubeflow.org/component: ui
+  name: katib-ui
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  selector:
+    matchLabels:
+      katib.kubeflow.org/component: ui
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+      labels:
+        katib.kubeflow.org/component: ui
+    spec:
+      containers:
+      - args:
+        - --port={{ .Values.ui.port }}
+        command:
+        - ./katib-ui
+        env:
+        - name: KATIB_CORE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: APP_DISABLE_AUTH
+          value: {{ .Values.ui.env.APP_DISABLE_AUTH | quote }}
+        image: {{ include "katib.image" .Values.ui.image }}
+        imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+        name: katib-ui
+        ports:
+        - containerPort: {{ .Values.ui.port }}
+          name: ui
+        {{- with .Values.ui.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      serviceAccountName: katib-ui

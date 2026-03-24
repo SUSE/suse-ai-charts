@@ -1,0 +1,43 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+image:
+  registry: ghcr.io
+  repository: kubeflow/kubeflow/notebook-controller
+  tag: v1.10.0
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+cullingPolicy:
+  enableCulling: false
+  cullIdleTime: 30
+  idlenessCheckPeriod: 5
+
+configMapData:
+  USE_ISTIO: "true"
+  ISTIO_GATEWAY: kubeflow/kubeflow-gateway
+  CLUSTER_DOMAIN: cluster.local
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8081
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8081
+  initialDelaySeconds: 5
+  periodSeconds: 10

@@ -1,0 +1,15 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Profile
+metadata:
+  name: kubeflow-user-example-com
+spec:
+  owner:
+    kind: {{ .Values.profile.owner.kind }}
+    name: {{ .Values.profile.owner.name }}
+  {{- if .Values.awsIamForServiceAccount.awsIamRole }}
+  plugins:
+  - kind: AwsIamForServiceAccount
+    spec:
+      awsIamRole: '{{ .Values.awsIamForServiceAccount.awsIamRole }}'
+      annotateOnly: true
+  {{- end }}

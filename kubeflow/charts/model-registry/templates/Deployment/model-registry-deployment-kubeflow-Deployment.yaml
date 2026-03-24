@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-server
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-deployment
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  selector:
+    matchLabels:
+      app: model-registry
+      app.kubernetes.io/component: model-registry-server
+      app.kubernetes.io/name: model-registry
+      kustomize.component: model-registry
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+      labels:
+        app: model-registry
+        app.kubernetes.io/component: model-registry-server
+        app.kubernetes.io/name: model-registry
+        kustomize.component: model-registry
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "model-registry.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+      - name: init-db
+        image: {{ include "model-registry.image" (dict "image" .Values.dbInit.image "global" .Values.global) }}
+        imagePullPolicy: {{ .Values.dbInit.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+        command:
+        - sh
+        - -c
+        - |
+          until mariadb -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$DBCONFIG_USER" --ssl=false \
+              -e "SELECT 1" >/dev/null 2>&1; do
+            echo "Waiting for MariaDB..."
+            sleep 5
+          done
+          mariadb -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$DBCONFIG_USER" --ssl=false \
+            -e "CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\`;"
+          echo "Database '${MYSQL_DATABASE}' ensured."
+        env:
+        - name: DBCONFIG_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.db.secretName }}
+              key: username
+        - name: MYSQL_PWD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.db.secretName }}
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.db.configMapName }}
+              key: embedmdDb
+        - name: MYSQL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.db.configMapName }}
+              key: dbHost
+        - name: MYSQL_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.db.configMapName }}
+              key: dbPort
+      containers:
+      - command:
+        - /model-registry
+        - proxy
+        args:
+        - --hostname=0.0.0.0
+        - --port=8080
+        - --datastore-type=embedmd
+        - --embedmd-database-dsn=$(DBCONFIG_USER):$(DBCONFIG_PASSWORD)@tcp($(MYSQL_HOST):$(MYSQL_PORT))/$(MYSQL_DATABASE)?charset=utf8mb4
+        env:
+        - name: DBCONFIG_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.db.secretName }}
+              key: username
+        - name: DBCONFIG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.db.secretName }}
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.db.configMapName }}
+              key: embedmdDb
+        - name: MYSQL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.db.configMapName }}
+              key: dbHost
+        - name: MYSQL_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.db.configMapName }}
+              key: dbPort
+        image: {{ include "model-registry.image" (dict "image" .Values.server.image "global" .Values.global) }}
+        imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: false  # Go binary writes temp files during DB migrations
+        {{- with .Values.server.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.server.startupProbe }}
+        startupProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.server.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: model-registry-server
+        ports:
+        - containerPort: 8080
+          name: http
+        {{- with .Values.server.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      serviceAccountName: model-registry-server

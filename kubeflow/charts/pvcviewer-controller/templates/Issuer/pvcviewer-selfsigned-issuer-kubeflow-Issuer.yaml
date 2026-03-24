@@ -1,0 +1,9 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: pvcviewer-selfsigned-issuer
+  namespace: kubeflow
+  labels:
+    app: pvcviewer
+spec:
+  selfSigned: {}

@@ -1,0 +1,16 @@
+apiVersion: v1
+data:
+  DISABLE_ISTIO_SIDECAR: 'false'
+  FRONTEND_IMAGE: '{{ .Values.frontend.image.registry }}/{{ .Values.frontend.image.repository }}'
+  FRONTEND_TAG: '{{ .Values.frontend.image.tag }}'
+  VISUALIZATION_SERVER_IMAGE: '{{ .Values.visualizationServer.image.registry }}/{{ .Values.visualizationServer.image.repository }}'
+  VISUALIZATION_SERVER_TAG: '{{ .Values.visualizationServer.image.tag }}'
+kind: ConfigMap
+metadata:
+  labels:
+    app: kubeflow-pipelines-profile-controller
+    app.kubernetes.io/component: ml-pipeline
+    app.kubernetes.io/name: kubeflow-pipelines
+    application-crd-id: kubeflow-pipelines
+  name: kubeflow-pipelines-profile-controller-env-5252m69c4c
+  namespace: kubeflow

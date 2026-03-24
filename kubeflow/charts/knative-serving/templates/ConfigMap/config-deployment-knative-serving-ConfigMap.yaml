@@ -1,0 +1,14 @@
+apiVersion: v1
+data:
+  progressDeadline: 600s
+  queue-sidecar-image: {{ include "knative-serving.image" (dict "image" .Values.queueSidecarImage "context" .) }}
+kind: ConfigMap
+metadata:
+  annotations:
+    knative.dev/example-checksum: dd7ee769
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/name: knative-serving
+    app.kubernetes.io/version: 1.8.0
+  name: config-deployment
+  namespace: knative-serving

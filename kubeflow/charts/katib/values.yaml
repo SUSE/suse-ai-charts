@@ -1,0 +1,153 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+controller:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/katib/katib-controller
+    tag: v0.19.0
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ui:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/katib/katib-ui
+    tag: v0.19.0
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  port: 8080
+  env:
+    APP_DISABLE_AUTH: "false"
+
+dbManager:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/katib/katib-db-manager
+    tag: v0.19.0
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  port: 6789
+
+mariadb:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/mariadb
+    tag: "11.8.6-5.1"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  port: 3306
+  persistence:
+    storageClass: ""
+    storageSize: 10Gi
+    accessMode: ReadWriteOnce
+  # base64 encoded "test"
+  rootPassword: dGVzdA==
+
+# Katib config - KatibConfig v1beta1 format required by Katib v0.17+
+# Must be under the key "katib-config.yaml" in the katib-config ConfigMap.
+# The old multi-key format (suggestion/early-stopping/metrics-collector-sidecar)
+# was removed in v0.17; the webhook rejects Experiments if the key is missing.
+katibConfig:
+  content: |-
+    apiVersion: config.kubeflow.org/v1beta1
+    kind: KatibConfig
+    runtime:
+      suggestions:
+        - algorithmName: random
+          image: "ghcr.io/kubeflow/katib/suggestion-hyperopt:v0.19.0"
+        - algorithmName: tpe
+          image: "ghcr.io/kubeflow/katib/suggestion-hyperopt:v0.19.0"
+        - algorithmName: grid
+          image: "ghcr.io/kubeflow/katib/suggestion-optuna:v0.19.0"
+        - algorithmName: hyperband
+          image: "ghcr.io/kubeflow/katib/suggestion-hyperband:v0.19.0"
+        - algorithmName: bayesianoptimization
+          image: "ghcr.io/kubeflow/katib/suggestion-skopt:v0.19.0"
+        - algorithmName: cmaes
+          image: "ghcr.io/kubeflow/katib/suggestion-goptuna:v0.19.0"
+        - algorithmName: sobol
+          image: "ghcr.io/kubeflow/katib/suggestion-goptuna:v0.19.0"
+        - algorithmName: multivariate-tpe
+          image: "ghcr.io/kubeflow/katib/suggestion-optuna:v0.19.0"
+        - algorithmName: enas
+          image: "ghcr.io/kubeflow/katib/suggestion-enas:v0.19.0"
+          resources:
+            limits:
+              memory: "200Mi"
+        - algorithmName: darts
+          image: "ghcr.io/kubeflow/katib/suggestion-darts:v0.19.0"
+        - algorithmName: pbt
+          image: "ghcr.io/kubeflow/katib/suggestion-pbt:v0.19.0"
+          persistentVolumeClaimSpec:
+            accessModes:
+              - ReadWriteMany
+            resources:
+              requests:
+                storage: "5Gi"
+      metricsCollectors:
+        - kind: StdOut
+          image: "ghcr.io/kubeflow/katib/file-metrics-collector:v0.19.0"
+        - kind: File
+          image: "ghcr.io/kubeflow/katib/file-metrics-collector:v0.19.0"
+        - kind: TensorFlowEvent
+          image: "ghcr.io/kubeflow/katib/tfevent-metrics-collector:v0.19.0"
+          resources:
+            limits:
+              memory: "1Gi"
+      earlyStoppings:
+        - algorithmName: medianstop
+          image: "ghcr.io/kubeflow/katib/earlystopping-medianstop:v0.19.0"
+
+# Trial templates images for the trial-templates ConfigMap
+trialImages:
+  mxnetMNIST:
+    registry: docker.io
+    repository: kubeflowkatib/mxnet-mnist
+    tag: v0.15.0
+    pullPolicy: IfNotPresent
+  enasCNNCIFAR10CPU:
+    registry: docker.io
+    repository: kubeflowkatib/enas-cnn-cifar10-cpu
+    tag: v0.15.0
+    pullPolicy: IfNotPresent
+  pyTorchMNISTCPU:
+    registry: docker.io
+    repository: kubeflowkatib/pytorch-mnist-cpu
+    tag: v0.15.0
+    pullPolicy: IfNotPresent

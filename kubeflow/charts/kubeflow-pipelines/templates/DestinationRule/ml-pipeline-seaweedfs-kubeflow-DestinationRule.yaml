@@ -1,0 +1,14 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  labels:
+    application-crd-id: kubeflow-pipelines
+  name: ml-pipeline-seaweedfs
+  namespace: kubeflow
+spec:
+  host: seaweedfs.kubeflow.svc.cluster.local
+  trafficPolicy:
+    tls:
+      # SeaweedFS runs outside the Istio mesh (sidecar injection disabled).
+      # DISABLE tells mesh clients (ml-pipeline, argo) to connect via plain HTTP.
+      mode: DISABLE

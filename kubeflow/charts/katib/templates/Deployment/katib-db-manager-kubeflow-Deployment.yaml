@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    katib.kubeflow.org/component: db-manager
+  name: katib-db-manager
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.dbManager.replicaCount }}
+  selector:
+    matchLabels:
+      katib.kubeflow.org/component: db-manager
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+      labels:
+        katib.kubeflow.org/component: db-manager
+    spec:
+      containers:
+      - command:
+        - ./katib-db-manager
+        env:
+        - name: DB_NAME
+          value: mysql
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_ROOT_PASSWORD
+              name: katib-mysql-secrets
+        image: {{ include "katib.image" .Values.dbManager.image }}
+        imagePullPolicy: {{ .Values.dbManager.image.pullPolicy }}
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.dbManager.port }}
+          failureThreshold: 5
+          initialDelaySeconds: 10
+          periodSeconds: 60
+        name: katib-db-manager
+        ports:
+        - containerPort: {{ .Values.dbManager.port }}
+          name: api
+        {{- with .Values.dbManager.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}

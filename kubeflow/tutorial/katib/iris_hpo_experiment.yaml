@@ -1,0 +1,134 @@
+# Tutorial — Part 5: Katib Hyperparameter Tuning Experiment
+# ===========================================================
+# Searches for the best (C, max_iter) pair for a Logistic Regression
+# classifier on the Iris dataset using the random search algorithm.
+#
+# Each trial runs a short Python script inside a python:3.11-slim container.
+# Katib injects the sampled hyperparameter values via environment variables,
+# and the StdOut metrics collector parses the "accuracy=X.XXXX" output line.
+#
+# Apply
+# -----
+#   kubectl apply -f iris_hpo_experiment.yaml
+#
+# Monitor via UI
+# --------------
+#   Kubeflow UI → Experiments (AutoML) → iris-lr-search
+#   Click any trial row to see its hyperparameters and metric value.
+#
+# Monitor via CLI
+# ---------------
+#   kubectl get experiment iris-lr-search -n kubeflow-user-example-com
+#   kubectl get trials -n kubeflow-user-example-com \
+#       -l katib.kubeflow.org/experiment=iris-lr-search
+#
+# Clean up
+# --------
+#   kubectl delete experiment iris-lr-search -n kubeflow-user-example-com
+#
+# Note: Each trial pip-installs scikit-learn (~30 s first time, cached after).
+#       With parallelTrialCount=2 and maxTrialCount=8 the full experiment
+#       typically finishes in 4–8 minutes.
+
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: iris-lr-search
+  namespace: kubeflow-user-example-com
+spec:
+  # ── Objective ──────────────────────────────────────────────────────────────
+  objective:
+    type: maximize
+    goal: 0.97                        # stop early if any trial reaches 97 %
+    objectiveMetricName: accuracy
+
+  # ── Search algorithm ────────────────────────────────────────────────────────
+  algorithm:
+    algorithmName: random             # random search; also try: grid, bayesianoptimization
+
+  # ── Trial budget ────────────────────────────────────────────────────────────
+  parallelTrialCount: 2              # run 2 trials simultaneously
+  maxTrialCount: 8                   # total trials to evaluate
+  maxFailedTrialCount: 3             # abort if 3 trials fail
+
+  # ── Hyperparameter search space ─────────────────────────────────────────────
+  parameters:
+  - name: C
+    parameterType: double
+    feasibleSpace:
+      min: "0.01"
+      max: "10.0"
+
+  - name: max_iter
+    parameterType: int
+    feasibleSpace:
+      min: "50"
+      max: "300"
+
+  # ── Metrics collector: parse "accuracy=0.9600" from stdout ──────────────────
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+
+  # ── Trial template ──────────────────────────────────────────────────────────
+  trialTemplate:
+    primaryContainerName: training-container
+
+    # Map experiment parameters → substitution tokens used in the pod spec
+    trialParameters:
+    - name: C
+      description: Inverse regularization strength (higher = less regularization)
+      reference: C
+    - name: maxIter
+      description: Maximum solver iterations
+      reference: max_iter
+
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+            - name: training-container
+              image: python:3.11-slim
+              imagePullPolicy: IfNotPresent
+
+              # Install scikit-learn, write the training script to a temp file,
+              # then run it.  The script MUST be run as the final command so
+              # that Katib's StdOut collector redirect (appended by the injector
+              # webhook as "1>/var/log/katib/metrics.log 2>&1") lands on
+              # "python3 /tmp/train.py" — not on a null command after a heredoc
+              # terminator, which would silently discard all printed metrics.
+              command:
+              - sh
+              - -c
+              - |-
+                pip install -q scikit-learn
+                cat > /tmp/train.py << 'PYEOF'
+                import os
+                from sklearn.datasets import load_iris
+                from sklearn.linear_model import LogisticRegression
+                from sklearn.model_selection import cross_val_score
+
+                C        = float(os.environ["C"])
+                max_iter = int(os.environ["MAX_ITER"])
+
+                iris   = load_iris()
+                scores = cross_val_score(
+                    LogisticRegression(C=C, max_iter=max_iter, random_state=42),
+                    iris.data, iris.target,
+                    cv=5,
+                )
+                # Katib StdOut collector looks for "metric_name=value" lines
+                print(f"accuracy={scores.mean():.4f}")
+                PYEOF
+                python3 /tmp/train.py
+
+              env:
+              - name: C
+                value: "${trialParameters.C}"
+              - name: MAX_ITER
+                value: "${trialParameters.maxIter}"
+
+            restartPolicy: Never

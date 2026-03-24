@@ -1,0 +1,17 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "central-dashboard.fullname" . }}
+  labels:
+    {{- include "central-dashboard.labels" . | nindent 4 }}
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - istio-system
+        - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "central-dashboard.selectorLabels" . | nindent 6 }}

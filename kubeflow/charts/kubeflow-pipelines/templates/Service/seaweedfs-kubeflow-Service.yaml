@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+  namespace: kubeflow
+  labels:
+    app: seaweedfs
+    app.kubernetes.io/component: ml-pipeline
+    app.kubernetes.io/name: kubeflow-pipelines
+    application-crd-id: kubeflow-pipelines
+spec:
+  ports:
+  - name: http-s3-compat
+    port: 9000
+    targetPort: 8333
+    protocol: TCP
+  - name: http-s3
+    port: 8333
+    targetPort: 8333
+    protocol: TCP
+  - name: http-master
+    port: 9333
+    targetPort: 9333
+    protocol: TCP
+  selector:
+    app: seaweedfs
