@@ -1,0 +1,46 @@
+# Default values for kubeflow-istio-resources
+
+# Istio Gateway selector
+# For Rancher Istio, use: istio: istio
+# For standard Istio, use: istio: ingressgateway
+istioGateway:
+  selector:
+    istio: istio
+
+# Gateway server configuration
+gateway:
+  annotations: {}
+  hosts:
+    - '*'
+  port:
+    name: http
+    number: 80
+    protocol: HTTP
+
+# Hostname for the Kubeflow gateway.
+# Leave empty for wildcard / IP+NodePort access.
+# When set, the Istio Gateway is restricted to this hostname only.
+# Requires a DNS record or /etc/hosts entry pointing to the cluster IP.
+# Fully independent of TLS — you can use a named hostname over plain HTTP.
+hostname: ""
+
+# Indicate whether external-dns is enabled and that a DNS records shall be
+# created for the given hostname. If hostname is not specified or have an
+# empty value. Enabling external-dns has no effect.
+externalDNSEnabled: false
+
+tls:
+  # TLS mode — choose one:
+  #   ""            — HTTP only (default)
+  #   "selfSigned"  — cert-manager self-signed ClusterIssuer
+  #   "letsEncrypt" — cert-manager Let's Encrypt (needs public DNS + internet)
+  #   "secret"      — BYO: reference a pre-existing Secret in istio-system
+  source: ""
+  # ClusterIssuer name (required when source: selfSigned or letsEncrypt)
+  issuer: ""
+  # Pre-existing Secret name in istio-system (required when source: secret)
+  existingSecret: ""
+  # Secret name cert-manager will write to (selfSigned / letsEncrypt)
+  credentialName: kubeflow-gateway-tls
+  # Redirect HTTP → HTTPS when TLS is active
+  httpsRedirect: true

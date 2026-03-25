@@ -1,0 +1,459 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Kubeflow Chart Values",
+  "type": "object",
+  "$defs": {
+    "imageBlock": {
+      "type": "object",
+      "properties": {
+        "registry":   { "type": "string" },
+        "repository": { "type": "string" },
+        "tag":        { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "Never", "IfNotPresent"] }
+      }
+    },
+    "resourceBlock": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu":    { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu":    { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    },
+    "probeBlock": {
+      "type": "object",
+      "properties": {
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "port": { "type": ["string", "integer"] }
+          }
+        },
+        "initialDelaySeconds": { "type": "integer" },
+        "periodSeconds":       { "type": "integer" },
+        "failureThreshold":    { "type": "integer" },
+        "successThreshold":    { "type": "integer" },
+        "timeoutSeconds":      { "type": "integer" }
+      }
+    }
+  },
+  "properties": {
+    "global": {
+      "type": "object",
+      "description": "Global settings applied to all sub-charts",
+      "properties": {
+        "storageClass": {
+          "type": "string",
+          "description": "Default StorageClass for all PVCs. Empty = cluster default."
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "enum": ["Always", "Never", "IfNotPresent"],
+          "description": "Image pull policy applied to all components"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "description": "List of image pull secrets applied to every Deployment/StatefulSet",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" }
+            },
+            "required": ["name"]
+          }
+        },
+        "imageRegistry": {
+          "type": "string",
+          "description": "Optional private registry prefix. When set, prepended to all image refs. E.g. 'my-registry.corp.com/kubeflow'"
+        },
+        "oauth2Proxy": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "gateway": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Istio gateway in namespace/name format" }
+          }
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "description": "Chart-managed credentials configuration",
+      "properties": {
+        "initialUser": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Default Dex login email (DEMO DEFAULT — change in production)"
+            },
+            "passwordHash": {
+              "type": "string",
+              "description": "bcrypt hash of the default user password"
+            }
+          }
+        }
+      }
+    },
+    "networkPolicies": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable NetworkPolicies (deny-by-default + explicit allows). Requires a CNI that enforces NetworkPolicy."
+        },
+        "kubeDnsCidr": {
+          "type": "string",
+          "description": "CIDR for kube-dns DNS egress allow rule"
+        }
+      }
+    },
+    "certManager": {
+      "type": "object",
+      "properties": {
+        "install": { "type": "boolean", "description": "Install cert-manager via this chart (not recommended; install separately)" }
+      }
+    },
+    "istio": {
+      "type": "object",
+      "properties": {
+        "install": { "type": "boolean" },
+        "gateway": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "dex": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "config":  { "type": "object", "description": "Full Dex configuration. See https://dexidp.io/docs/configuration/" }
+      }
+    },
+    "oauth2Proxy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "knativeServing": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Required for KServe" }
+      }
+    },
+    "knativeEventing": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "centralDashboard": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "pipelines": {
+      "type": "object",
+      "properties": {
+        "enabled":    { "type": "boolean" },
+        "mariadb":    { "type": "object" },
+        "seaweedfs":  { "type": "object" }
+      }
+    },
+    "notebooks": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "controller": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "webApp": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        }
+      }
+    },
+    "katib": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mariadb": {
+          "type": "object",
+          "properties": {
+            "persistence": {
+              "type": "object",
+              "properties": {
+                "storageSize": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "kserve": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "modelRegistry": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "controller": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": { "$ref": "#/$defs/imageBlock" }
+          }
+        },
+        "catalog": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "replicaCount": { "type": "integer" },
+            "resources": { "$ref": "#/$defs/resourceBlock" },
+            "image": { "$ref": "#/$defs/imageBlock" },
+            "sources": { "type": "string", "description": "YAML string of catalog source definitions" }
+          }
+        },
+        "kserve": {
+          "type": "object",
+          "properties": {
+            "storageContainer": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "image": { "$ref": "#/$defs/imageBlock" }
+              }
+            }
+          }
+        },
+        "server": {
+          "type": "object",
+          "properties": {
+            "replicaCount": { "type": "integer" },
+            "resources": { "$ref": "#/$defs/resourceBlock" },
+            "image": { "$ref": "#/$defs/imageBlock" }
+          }
+        },
+        "ui": {
+          "type": "object",
+          "properties": {
+            "replicaCount": { "type": "integer" },
+            "resources": { "$ref": "#/$defs/resourceBlock" },
+            "image": { "$ref": "#/$defs/imageBlock" }
+          }
+        },
+        "db": {
+          "type": "object",
+          "description": "Database connection settings (uses KFP's mysql-secret by default)",
+          "properties": {
+            "host": { "type": "string" },
+            "port": { "type": "integer" },
+            "name": { "type": "string" }
+          }
+        },
+        "dbInit": {
+          "type": "object",
+          "properties": {
+            "image": { "$ref": "#/$defs/imageBlock" }
+          }
+        }
+      }
+    },
+    "trainingOperator": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "trainer": {
+      "type": "object",
+      "description": "Kubeflow Trainer V2 — TrainJob CRD + controller",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "jobset": {
+          "type": "object",
+          "properties": {
+            "installCRDs": { "type": "boolean", "description": "Install JobSet CRDs. Set false if JobSet is already installed." },
+            "controller": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean", "description": "Deploy the jobset-controller-manager alongside the trainer." }
+              }
+            },
+            "image": {
+              "type": "object",
+              "properties": {
+                "registry": { "type": "string" },
+                "repository": { "type": "string" },
+                "tag": { "type": "string" },
+                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+              }
+            }
+          }
+        },
+        "runtimes": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "torchtune": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "volumesWebApp": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "tensorboard": {
+      "type": "object",
+      "properties": {
+        "controller": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "webApp": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        }
+      }
+    },
+    "kubeflow-istio-resources": {
+      "type": "object",
+      "description": "Istio Gateway configuration for Kubeflow external access",
+      "properties": {
+        "hostname": {
+          "type": "string",
+          "description": "FQDN for the gateway. Leave empty for wildcard/IP+NodePort access. Independent of TLS."
+        },
+        "tls": {
+          "type": "object",
+          "description": "TLS configuration for the Kubeflow gateway",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["", "selfSigned", "letsEncrypt", "secret"],
+              "description": "TLS mode: empty=HTTP only, selfSigned=cert-manager self-signed, letsEncrypt=ACME, secret=BYO cert"
+            },
+            "issuer": {
+              "type": "string",
+              "description": "cert-manager ClusterIssuer name (required for selfSigned or letsEncrypt)"
+            },
+            "existingSecret": {
+              "type": "string",
+              "description": "Pre-existing Secret name in istio-system (required for source: secret)"
+            },
+            "credentialName": {
+              "type": "string",
+              "description": "Secret name cert-manager writes to (selfSigned / letsEncrypt)"
+            },
+            "httpsRedirect": {
+              "type": "boolean",
+              "description": "Redirect HTTP to HTTPS when TLS is active"
+            },
+            "letsEncrypt": {
+              "type": "object",
+              "description": "Let's Encrypt ACME config (used when source: letsEncrypt). Chart creates kubeflow-letsencrypt ClusterIssuer automatically.",
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "description": "ACME account email (required)"
+                },
+                "server": {
+                  "type": "string",
+                  "enum": ["prod", "staging"],
+                  "description": "ACME server: prod (production) or staging"
+                },
+                "solver": {
+                  "type": "string",
+                  "enum": ["cloudflare", "http01"],
+                  "description": "Challenge solver: cloudflare (dns01, requires externalDns.cloudflare.apiToken) or http01"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "externalDns": {
+      "type": "object",
+      "description": "Optional external-dns deployment for automatic DNS record management",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Deploy external-dns to manage DNS records for kubeflow-istio-resources.hostname"
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "DNS provider name (cloudflare, aws, azure, google, etc.)" }
+          }
+        },
+        "domainFilters": {
+          "type": "array",
+          "description": "Limit DNS management to these domains (recommended)",
+          "items": { "type": "string" }
+        },
+        "txtOwnerId": {
+          "type": "string",
+          "description": "Unique TXT record owner ID — prevents conflicts in shared clusters"
+        },
+        "sources": {
+          "type": "array",
+          "description": "external-dns source types to watch",
+          "items": { "type": "string" }
+        },
+        "cloudflare": {
+          "type": "object",
+          "description": "Cloudflare-specific configuration",
+          "properties": {
+            "apiToken": {
+              "type": "string",
+              "description": "Cloudflare API token. Chart creates a lookup-idempotent cloudflare-api-token Secret and auto-wires CF_API_TOKEN into external-dns."
+            }
+          }
+        },
+        "env": {
+          "type": "array",
+          "description": "Advanced: extra provider env vars appended after auto-wired vars"
+        }
+      }
+    }
+  }
+}

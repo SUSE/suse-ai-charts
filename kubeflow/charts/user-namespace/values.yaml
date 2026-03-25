@@ -1,0 +1,43 @@
+# Default values for user-namespace
+
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+profile:
+  owner:
+    kind: User
+    name: user@example.com
+
+# The Istio ingress gateway service account principal used in AuthorizationPolicies.
+# Rancher Istio uses 'istio' (not the upstream 'istio-ingressgateway-service-account').
+# The profiles controller hardcodes the upstream name, so we add a supplementary policy.
+istio:
+  ingressGateway:
+    principal: "cluster.local/ns/istio-system/sa/istio"
+
+# Header name that carries the authenticated user identity (must match profiles-config)
+userIdHeader: "kubeflow-userid"
+
+awsIamForServiceAccount:
+  awsIamRole:
+
+# KFP per-namespace resources.
+# Replaces metacontroller-based provisioning (metacontroller v4.x cannot use
+# core 'namespaces' as CompositeController parent — known v4 regression).
+pipelines:
+  seaweedfs:
+    # DEMO DEFAULTS — CHANGE IN PRODUCTION.
+    # These values must match the credentials in the 'mlpipeline-minio-artifact' Secret.
+    accessKey: kubeflow      # DEMO DEFAULT
+    secretKey: kubeflow123   # DEMO DEFAULT
+  visualizationServer:
+    registry: ghcr.io
+    repository: kubeflow/kfp-visualization-server
+    tag: "2.16.0"
+  frontend:
+    registry: ghcr.io
+    repository: kubeflow/kfp-frontend
+    tag: "2.16.0"

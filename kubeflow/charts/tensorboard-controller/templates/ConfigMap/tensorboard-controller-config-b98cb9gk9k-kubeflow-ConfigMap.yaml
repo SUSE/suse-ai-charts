@@ -1,0 +1,10 @@
+apiVersion: v1
+data:
+  ISTIO_GATEWAY: {{ .Values.configMapData.ISTIO_GATEWAY | quote }}
+  ISTIO_HOST: {{ .Values.configMapData.ISTIO_HOST | quote }}
+  RWO_PVC_SCHEDULING: {{ .Values.configMapData.RWO_PVC_SCHEDULING | quote }}
+  TENSORBOARD_IMAGE: {{ .Values.configMapData.TENSORBOARD_IMAGE | quote }}
+kind: ConfigMap
+metadata:
+  name: tensorboard-controller-config-b98cb9gk9k
+  namespace: kubeflow

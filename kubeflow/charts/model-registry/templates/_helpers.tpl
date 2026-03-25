@@ -1,0 +1,95 @@
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "model-registry.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "model-registry.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "model-registry.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common labels
+*/}}
+{{- define "model-registry.labels" -}}
+helm.sh/chart: {{ include "model-registry.chart" . }}
+{{ include "model-registry.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Selector labels
+*/}}
+{{- define "model-registry.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "model-registry.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Render a container image string from image values.
+Call as: include "model-registry.image" (dict "image" .Values.<component>.image "global" .Values.global)
+If digest is set, renders as: [registry/]repository:tag@digest
+global.imageRegistry overrides per-image registry when no per-image registry is set.
+*/}}
+{{- define "model-registry.image" -}}
+{{- $img := .image -}}
+{{- $registry := $img.registry -}}
+{{- if not $registry -}}
+{{- $globalRegistry := "" -}}
+{{- if and .global (hasKey .global "imageRegistry") -}}
+{{- $globalRegistry = .global.imageRegistry -}}
+{{- end -}}
+{{- $registry = $globalRegistry -}}
+{{- end -}}
+{{- $ref := "" -}}
+{{- if $registry -}}{{- $ref = printf "%s/%s:%s" $registry $img.repository $img.tag -}}{{- else -}}{{- $ref = printf "%s:%s" $img.repository $img.tag -}}{{- end -}}
+{{- if $img.digest -}}{{- printf "%s@%s" $ref $img.digest -}}{{- else -}}{{- $ref -}}{{- end -}}
+{{- end -}}
+
+{{/*
+Return the proper Docker Image Registry Secret Names
+*/}}
+{{- define "model-registry.imagePullSecrets" -}}
+{{- if and (hasKey .Values "global") .Values.global }}
+{{- if .Values.global.imagePullSecrets }}
+imagePullSecrets:
+{{- range .Values.global.imagePullSecrets }}
+  {{- $imagePullSecrets := list }}
+  {{- if kindIs "string" . }}
+    {{- $imagePullSecrets = append $imagePullSecrets (dict "name" .) }}
+  {{- else }}
+    {{- $imagePullSecrets = append $imagePullSecrets . }}
+  {{- end }}
+  {{- toYaml $imagePullSecrets | nindent 2 }}
+{{- end }}
+{{- else if .Values.imagePullSecrets }}
+imagePullSecrets:
+    {{ toYaml .Values.imagePullSecrets }}
+{{- end -}}
+{{- end -}}
+{{- end -}}

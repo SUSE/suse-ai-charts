@@ -1,0 +1,18 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "admission-webhook.fullname" . }}-cert
+  labels:
+    {{- include "admission-webhook.labels" . | nindent 4 }}
+spec:
+  commonName: {{ include "admission-webhook.fullname" . }}.{{ .Release.Namespace }}.svc
+  dnsNames:
+  - {{ include "admission-webhook.fullname" . }}.{{ .Release.Namespace }}.svc
+  - {{ include "admission-webhook.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  isCA: true
+  privateKey:
+    rotationPolicy: Never
+  issuerRef:
+    kind: Issuer
+    name: {{ include "admission-webhook.fullname" . }}-selfsigned-issuer
+  secretName: webhook-certs

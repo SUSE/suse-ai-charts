@@ -1,0 +1,203 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: training-operator
+  name: training-operator
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - list
+  - update
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - events
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - pods/exec
+  verbs:
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - jaxjobs
+  - jaxjobs/finalizers
+  - jaxjobs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - mpijobs
+  - mpijobs/finalizers
+  - mpijobs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - paddlejobs
+  - paddlejobs/finalizers
+  - paddlejobs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - pytorchjobs
+  - pytorchjobs/finalizers
+  - pytorchjobs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - tfjobs
+  - tfjobs/finalizers
+  - tfjobs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - xgboostjobs
+  - xgboostjobs/finalizers
+  - xgboostjobs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  - roles
+  verbs:
+  - create
+  - list
+  - update
+  - watch
+- apiGroups:
+  - scheduling.sigs.k8s.io
+  - scheduling.volcano.sh
+  - scheduling.x-k8s.io
+  resources:
+  - podgroups
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

@@ -1,0 +1,15 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-ui
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-ui
+  namespace: kubeflow
+spec:
+  host: model-registry-ui-service.kubeflow.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL

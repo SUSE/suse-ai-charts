@@ -1,0 +1,70 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  labels:
+    control-plane: kubeflow-trainer-controller-manager
+  name: validator.trainer.kubeflow.org
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kubeflow-trainer-controller-manager
+      namespace: kubeflow
+      path: /validate-trainer-kubeflow-org-v1alpha1-trainjob
+      port: 443
+  failurePolicy: Ignore
+  name: validator.trainjob.trainer.kubeflow.org
+  rules:
+  - apiGroups:
+    - trainer.kubeflow.org
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - trainjobs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kubeflow-trainer-controller-manager
+      namespace: kubeflow
+      path: /validate-trainer-kubeflow-org-v1alpha1-trainingruntime
+      port: 443
+  failurePolicy: Ignore
+  name: validator.trainingruntime.trainer.kubeflow.org
+  rules:
+  - apiGroups:
+    - trainer.kubeflow.org
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - trainingruntimes
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kubeflow-trainer-controller-manager
+      namespace: kubeflow
+      path: /validate-trainer-kubeflow-org-v1alpha1-clustertrainingruntime
+      port: 443
+  failurePolicy: Ignore
+  name: validator.clustertrainingruntime.trainer.kubeflow.org
+  rules:
+  - apiGroups:
+    - trainer.kubeflow.org
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clustertrainingruntimes
+  sideEffects: None

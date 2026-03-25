@@ -1,0 +1,67 @@
+# ServiceMonitor for ml-pipeline (port: http on 8888, path /metrics)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubeflow-ml-pipeline
+  namespace: kubeflow
+  labels:
+    {{- range $k, $v := $.Values.serviceMonitorLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: ml-pipeline
+  namespaceSelector:
+    matchNames:
+    - kubeflow
+  endpoints:
+  - port: http
+    interval: {{ .Values.scrapeInterval }}
+    path: /metrics
+# ServiceMonitor for workflow-controller (dedicated metrics service, port: metrics on 9090)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubeflow-workflow-controller
+  namespace: kubeflow
+  labels:
+    {{- range $k, $v := $.Values.serviceMonitorLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: workflow-controller
+  namespaceSelector:
+    matchNames:
+    - kubeflow
+  endpoints:
+  - port: metrics
+    interval: {{ .Values.scrapeInterval }}
+    path: /metrics
+{{- range $component := list "katib-controller" "katib-db-manager" "training-operator" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubeflow-{{ $component }}
+  namespace: kubeflow
+  labels:
+    {{- range $k, $v := $.Values.serviceMonitorLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $component }}
+  namespaceSelector:
+    matchNames:
+    - kubeflow
+  endpoints:
+  - port: metrics
+    interval: {{ $.Values.scrapeInterval }}
+    path: /metrics
+{{- end }}

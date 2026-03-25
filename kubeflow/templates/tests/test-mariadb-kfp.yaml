@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-mariadb-kfp"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/nativeSidecar: "true"
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.busybox.registry "repository" .Values.testImages.busybox.repository "tag" .Values.testImages.busybox.tag "Values" .Values) }}
+    command:
+    - sh
+    - -c
+    - |
+      nc -zw 5 mysql.kubeflow.svc.cluster.local 3306 \
+        && echo "KFP MariaDB port reachable" \
+        || (echo "KFP MariaDB TCP check failed" && exit 1)

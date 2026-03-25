@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: centraldashboard-parameters
+  labels:
+    {{- include "central-dashboard.labels" . | nindent 4 }}
+data:
+  CD_CLUSTER_DOMAIN: {{ .Values.parametersConfigMap.CD_CLUSTER_DOMAIN | quote }}
+  CD_REGISTRATION_FLOW: {{ .Values.parametersConfigMap.CD_REGISTRATION_FLOW | quote }}
+  CD_USERID_HEADER: {{ .Values.parametersConfigMap.CD_USERID_HEADER | quote }}
+  CD_USERID_PREFIX: {{ .Values.parametersConfigMap.CD_USERID_PREFIX | quote }}

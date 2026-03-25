@@ -1,0 +1,64 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+replicaCount: 1
+
+kfam:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kubeflow/kfam
+    tag: v1.10.0
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  containerPort: 8081
+  livenessProbe:
+    httpGet:
+      path: /metrics
+      port: 8081
+    initialDelaySeconds: 30
+    periodSeconds: 30
+
+profileController:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kubeflow/profile-controller
+    tag: v1.10.0
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  containerPort: 9876
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 9876
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 9876
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+configMapData:
+  ADMIN: ""
+  USERID_HEADER: kubeflow-userid
+  USERID_PREFIX: ""
+  WORKLOAD_IDENTITY: ""
+
+service:
+  port: 8081

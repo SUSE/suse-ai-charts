@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: jupyter-web-app
+    kustomize.component: jupyter-web-app
+  name: jupyter-web-app-deployment
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: jupyter-web-app
+      kustomize.component: jupyter-web-app
+  template:
+    metadata:
+      labels:
+        app: jupyter-web-app
+        kustomize.component: jupyter-web-app
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - env:
+        - name: APP_PREFIX
+          value: {{ .Values.env.APP_PREFIX | quote }}
+        - name: UI
+          value: {{ .Values.env.UI | quote }}
+        - name: USERID_HEADER
+          value: {{ .Values.env.USERID_HEADER | quote }}
+        - name: USERID_PREFIX
+          value: {{ .Values.env.USERID_PREFIX | quote }}
+        - name: APP_SECURE_COOKIES
+          value: {{ .Values.env.APP_SECURE_COOKIES | quote }}
+        image: {{ include "jupyter-web-app.image" .Values.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        name: jupyter-web-app
+        ports:
+        - containerPort: {{ .Values.service.targetPort }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: false  # Flask app writes session/temp files
+        {{- with .Values.startupProbe }}
+        startupProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /etc/config
+          name: config-volume
+        - mountPath: /src/apps/default/static/assets/logos
+          name: logos-volume
+        - mountPath: /tmp
+          name: tmp
+        - name: notebook-template-volume
+          mountPath: /src/apps/common/yaml/notebook_template.yaml
+          subPath: notebook_template.yaml
+      serviceAccountName: jupyter-web-app-service-account
+      volumes:
+      - configMap:
+          name: jupyter-web-app-config-mgf762gt24
+        name: config-volume
+      - configMap:
+          name: jupyter-web-app-notebook-template
+        name: notebook-template-volume
+      - configMap:
+          name: jupyter-web-app-logos
+        name: logos-volume
+      - emptyDir: {}
+        name: tmp

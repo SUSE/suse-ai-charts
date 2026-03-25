@@ -1,0 +1,17 @@
+{{- if .Values.jobset.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    control-plane: jobset-controller-manager
+  name: jobset-leader-election-rolebinding
+  namespace: kubeflow
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jobset-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: jobset-controller-manager
+  namespace: kubeflow
+{{- end }}

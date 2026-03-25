@@ -1,0 +1,12 @@
+apiVersion: v1
+data:
+kind: ConfigMap
+metadata:
+  annotations:
+    knative.dev/example-checksum: 47c2487f
+  labels:
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/name: knative-serving
+    app.kubernetes.io/version: 1.8.0
+  name: config-autoscaler
+  namespace: knative-serving

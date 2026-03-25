@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    application-crd-id: kubeflow-pipelines
+    component: metadata-envoy
+  name: metadata-envoy-deployment
+  namespace: kubeflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      application-crd-id: kubeflow-pipelines
+      component: metadata-envoy
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+      labels:
+        application-crd-id: kubeflow-pipelines
+        component: metadata-envoy
+    spec:
+      containers:
+      - args:
+        - /etc/envoy/envoy-config.yaml
+        image: {{ include "kubeflow-pipelines.image" .Values.metadataEnvoy.image }}
+        imagePullPolicy: {{ .Values.metadataEnvoy.image.pullPolicy }}
+        name: container
+        ports:
+        - containerPort: 9090
+          name: md-envoy
+        - containerPort: 9901
+          name: envoy-admin
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        {{- with .Values.metadataEnvoy.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /etc/envoy
+          name: envoy-config
+      volumes:
+      - configMap:
+          name: metadata-envoy-configmap
+        name: envoy-config

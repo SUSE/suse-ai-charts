@@ -1,0 +1,100 @@
+{{- if .Values.catalog.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-catalog-server
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-catalog-server
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.catalog.replicaCount }}
+  selector:
+    matchLabels:
+      app: model-registry
+      app.kubernetes.io/component: model-catalog-server
+      app.kubernetes.io/name: model-registry
+      kustomize.component: model-registry
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+      labels:
+        app: model-registry
+        app.kubernetes.io/component: model-catalog-server
+        app.kubernetes.io/name: model-registry
+        kustomize.component: model-registry
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "model-registry.imagePullSecrets" . | nindent 6 }}
+      containers:
+      - command:
+        - /model-registry
+        - catalog
+        args:
+        - --listen=0.0.0.0:8080
+        - --catalogs-path=/catalog/sources.yaml
+        env:
+        - name: PGHOST
+          value: {{ .Values.postgresql.fullnameOverride | quote }}
+        - name: PGSSLMODE
+          value: disable
+        - name: PGDATABASE
+          value: {{ .Values.postgresql.auth.database | quote }}
+        - name: PGUSER
+          value: {{ .Values.postgresql.auth.username | quote }}
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.fullnameOverride | quote }}
+              key: password
+        - name: HF_API_KEY
+          # optional: true — catalog operates in degraded mode without HuggingFace credentials
+          # Create model-catalog-hf-secret with key HF_API_KEY to enable HF integration
+          valueFrom:
+            secretKeyRef:
+              name: model-catalog-hf-secret
+              key: HF_API_KEY
+              optional: true
+        image: {{ include "model-registry.image" (dict "image" .Values.server.image "global" .Values.global) }}
+        imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: false  # Go binary writes temp files
+        {{- with .Values.catalog.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.catalog.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: model-catalog-server
+        ports:
+        - containerPort: 8080
+          name: http
+        {{- with .Values.catalog.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /catalog
+          name: catalog-sources
+      serviceAccountName: model-registry-server
+      volumes:
+      - name: catalog-sources
+        configMap:
+          name: model-catalog-sources
+{{- end }}

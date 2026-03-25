@@ -1,0 +1,24 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  labels:
+    app: kserve
+    app.kubernetes.io/component: kserve-models-web-app
+    app.kubernetes.io/name: kserve
+    kustomize.component: kserve-models-web-app
+  name: kserve-models-web-app
+  namespace: kubeflow
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - istio-system
+        - kubeflow
+  selector:
+    matchLabels:
+      app: kserve
+      app.kubernetes.io/component: kserve-models-web-app
+      app.kubernetes.io/name: kserve
+      kustomize.component: kserve-models-web-app

@@ -1,0 +1,75 @@
+apiVersion: v1
+data:
+  defaultTrialTemplate.yaml: |-
+    apiVersion: batch/v1
+    kind: Job
+    spec:
+      template:
+        spec:
+          containers:
+            - name: training-container
+              image: {{ include "katib.image" (dict "registry" .Values.trialImages.mxnetMNIST.registry "repository" .Values.trialImages.mxnetMNIST.repository "tag" .Values.trialImages.mxnetMNIST.tag "Values" .Values) }}
+              command:
+                - "python3"
+                - "/opt/mxnet-mnist/mnist.py"
+                - "--batch-size=64"
+                - "--lr=${trialParameters.learningRate}"
+                - "--num-layers=${trialParameters.numberLayers}"
+                - "--optimizer=${trialParameters.optimizer}"
+          restartPolicy: Never
+  enasCPUTemplate: |-
+    apiVersion: batch/v1
+    kind: Job
+    spec:
+      template:
+        spec:
+          containers:
+            - name: training-container
+              image: {{ include "katib.image" (dict "registry" .Values.trialImages.enasCNNCIFAR10CPU.registry "repository" .Values.trialImages.enasCNNCIFAR10CPU.repository "tag" .Values.trialImages.enasCNNCIFAR10CPU.tag "Values" .Values) }}
+              command:
+                - python3
+                - -u
+                - RunTrial.py
+                - --num_epochs=1
+                - "--architecture=\"${trialParameters.neuralNetworkArchitecture}\""
+                - "--nn_config=\"${trialParameters.neuralNetworkConfig}\""
+          restartPolicy: Never
+  pytorchJobTemplate: |-
+    apiVersion: kubeflow.org/v1
+    kind: PyTorchJob
+    spec:
+      pytorchReplicaSpecs:
+        Master:
+          replicas: 1
+          restartPolicy: OnFailure
+          template:
+            spec:
+              containers:
+                - name: pytorch
+                  image: {{ include "katib.image" (dict "registry" .Values.trialImages.pyTorchMNISTCPU.registry "repository" .Values.trialImages.pyTorchMNISTCPU.repository "tag" .Values.trialImages.pyTorchMNISTCPU.tag "Values" .Values) }}
+                  command:
+                    - "python3"
+                    - "/opt/pytorch-mnist/mnist.py"
+                    - "--epochs=1"
+                    - "--lr=${trialParameters.learningRate}"
+                    - "--momentum=${trialParameters.momentum}"
+        Worker:
+          replicas: 2
+          restartPolicy: OnFailure
+          template:
+            spec:
+              containers:
+                - name: pytorch
+                  image: {{ include "katib.image" (dict "registry" .Values.trialImages.pyTorchMNISTCPU.registry "repository" .Values.trialImages.pyTorchMNISTCPU.repository "tag" .Values.trialImages.pyTorchMNISTCPU.tag "Values" .Values) }}
+                  command:
+                    - "python3"
+                    - "/opt/pytorch-mnist/mnist.py"
+                    - "--epochs=1"
+                    - "--lr=${trialParameters.learningRate}"
+                    - "--momentum=${trialParameters.momentum}"
+kind: ConfigMap
+metadata:
+  labels:
+    katib.kubeflow.org/component: trial-templates
+  name: trial-templates
+  namespace: kubeflow

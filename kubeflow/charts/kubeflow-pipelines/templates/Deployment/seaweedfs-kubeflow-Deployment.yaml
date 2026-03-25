@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: seaweedfs
+    app.kubernetes.io/component: ml-pipeline
+    app.kubernetes.io/name: kubeflow-pipelines
+    application-crd-id: kubeflow-pipelines
+  name: seaweedfs
+  namespace: kubeflow
+spec:
+  selector:
+    matchLabels:
+      app: seaweedfs
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        # SeaweedFS does not run in the Istio mesh — native sidecar injection causes
+        # the K3s 1.34 kubelet to never start the main container (PodInitializing deadlock).
+        # S3 clients authenticate via accessKey/secretKey; no mTLS needed for object storage.
+        # The DestinationRule is set to DISABLE so mesh clients skip mTLS to this pod.
+        sidecar.istio.io/inject: 'false'
+      labels:
+        app: seaweedfs
+        app.kubernetes.io/component: ml-pipeline
+        app.kubernetes.io/name: kubeflow-pipelines
+        application-crd-id: kubeflow-pipelines
+    spec:
+      # Give SeaweedFS time to flush and release LevelDB flock before pod is removed.
+      # Without this, a rapid delete+recreate races against the flock and the new
+      # pod gets "resource temporarily unavailable" on /data/filerldb2/00/LOCK.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: seaweedfs
+      {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
+      containers:
+      - name: seaweedfs
+        image: {{ include "kubeflow-pipelines.image" .Values.seaweedfs.image }}
+        imagePullPolicy: IfNotPresent
+        args:
+        - server
+        - -dir=/data
+        - -s3
+        - -iam
+        - -filer
+        - -master.volumePreallocate=false
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        envFrom:
+        - secretRef:
+            name: mlpipeline-minio-artifact
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                # Wait for master+filer to be ready, then configure IAM user and bucket.
+                # Uses 127.0.0.1 (not localhost) because /etc/hosts maps localhost to ::1
+                # and SeaweedFS only listens on IPv4.
+                # Pipes stdin because weed shell 4.x does not support -run flag.
+                # -actions=Admin (no -buckets) gives full S3 admin access to all buckets,
+                # matching S3 admin access so KFP and KServe can create buckets freely.
+                until printf '%s\n%s\n' \
+                  "s3.bucket.create -name mlpipeline" \
+                  "s3.configure -access_key=${accesskey} -secret_key=${secretkey} -user=kubeflow-admin -actions=Admin -apply" \
+                  | weed shell -master 127.0.0.1:9333 2>&1 | grep -q "kubeflow-admin"; do
+                  sleep 3
+                done
+          preStop:
+            exec:
+              # Give SeaweedFS time to flush and release the LevelDB flock cleanly
+              # before kubelet sends SIGTERM to the container process.
+              command: ["/bin/sh", "-c", "sleep 5"]
+        ports:
+        - name: http-s3
+          containerPort: 8333
+        - name: http-iam
+          containerPort: 8111
+        - name: http-master
+          containerPort: 9333
+        - name: http-filer
+          containerPort: 8888
+        # Startup probe: allow up to 5 min for IAM bootstrap (postStart) to complete.
+        # Master /cluster/status returns 200 once the server is accepting requests.
+        startupProbe:
+          httpGet:
+            path: /cluster/status
+            port: 9333
+          failureThreshold: 60
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /cluster/status
+            port: 9333
+          initialDelaySeconds: 0
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /cluster/status
+            port: 9333
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        {{- with .Values.seaweedfs.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /data
+          name: seaweedfs-pvc
+      volumes:
+      - name: seaweedfs-pvc
+        persistentVolumeClaim:
+          claimName: seaweedfs-pvc

@@ -1,0 +1,67 @@
+{{- if .Values.mariadb.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mariadb-backup
+  namespace: kubeflow
+  labels:
+    application-crd-id: kubeflow-pipelines
+spec:
+  schedule: {{ .Values.mariadb.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/nativeSidecar: 'true'
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 10 }}
+          containers:
+          - name: mariadb-backup
+            image: {{ include "kubeflow-pipelines.image" .Values.metadbInit.image }}
+            imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              readOnlyRootFilesystem: false
+            command:
+            - sh
+            - -c
+            - |
+              set -e
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              BACKUP_FILE="/backup/kubeflow_${TIMESTAMP}.sql.gz"
+              echo "=== MariaDB Backup ==="
+              echo "Dumping databases: mlpipeline, metadb"
+              mariadb-dump -h mysql -u root --ssl=false \
+                --databases mlpipeline metadb \
+                --single-transaction --quick \
+                | gzip > "${BACKUP_FILE}"
+              echo "Backup written: ${BACKUP_FILE} ($(du -sh ${BACKUP_FILE} | cut -f1))"
+              echo "Applying retention: keeping last {{ .Values.mariadb.backup.retention }} backups"
+              ls -t /backup/*.sql.gz 2>/dev/null | tail -n +$(( {{ .Values.mariadb.backup.retention }} + 1 )) | xargs -r rm -f
+              echo "Backup complete."
+            env:
+            - name: MYSQL_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: mariadb-backup-pvc
+{{- end }}

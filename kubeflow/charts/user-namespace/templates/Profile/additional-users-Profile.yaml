@@ -1,0 +1,18 @@
+{{- range .Values.additionalUsers }}
+{{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
+{{- $namespaceName := .namespace | default $emailSlug }}
+---
+apiVersion: kubeflow.org/v1beta1
+kind: Profile
+metadata:
+  name: {{ $namespaceName }}
+spec:
+  owner:
+    kind: User
+    name: {{ .email }}
+  {{- if .resourceQuota }}
+  resourceQuotaSpec:
+    hard:
+      {{- toYaml .resourceQuota | nindent 6 }}
+  {{- end }}
+{{- end }}

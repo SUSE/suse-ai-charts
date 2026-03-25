@@ -1,0 +1,11 @@
+apiVersion: caching.internal.knative.dev/v1alpha1
+kind: Image
+metadata:
+  labels:
+    app.kubernetes.io/component: queue-proxy
+    app.kubernetes.io/name: knative-serving
+    app.kubernetes.io/version: 1.8.0
+  name: queue-proxy
+  namespace: knative-serving
+spec:
+  image: {{ include "knative-serving.image" (dict "image" .Values.queueProxy "context" .) }}

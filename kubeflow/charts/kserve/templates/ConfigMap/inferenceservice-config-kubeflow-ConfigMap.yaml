@@ -1,0 +1,29 @@
+apiVersion: v1
+data:
+  agent: |-
+    {{- .Values.inferenceServiceConfig.agent | nindent 4 }}
+  batcher: |-
+    {{- .Values.inferenceServiceConfig.batcher | nindent 4 }}
+  credentials: |-
+    {{- .Values.inferenceServiceConfig.credentials | nindent 4 }}
+  deploy: |-
+    {{- .Values.inferenceServiceConfig.deploy | nindent 4 }}
+  explainers: |-
+    {{- .Values.inferenceServiceConfig.explainers | nindent 4 }}
+  ingress: |-
+    {{- mergeOverwrite (.Values.inferenceServiceConfig.ingress | fromJson) (dict "ingressDomain" .Values.ingressDomain) | toJson | nindent 4 }}
+  logger: |-
+    {{- .Values.inferenceServiceConfig.logger | nindent 4 }}
+  metricsAggregator: |-
+    {{- .Values.inferenceServiceConfig.metricsAggregator | nindent 4 }}
+  router: |-
+    {{- .Values.inferenceServiceConfig.router | nindent 4 }}
+  storageInitializer: |-
+    {{- .Values.inferenceServiceConfig.storageInitializer | nindent 4 }}
+kind: ConfigMap
+metadata:
+  labels:
+    app: kserve
+    app.kubernetes.io/name: kserve
+  name: inferenceservice-config
+  namespace: kubeflow

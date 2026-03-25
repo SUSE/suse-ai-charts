@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kserve
+    app.kubernetes.io/component: kserve-models-web-app
+    app.kubernetes.io/name: kserve
+    kustomize.component: kserve-models-web-app
+  name: kserve-models-web-app
+  namespace: kubeflow
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: kserve
+      app.kubernetes.io/component: kserve-models-web-app
+      app.kubernetes.io/name: kserve
+      kustomize.component: kserve-models-web-app
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'true'
+      labels:
+        app: kserve
+        app.kubernetes.io/component: kserve-models-web-app
+        app.kubernetes.io/name: kserve
+        kustomize.component: kserve-models-web-app
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: kserve-models-web-app-config-gfh88m49k6
+        image: {{ include "models-web-app.image" .Values.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: false  # Flask app writes session/temp files
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        name: kserve-models-web-app
+        ports:
+        - containerPort: {{ .Values.service.targetPort }}
+          name: http
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+      serviceAccountName: kserve-models-web-app
+      volumes:
+      - emptyDir: {}
+        name: tmp

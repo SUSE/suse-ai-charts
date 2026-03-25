@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow-user-example-com
+  annotations:
+    # The profiles controller checks for this annotation to confirm it owns the namespace.
+    # Pre-setting it here lets the controller reconcile normally (create RoleBindings,
+    # service accounts, ns-owner-access-istio, etc.) even though Helm created the namespace
+    # first (so that our rancher-ingressgateway-access AuthorizationPolicy can be applied
+    # on a fresh install before the profiles controller runs).
+    owner: {{ .Values.profile.owner.name }}

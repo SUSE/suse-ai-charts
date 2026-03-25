@@ -1,0 +1,90 @@
+{{- if .Values.jobset.controller.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: jobset-controller-manager
+  name: jobset-controller-manager
+  namespace: kubeflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: jobset-controller-manager
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+      labels:
+        control-plane: jobset-controller-manager
+    spec:
+      {{- include "trainer.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: manager
+        image: {{ include "trainer.image" .Values.jobset.image }}
+        imagePullPolicy: {{ .Values.jobset.image.pullPolicy }}
+        args:
+        - --config=/controller_manager_config.yaml
+        - --zap-log-level=2
+        command:
+        - /manager
+        ports:
+        - containerPort: 8443
+          name: metrics
+          protocol: TCP
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-dir
+        - mountPath: /controller_manager_config.yaml
+          name: manager-config
+          subPath: controller_manager_config.yaml
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      serviceAccountName: jobset-controller-manager
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: tmp-dir
+        emptyDir: {}
+      - name: manager-config
+        configMap:
+          name: jobset-manager-config
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: jobset-webhook-server-cert
+{{- end }}

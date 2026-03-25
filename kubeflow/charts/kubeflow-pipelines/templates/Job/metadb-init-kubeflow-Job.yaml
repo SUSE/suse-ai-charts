@@ -1,0 +1,57 @@
+{{- if .Values.mariadb.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: metadb-init
+  namespace: kubeflow
+  annotations:
+    # Run after every install and upgrade, after all other resources are created.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/nativeSidecar: 'true'
+    spec:
+      restartPolicy: OnFailure
+      {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+      # Wait until MariaDB is accepting connections before running SQL.
+      - name: wait-for-mariadb
+        image: {{ include "kubeflow-pipelines.image" .Values.metadbInit.image }}
+        imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
+        command:
+        - sh
+        - -c
+        - |
+          until mariadb -h mysql -u root --ssl=false -e "SELECT 1" >/dev/null 2>&1; do
+            echo "Waiting for MariaDB... ($(mariadb -h mysql -u root --ssl=false -e 'SELECT 1' 2>&1 | head -1))"
+            sleep 5
+          done
+          echo "MariaDB is ready."
+        env:
+        - name: MYSQL_PWD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+      containers:
+      - name: create-metadb
+        image: {{ include "kubeflow-pipelines.image" .Values.metadbInit.image }}
+        imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
+        command:
+        - sh
+        - -c
+        - |
+          mariadb -h mysql -u root --ssl=false -e "CREATE DATABASE IF NOT EXISTS metadb;"
+          echo "metadb database ensured."
+        env:
+        - name: MYSQL_PWD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+{{- end }}

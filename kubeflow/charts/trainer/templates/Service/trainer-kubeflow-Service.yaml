@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: '8080'
+    prometheus.io/scrape: 'true'
+  labels:
+    control-plane: kubeflow-trainer-controller-manager
+  name: kubeflow-trainer-controller-manager
+  namespace: kubeflow
+spec:
+  ports:
+  - name: monitoring-port
+    port: 8080
+    targetPort: 8080
+  - name: health
+    port: 8081
+    targetPort: 8081
+  - name: webhook-server
+    port: 443
+    targetPort: 9443
+  selector:
+    control-plane: kubeflow-trainer-controller-manager
+  type: ClusterIP

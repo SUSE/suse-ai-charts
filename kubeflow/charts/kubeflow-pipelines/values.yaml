@@ -1,0 +1,307 @@
+# Default values for kubeflow-pipelines
+
+# PodDisruptionBudgets for KFP critical path components.
+# Enable in production to protect against voluntary disruptions during node drains.
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+pdb:
+  enabled: false
+  maxUnavailable: 1
+
+# MySQL/MariaDB secret configuration.
+# password: "" uses empty root password (DEMO DEFAULT — CHANGE IN PRODUCTION).
+# If set, the mysql-secret template will base64-encode and store this value.
+# On upgrades the existing secret value is preserved via Helm lookup().
+mysqlSecret:
+  password: ""  # DEMO DEFAULT — CHANGE IN PRODUCTION
+
+# Post-install hook Job that creates the metadb database required by MLMD.
+# Runs automatically after MariaDB is ready on every install and upgrade.
+metadbInit:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/mariadb
+    tag: "11.8.6-5.1"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+
+# MariaDB sub-chart (Rancher oci://dp.apps.rancher.io/charts/mariadb)
+mariadb:
+  enabled: true
+  fullnameOverride: "mysql"
+  auth:
+    # Reuse the mysql-secret managed by this chart; key "password" holds the root password
+    existingSecret: "mysql-secret"
+    rootPasswordKey: "password"
+    database: "mlpipeline"
+    username: ""
+    # Disable replication user - single node setup
+    replicationUsername: ""
+  persistence:
+    enabled: true
+    storageClassName: ""
+    resources:
+      requests:
+        storage: 20Gi
+  podTemplates:
+    containers:
+      mariadb:
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+  metrics:
+    enabled: false
+  # Scheduled backup CronJob — dumps mlpipeline + metadb to a PVC.
+  # Enabled by default; set enabled: false to disable on resource-constrained clusters.
+  # To restore: kubectl exec -n kubeflow deploy/mysql -- sh -c
+  #   "mariadb --ssl=false -u root < /backup/<filename>.sql"
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"    # daily at 02:00 UTC
+    retention: 7              # number of backup files to keep
+    storageSize: 10Gi
+    storageClass: ""          # empty = cluster default
+
+# Inline SeaweedFS deployment — S3-compatible artifact store for KFP.
+# Credentials are shared with all KFP consumers via the 'mlpipeline-minio-artifact' Secret
+# (that name is hardcoded in KFP upstream and cannot be changed).
+# SeaweedFS reads those credentials via envFrom and registers them as its IAM user.
+seaweedfs:
+  image:
+    registry: docker.io
+    repository: chrislusf/seaweedfs
+    tag: "4.00"
+    pullPolicy: IfNotPresent
+  enabled: true
+  # S3 credentials — must match the IAM user SeaweedFS registers at startup.
+  # These values are written into the 'mlpipeline-minio-artifact' Secret and
+  # consumed by all KFP components and the SeaweedFS postStart hook.
+  accessKey: kubeflow      # DEMO DEFAULT
+  secretKey: kubeflow123   # DEMO DEFAULT
+  # existingSecret: if set, the chart will NOT create the mlpipeline-minio-artifact
+  # Secret from accessKey/secretKey above. You must pre-create a Secret named
+  # 'mlpipeline-minio-artifact' (name is hardcoded by KFP upstream) with keys:
+  #   accesskey: <your-access-key>
+  #   secretkey: <your-secret-key>
+  # Example: kubectl create secret generic mlpipeline-minio-artifact \
+  #            --from-literal=accesskey=<key> --from-literal=secretkey=<secret> -n kubeflow
+  existingSecret: ""
+  persistence:
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# kfp-launcher — init container injected into every pipeline task pod.
+# Pinned to match the API server version; kfp-launcher:latest now defaults
+# to seaweedfs.kubeflow:9000 (upstream migration) which does not exist here.
+launcher:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-launcher
+    tag: "2.16.0"
+
+# KFP API server
+apiServer:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-api-server
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 250m
+      memory: 500Mi
+
+# KFP frontend / UI
+frontend:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-frontend
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 10m
+      memory: 70Mi
+
+# Persistence agent
+persistenceAgent:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-persistence-agent
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 120m
+      memory: 500Mi
+
+# Scheduled workflow controller
+scheduledWorkflow:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-scheduled-workflow-controller
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Viewer CRD controller
+viewerCrdController:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-viewer-crd-controller
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Visualization server
+visualizationServer:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-visualization-server
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 30m
+      memory: 500Mi
+
+# Cache server
+cacheServer:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-cache-server
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Argo workflow controller
+workflowController:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/workflow-controller
+    tag: "3.7.10"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  executorImage:
+    registry: dp.apps.rancher.io
+    repository: containers/argoexec
+    tag: "3.7.10"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 500Mi
+
+# ML Metadata gRPC server
+metadataGrpc:
+  image:
+    registry: gcr.io
+    repository: tfx-oss-public/ml_metadata_store_server
+    tag: "1.14.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Metadata envoy proxy
+metadataEnvoy:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-metadata-envoy
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Metadata writer
+metadataWriter:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kfp-metadata-writer
+    tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Metacontroller
+metacontroller:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/metacontroller
+    tag: "4.12.5"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# Profile controller
+profileController:
+  image:
+    registry: docker.io
+    repository: python
+    tag: "3.11"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

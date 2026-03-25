@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-mariadb-katib"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/nativeSidecar: "true"
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.mariadb.registry "repository" .Values.testImages.mariadb.repository "tag" .Values.testImages.mariadb.tag "Values" .Values) }}
+    env:
+    - name: MYSQL_PWD
+      valueFrom:
+        secretKeyRef:
+          name: katib-mysql-secrets
+          key: MYSQL_ROOT_PASSWORD
+    command:
+    - sh
+    - -c
+    - |
+      mariadb -h katib-mysql.kubeflow.svc.cluster.local -u root \
+        -e "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='katib';" \
+        | grep -q "1" \
+        && echo "Katib MariaDB healthy (katib schema exists)" \
+        || (echo "Katib MariaDB check failed" && exit 1)

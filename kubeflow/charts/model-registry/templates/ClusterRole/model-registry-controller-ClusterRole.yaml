@@ -1,0 +1,29 @@
+{{- if .Values.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-controller
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-controller
+rules:
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - inferenceservices
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+{{- end }}

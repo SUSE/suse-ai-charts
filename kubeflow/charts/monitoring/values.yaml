@@ -1,0 +1,15 @@
+# Monitoring configuration.
+# Requires Rancher Monitoring (kube-prometheus-stack) to be installed.
+# Set enabled: true after confirming Prometheus Operator CRDs are present.
+enabled: false
+
+# Prometheus scrape interval
+scrapeInterval: 30s
+
+# Labels to add to all ServiceMonitors (must match your Prometheus operator's selector)
+serviceMonitorLabels: {}
+  # release: kube-prometheus-stack
+
+# PrometheusRule labels (must match your Prometheus operator's ruleSelector)
+prometheusRuleLabels: {}
+  # release: kube-prometheus-stack

@@ -1,0 +1,23 @@
+{{- $kir := index .Values "kubeflow-istio-resources" }}
+{{- if and $kir.tls.source (ne $kir.tls.source "secret") }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kubeflow-gateway-tls
+  namespace: istio-system
+spec:
+  commonName: {{ $kir.hostname | default "kubeflow.local" | quote }}
+  secretName: {{ $kir.tls.credentialName }}    
+  privateKey:
+    rotationPolicy: Always
+  issuerRef:
+{{- if eq $kir.tls.source "selfSigned" }}
+    name: {{ $kir.tls.issuer | default "kubeflow-selfsigned" }}
+    kind: Issuer
+{{- else }}
+    name: {{ $kir.tls.issuer | default "kubeflow-letsencrypt" }}
+    kind: ClusterIssuer
+{{- end }}
+  dnsNames:
+  - {{ $kir.hostname | default "kubeflow.local" | quote }}
+{{- end }}

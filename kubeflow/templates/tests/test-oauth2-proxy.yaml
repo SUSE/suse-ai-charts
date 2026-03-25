@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-oauth2-proxy"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/nativeSidecar: "true"
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.busybox.registry "repository" .Values.testImages.busybox.repository "tag" .Values.testImages.busybox.tag "Values" .Values) }}
+    command:
+    - sh
+    - -c
+    - |
+      {{- $svcName := (printf "%s-oauth2-proxy" .Release.Name) }}
+      {{- $ns := .Release.Namespace }}
+      nc -zw 5 {{ $svcName }}.{{ $ns }}.svc.cluster.local 80 \
+        && echo "oauth2-proxy port reachable" \
+        || (echo "oauth2-proxy TCP check failed" && exit 1)

@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: knative-eventing
+    app.kubernetes.io/name: knative-eventing
+    app.kubernetes.io/version: 1.8.1
+    eventing.knative.dev/release: v1.8.1
+    kustomize.component: knative
+  name: pingsource-mt-adapter
+  namespace: knative-eventing
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: knative-eventing
+      app.kubernetes.io/name: knative-eventing
+      eventing.knative.dev/source: ping-source-controller
+      kustomize.component: knative
+      sources.knative.dev/role: adapter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: knative-eventing
+        app.kubernetes.io/name: knative-eventing
+        app.kubernetes.io/version: 1.8.1
+        eventing.knative.dev/release: v1.8.1
+        eventing.knative.dev/source: ping-source-controller
+        kustomize.component: knative
+        sources.knative.dev/role: adapter
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: knative-eventing
+                  app.kubernetes.io/name: knative-eventing
+                  eventing.knative.dev/source: ping-source-controller
+                  kustomize.component: knative
+                  sources.knative.dev/role: adapter
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - env:
+        - name: SYSTEM_NAMESPACE
+          value: ''
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: NAMESPACE
+          value: ''
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: K_METRICS_CONFIG
+          value: ''
+        - name: K_LOGGING_CONFIG
+          value: ''
+        - name: K_LEADER_ELECTION_CONFIG
+          value: ''
+        - name: K_NO_SHUTDOWN_AFTER
+          value: ''
+        - name: K_SINK_TIMEOUT
+          value: '-1'
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        image: {{ include "knative-eventing.image" (dict "image" .Values.pingsource.image "context" .) }}
+        imagePullPolicy: {{ include "knative-eventing.imagePullPolicy" (dict "image" .Values.pingsource.image "context" .) }}
+        name: dispatcher
+        ports:
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.pingsource.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+      enableServiceLinks: false
+      serviceAccountName: pingsource-mt-adapter
+{{- include "knative-eventing.imagePullSecrets" . | nindent 6 }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+appVersion: v1.7.0
+description: A Helm chart for Kubernetes
+name: profiles-and-kfam
+type: application
+version: 0.2.0

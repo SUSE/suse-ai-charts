@@ -1,0 +1,13 @@
+apiVersion: v1
+data:
+  {{ .Values.domain | quote }}: ""
+kind: ConfigMap
+metadata:
+  annotations:
+    knative.dev/example-checksum: 26c09de5
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/name: knative-serving
+    app.kubernetes.io/version: 1.8.0
+  name: config-domain
+  namespace: knative-serving

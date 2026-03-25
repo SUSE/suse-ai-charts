@@ -1,0 +1,73 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+image:
+  registry: ghcr.io
+  repository: kubeflow/kubeflow/tensorboards-web-app
+  tag: v1.10.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+resources: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+
+env:
+  APP_PREFIX: /tensorboards
+  USERID_HEADER: kubeflow-userid
+  USERID_PREFIX: ""
+  APP_SECURE_COOKIES: "true "
+
+parametersConfigMap:
+  TWA_APP_SECURE_COOKIES: "true "
+  TWA_CLUSTER_DOMAIN: cluster.local
+  TWA_PREFIX: /tensorboards
+  TWA_USERID_HEADER: kubeflow-userid
+  TWA_USERID_PREFIX: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 5000
+    httpHeaders:
+    - name: kubeflow-userid
+      value: healthz-probe@local
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: 5000
+    httpHeaders:
+    - name: kubeflow-userid
+      value: healthz-probe@local
+  failureThreshold: 30
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 5000
+    httpHeaders:
+    - name: kubeflow-userid
+      value: healthz-probe@local
+  initialDelaySeconds: 5
+  periodSeconds: 10

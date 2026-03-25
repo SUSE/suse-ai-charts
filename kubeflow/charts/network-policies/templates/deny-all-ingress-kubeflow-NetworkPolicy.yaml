@@ -1,0 +1,11 @@
+# Deny all ingress to the kubeflow namespace by default.
+# Specific allow rules below open only the ports/paths that are actually needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress-kubeflow
+  namespace: kubeflow
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress

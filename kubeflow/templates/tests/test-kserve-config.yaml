@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+{{- include "kubeflow.imagePullSecrets" . }}
+---
+# Role scoped to the release namespace (kubeflow) — reads inferenceservice-config
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "{{ .Release.Name }}-kserve-config-test"
+subjects:
+- kind: ServiceAccount
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: {{ .Release.Namespace }}
+---
+# Role scoped to knative-serving namespace — reads config-domain
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: knative-serving
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: knative-serving
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "{{ .Release.Name }}-kserve-config-test"
+subjects:
+- kind: ServiceAccount
+  name: "{{ .Release.Name }}-kserve-config-test"
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-kserve-config"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/nativeSidecar: "true"
+spec:
+  restartPolicy: Never
+  serviceAccountName: "{{ .Release.Name }}-kserve-config-test"
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.kubectl.registry "repository" .Values.testImages.kubectl.repository "tag" .Values.testImages.kubectl.tag "Values" .Values) }}
+    command:
+    - sh
+    - -c
+    - |
+      set -e
+
+      # Test 1: inferenceservice-config has the correct ingressService name
+      echo "Checking KServe ingressService..."
+      INGRESS=$(kubectl get cm inferenceservice-config -n kubeflow \
+        -o jsonpath='{.data.ingress}')
+      case "$INGRESS" in
+        *"istio.istio-system.svc.cluster.local"*)
+          echo "PASS: KServe ingressService is istio.istio-system.svc.cluster.local" ;;
+        *)
+          echo "FAIL: KServe ingressService wrong: $INGRESS"
+          exit 1 ;;
+      esac
+
+      # Test 2: config-domain has a non-empty domain key
+      echo "Checking Knative config-domain..."
+      DOMAIN=$(kubectl get cm config-domain -n knative-serving \
+        -o jsonpath='{.data}' 2>/dev/null || echo "")
+      case "$DOMAIN" in
+        ""|"{}")
+          echo "FAIL: config-domain has no domain configured — InferenceService URLs will be broken"
+          exit 1 ;;
+        *)
+          echo "PASS: config-domain has domain configured: $DOMAIN" ;;
+      esac
+
+      echo "All KServe config checks passed."

@@ -1,0 +1,53 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+replicaCount: 1
+
+manager:
+  image:
+    registry: ghcr.io
+    repository: kubeflow/kubeflow/tensorboard-controller
+    tag: v1.10.0
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+kubeRbacProxy:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/kube-rbac-proxy
+    tag: "0.20.2"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 128Mi
+    requests:
+      cpu: 5m
+      memory: 64Mi
+
+configMapData:
+  ISTIO_GATEWAY: kubeflow/kubeflow-gateway
+  ISTIO_HOST: "*"
+  RWO_PVC_SCHEDULING: "True"
+  TENSORBOARD_IMAGE: tensorflow/tensorflow:2.15.0

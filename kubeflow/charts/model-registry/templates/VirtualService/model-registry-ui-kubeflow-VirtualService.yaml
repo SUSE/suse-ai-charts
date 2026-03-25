@@ -1,0 +1,30 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-ui
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-ui
+  namespace: kubeflow
+spec:
+  gateways:
+  - {{ .Values.global.gateway.name | default "kubeflow/kubeflow-gateway" }}
+  hosts:
+  - '*'
+  http:
+  - match:
+    - uri:
+        prefix: /model-registry/
+    rewrite:
+      uri: /
+    headers:
+      request:
+        set:
+          x-forwarded-prefix: /model-registry
+    route:
+    - destination:
+        host: model-registry-ui-service.kubeflow.svc.cluster.local
+        port:
+          number: 8080

@@ -1,0 +1,22 @@
+{{- if .Values.catalog.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-catalog-server
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-catalog
+  namespace: kubeflow
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: model-registry
+    app.kubernetes.io/component: model-catalog-server
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+{{- end }}

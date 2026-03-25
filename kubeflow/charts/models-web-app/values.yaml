@@ -1,0 +1,49 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+
+image:
+  registry: docker.io
+  repository: kserve/models-web-app
+  tag: v0.13.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+
+configMapData:
+  APP_PREFIX: /kserve-endpoints
+  USERID_HEADER: kubeflow-userid
+
+livenessProbe:
+  failureThreshold: 3
+  httpGet:
+    path: /healthz/liveness
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+readinessProbe:
+  failureThreshold: 3
+  httpGet:
+    path: /healthz/readiness
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1

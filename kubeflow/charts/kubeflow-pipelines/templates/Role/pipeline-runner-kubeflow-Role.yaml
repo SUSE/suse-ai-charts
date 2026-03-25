@@ -1,0 +1,137 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: ml-pipeline
+    app.kubernetes.io/name: kubeflow-pipelines
+    application-crd-id: kubeflow-pipelines
+  name: pipeline-runner
+  namespace: kubeflow
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - ''
+  resources:
+  - persistentvolumes
+  - persistentvolumeclaims
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
+  verbs:
+  - create
+  - delete
+  - get
+- apiGroups:
+  - argoproj.io
+  resources:
+  - workflows
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  - pods/exec
+  - pods/log
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update
+- apiGroups:
+  - ''
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - replicasets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - experiments
+  - scheduledworkflows
+  - viewers
+  - pytorchjobs
+  - tfjobs
+  - xgboostjobs
+  - mpijobs
+  - jaxjobs
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update
+- apiGroups:
+  - machinelearning.seldon.io
+  resources:
+  - seldondeployments
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+  - patch
+  - update

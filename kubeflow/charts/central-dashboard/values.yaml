@@ -1,0 +1,204 @@
+image:
+  registry: ghcr.io
+  repository: kubeflow/kubeflow/central-dashboard
+  tag: v1.10.0
+  pullPolicy: IfNotPresent
+
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+replicaCount: 1
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 2000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+pdb:
+  enabled: false
+  maxUnavailable: 1
+
+autoscaling:
+  enabled: false  # set true for production multi-replica setups
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8082
+
+env:
+  USERID_HEADER: kubeflow-userid
+  USERID_PREFIX: ""
+  PROFILES_KFAM_SERVICE_HOST: profiles-kfam.kubeflow
+  REGISTRATION_FLOW: "false"
+  DASHBOARD_LINKS_CONFIGMAP: centraldashboard-config
+  LOGOUT_URL: /oauth2/sign_out
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8082
+  initialDelaySeconds: 30
+  periodSeconds: 30
+
+readinessProbe: {}
+
+# ConfigMap: centraldashboard-parameters
+parametersConfigMap:
+  CD_CLUSTER_DOMAIN: cluster.local
+  CD_REGISTRATION_FLOW: "false"
+  CD_USERID_HEADER: kubeflow-userid
+  CD_USERID_PREFIX: ""
+
+# ConfigMap: centraldashboard-config (dashboard links and settings JSON)
+dashboardLinks: |-
+  {
+    "menuLinks": [
+      {
+        "type": "item",
+        "link": "/jupyter/",
+        "text": "Notebooks",
+        "icon": "book"
+      },
+      {
+        "type": "item",
+        "link": "/tensorboards/",
+        "text": "Tensorboards",
+        "icon": "assessment"
+      },
+      {
+        "type": "item",
+        "link": "/volumes/",
+        "text": "Volumes",
+        "icon": "device:storage"
+      },
+      {
+        "type": "item",
+        "link": "/kserve-endpoints/",
+        "text": "Models",
+        "icon": "kubeflow:models"
+      },
+      {
+        "type": "item",
+        "link": "/model-registry/",
+        "text": "Model Registry",
+        "icon": "kubeflow:models"
+      },
+      {
+        "type": "item",
+        "link": "/katib/",
+        "text": "Experiments (AutoML)",
+        "icon": "kubeflow:katib"
+      },
+      {
+        "type": "item",
+        "text": "Experiments (KFP)",
+        "link": "/pipeline/#/experiments",
+        "icon": "done-all"
+      },
+      {
+        "type": "item",
+        "link": "/pipeline/#/pipelines",
+        "text": "Pipelines",
+        "icon": "kubeflow:pipeline-centered"
+      },
+      {
+        "type": "item",
+        "link": "/pipeline/#/runs",
+        "text": "Runs",
+        "icon": "maps:directions-run"
+      },
+      {
+        "type": "item",
+        "link": "/pipeline/#/recurringruns",
+        "text": "Recurring Runs",
+        "icon": "device:access-alarm"
+      },
+      {
+        "type": "item",
+        "link": "/pipeline/#/artifacts",
+        "text": "Artifacts",
+        "icon": "editor:bubble-chart"
+      },
+      {
+        "type": "item",
+        "link": "/pipeline/#/executions",
+        "text": "Executions",
+        "icon": "av:play-arrow"
+      }
+    ],
+    "externalLinks": [ ],
+      "quickLinks": [
+        {
+          "text": "Upload a pipeline",
+          "desc": "Pipelines",
+          "link": "/pipeline/"
+        },
+        {
+          "text": "View all pipeline runs",
+          "desc": "Pipelines",
+          "link": "/pipeline/#/runs"
+        },
+        {
+          "text": "Create a new Notebook server",
+          "desc": "Notebook Servers",
+          "link": "/jupyter/new?namespace=kubeflow"
+        },
+        {
+          "text": "View Katib Experiments",
+          "desc": "Katib",
+          "link": "/katib/"
+        }
+      ],
+      "documentationItems": [
+        {
+          "text": "Getting Started with Kubeflow",
+          "desc": "Get your machine-learning workflow up and running on Kubeflow",
+          "link": "https://www.kubeflow.org/docs/started/getting-started/"
+        },
+        {
+          "text": "Requirements for Kubeflow",
+          "desc": "Get more detailed information about using Kubeflow and its components",
+          "link": "https://www.kubeflow.org/docs/started/requirements/"
+        }
+      ]
+  }
+
+dashboardSettings: |-
+  {
+    "DASHBOARD_FORCE_IFRAME": true
+  }

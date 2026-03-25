@@ -1,0 +1,16 @@
+# Allow Istio sidecar and ingress gateway traffic into knative-serving.
+# Required for mTLS between Istio-managed pods and Knative services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-to-knative-serving
+  namespace: knative-serving
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system

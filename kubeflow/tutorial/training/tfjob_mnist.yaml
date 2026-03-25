@@ -1,0 +1,99 @@
+# Tutorial — Part 6b: TensorFlow Distributed Training (TFJob)
+# =============================================================
+# Demonstrates 2-worker data-parallel training with TensorFlow's
+# MultiWorkerMirroredStrategy on synthetic MNIST-shaped data
+# (784 inputs, 10 classes, CPU-only — no GPU required).
+#
+# The Training Operator injects TF_CONFIG so each Worker knows its
+# rank; all-reduce gradient synchronisation happens automatically.
+#
+# Apply
+# -----
+#   kubectl apply -f tfjob_mnist.yaml
+#
+# Monitor
+# -------
+#   kubectl get tfjob tfjob-mnist -n kubeflow-user-example-com
+#   kubectl logs -n kubeflow-user-example-com \
+#       $(kubectl get pods -n kubeflow-user-example-com \
+#         -l training.kubeflow.org/job-name=tfjob-mnist,training.kubeflow.org/replica-type=worker \
+#         -o name | head -1)
+#
+# Clean up
+# --------
+#   kubectl delete tfjob tfjob-mnist -n kubeflow-user-example-com
+#
+# Note: first run pulls tensorflow:2.13.0 (~1.3 GB); allow 3-5 min.
+#       Subsequent runs are faster because the layer is cached on the node.
+
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+  name: tfjob-mnist
+  namespace: kubeflow-user-example-com
+spec:
+  # cleanPodPolicy: None keeps completed pods so you can inspect logs
+  runPolicy:
+    cleanPodPolicy: None
+
+  tfReplicaSpecs:
+
+    Worker:
+      replicas: 2
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: tensorflow
+            image: tensorflow/tensorflow:2.13.0
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "512Mi"
+              limits:
+                cpu: "2"
+                memory: "2Gi"
+            command:
+            - python3
+            - -c
+            - |
+              import os, json, numpy as np, tensorflow as tf
+
+              tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
+              task      = tf_config.get("task", {})
+              label     = f"[{task.get('type','worker')}-{task.get('index',0)}]"
+              print(f"{label} TF_CONFIG={json.dumps(tf_config)}", flush=True)
+
+              strategy = tf.distribute.MultiWorkerMirroredStrategy()
+              print(f"{label} num_replicas_in_sync={strategy.num_replicas_in_sync}", flush=True)
+
+              with strategy.scope():
+                  model = tf.keras.Sequential([
+                      tf.keras.layers.Dense(256, activation="relu", input_shape=(784,)),
+                      tf.keras.layers.Dense(10,  activation="softmax"),
+                  ])
+                  model.compile(
+                      optimizer=tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9),
+                      loss="sparse_categorical_crossentropy",
+                      metrics=["accuracy"],
+                  )
+
+              np.random.seed(42 + task.get("index", 0))
+              N  = 2000
+              x  = np.random.randn(N, 784).astype("float32")
+              y  = np.random.randint(0, 10, N).astype("int32")
+
+              # Shard the dataset across workers automatically
+              options = tf.data.Options()
+              options.experimental_distribute.auto_shard_policy = \
+                  tf.data.experimental.AutoShardPolicy.DATA
+              dataset = (
+                  tf.data.Dataset.from_tensor_slices((x, y))
+                  .shuffle(N, seed=42)
+                  .batch(64)
+                  .with_options(options)
+              )
+
+              model.fit(dataset, epochs=3, verbose=1)
+              print(f"{label} done.", flush=True)

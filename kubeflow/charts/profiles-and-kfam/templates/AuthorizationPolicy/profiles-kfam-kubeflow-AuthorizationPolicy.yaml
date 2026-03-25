@@ -1,0 +1,18 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  labels:
+    kustomize.component: profiles
+  name: profiles-kfam
+  namespace: kubeflow
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - istio-system
+        - kubeflow
+  selector:
+    matchLabels:
+      kustomize.component: profiles

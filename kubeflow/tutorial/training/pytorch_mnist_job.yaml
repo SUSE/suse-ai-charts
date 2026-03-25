@@ -1,0 +1,169 @@
+# Tutorial — Part 6a: PyTorch Distributed Training (PyTorchJob)
+# ==============================================================
+# Demonstrates 2-node data-parallel training with torch.distributed
+# (1 Master + 1 Worker) using the Gloo backend (CPU, no GPU required).
+#
+# The training script uses synthetic data so the job is fully self-contained
+# (no dataset download).  It shows the same distributed mechanics —
+# DistributedDataParallel, DistributedSampler, all-reduce — as real MNIST.
+#
+# Apply
+# -----
+#   kubectl apply -f pytorch_mnist_job.yaml
+#
+# Monitor
+# -------
+#   kubectl get pytorchjob pytorch-mnist -n kubeflow-user-example-com
+#   kubectl logs -n kubeflow-user-example-com \
+#       $(kubectl get pods -n kubeflow-user-example-com \
+#         -l training.kubeflow.org/job-name=pytorch-mnist,training.kubeflow.org/replica-type=master \
+#         -o name | head -1)
+#
+# Clean up
+# --------
+#   kubectl delete pytorchjob pytorch-mnist -n kubeflow-user-example-com
+#
+# Note: first run installs torch-cpu (~130 MB) via pip; takes ~60-90 s.
+#       Subsequent runs are faster because the layer is cached on the node.
+
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: pytorch-mnist
+  namespace: kubeflow-user-example-com
+spec:
+  pytorchReplicaSpecs:
+
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: pytorch
+            image: python:3.11-slim
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "512Mi"
+              limits:
+                cpu: "2"
+                memory: "1Gi"
+            command:
+            - sh
+            - -c
+            - |
+              pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+              cat > /tmp/train.py << 'PYEOF'
+              import os, torch, torch.nn as nn, torch.optim as optim
+              import torch.distributed as dist
+              from torch.nn.parallel import DistributedDataParallel as DDP
+              from torch.utils.data import DataLoader, TensorDataset
+
+              dist.init_process_group(backend="gloo", init_method="env://")
+              rank       = dist.get_rank()
+              world_size = dist.get_world_size()
+              print(f"[Rank {rank}] initialised  world_size={world_size}", flush=True)
+
+              torch.manual_seed(42 + rank)
+              N  = 2000
+              X  = torch.randn(N, 784)
+              y  = torch.randint(0, 10, (N,))
+              ds = TensorDataset(X, y)
+              sampler = torch.utils.data.distributed.DistributedSampler(
+                  ds, num_replicas=world_size, rank=rank)
+              loader  = DataLoader(ds, batch_size=64, sampler=sampler)
+
+              model     = DDP(nn.Sequential(
+                              nn.Linear(784, 256), nn.ReLU(), nn.Linear(256, 10)))
+              optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+              criterion = nn.CrossEntropyLoss()
+
+              for epoch in range(1, 4):
+                  sampler.set_epoch(epoch)
+                  total = 0.0
+                  for bx, by in loader:
+                      optimizer.zero_grad()
+                      loss = criterion(model(bx), by)
+                      loss.backward()
+                      optimizer.step()
+                      total += loss.item()
+                  print(f"[Rank {rank}] Epoch {epoch}/3  loss={total/len(loader):.4f}",
+                        flush=True)
+
+              if rank == 0:
+                  model.eval()
+                  with torch.no_grad():
+                      Xv = torch.randn(500, 784)
+                      yv = torch.randint(0, 10, (500,))
+                      acc = (model(Xv).argmax(1) == yv).float().mean().item()
+                  print(f"[Rank 0] val accuracy={acc:.4f}", flush=True)
+
+              dist.destroy_process_group()
+              print(f"[Rank {rank}] done.", flush=True)
+              PYEOF
+              python3 /tmp/train.py
+
+    Worker:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: pytorch
+            image: python:3.11-slim
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "512Mi"
+              limits:
+                cpu: "2"
+                memory: "1Gi"
+            command:
+            - sh
+            - -c
+            - |
+              pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+              cat > /tmp/train.py << 'PYEOF'
+              import os, torch, torch.nn as nn, torch.optim as optim
+              import torch.distributed as dist
+              from torch.nn.parallel import DistributedDataParallel as DDP
+              from torch.utils.data import DataLoader, TensorDataset
+
+              dist.init_process_group(backend="gloo", init_method="env://")
+              rank       = dist.get_rank()
+              world_size = dist.get_world_size()
+              print(f"[Rank {rank}] initialised  world_size={world_size}", flush=True)
+
+              torch.manual_seed(42 + rank)
+              N  = 2000
+              X  = torch.randn(N, 784)
+              y  = torch.randint(0, 10, (N,))
+              ds = TensorDataset(X, y)
+              sampler = torch.utils.data.distributed.DistributedSampler(
+                  ds, num_replicas=world_size, rank=rank)
+              loader  = DataLoader(ds, batch_size=64, sampler=sampler)
+
+              model     = DDP(nn.Sequential(
+                              nn.Linear(784, 256), nn.ReLU(), nn.Linear(256, 10)))
+              optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+              criterion = nn.CrossEntropyLoss()
+
+              for epoch in range(1, 4):
+                  sampler.set_epoch(epoch)
+                  total = 0.0
+                  for bx, by in loader:
+                      optimizer.zero_grad()
+                      loss = criterion(model(bx), by)
+                      loss.backward()
+                      optimizer.step()
+                      total += loss.item()
+                  print(f"[Rank {rank}] Epoch {epoch}/3  loss={total/len(loader):.4f}",
+                        flush=True)
+
+              dist.destroy_process_group()
+              print(f"[Rank {rank}] done.", flush=True)
+              PYEOF
+              python3 /tmp/train.py

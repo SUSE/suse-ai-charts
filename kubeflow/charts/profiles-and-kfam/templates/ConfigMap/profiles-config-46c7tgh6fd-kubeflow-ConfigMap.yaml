@@ -1,0 +1,12 @@
+apiVersion: v1
+data:
+  ADMIN: {{ .Values.configMapData.ADMIN | quote }}
+  USERID_HEADER: {{ .Values.configMapData.USERID_HEADER | quote }}
+  USERID_PREFIX: {{ .Values.configMapData.USERID_PREFIX | quote }}
+  WORKLOAD_IDENTITY: {{ .Values.configMapData.WORKLOAD_IDENTITY | quote }}
+kind: ConfigMap
+metadata:
+  labels:
+    kustomize.component: profiles
+  name: profiles-config-46c7tgh6fd
+  namespace: kubeflow

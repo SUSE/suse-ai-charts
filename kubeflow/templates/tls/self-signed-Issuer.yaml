@@ -1,0 +1,10 @@
+{{- $kir := index .Values "kubeflow-istio-resources" }}
+{{- if eq $kir.tls.source "selfSigned" }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: kubeflow-selfsigned
+  namespace: istio-system
+spec:
+  selfSigned: {}
+{{- end }}

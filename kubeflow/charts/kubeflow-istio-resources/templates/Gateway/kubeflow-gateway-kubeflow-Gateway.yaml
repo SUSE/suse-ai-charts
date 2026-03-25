@@ -1,0 +1,47 @@
+{{- if and .Values.externalDNSEnabled .Values.hostname }}
+{{- $_ := set .Values.gateway.annotations "external-dns.alpha.kubernetes.io/hostname" .Values.hostname}}
+{{- end }}
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: kubeflow-gateway
+  namespace: kubeflow
+  {{- with .Values.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    {{- if .Values.istioGateway }}
+    {{- toYaml .Values.istioGateway.selector | nindent 4 }}
+    {{- else }}
+    istio: istio
+    {{- end }}
+  servers:
+  {{- $host := .Values.hostname | default "*" }}
+  {{- if ne .Values.tls.source "" }}
+  - hosts:
+    - {{ $host | quote }}
+    port:
+      name: https
+      number: 443
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: {{ .Values.tls.existingSecret | default .Values.tls.credentialName }}
+  {{- if .Values.tls.httpsRedirect }}
+  - hosts:
+    - '*'
+    port:
+      name: http
+      number: 80
+      protocol: HTTP
+    tls:
+      httpsRedirect: true
+  {{- end }}
+  {{- else }}
+  - hosts:
+    - {{ $host | quote }}
+    port:
+      {{- toYaml .Values.gateway.port | nindent 6 }}
+  {{- end }}

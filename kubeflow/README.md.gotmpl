@@ -1,0 +1,53 @@
+# {{ template "chart.name" . }}
+
+{{ template "chart.description" . }}
+
+## Image Registry and Pull Secrets
+
+All sub-charts follow the [SUSE Application Collection](https://dp.apps.rancher.io) standardization
+for `global.imageRegistry` and `global.imagePullSecrets`.
+
+### global.imageRegistry
+
+Override the container registry for **every** component image in one place:
+
+```yaml
+global:
+  imageRegistry: "my-registry.example.com"
+```
+
+Precedence: `global.imageRegistry` → per-component `image.registry` → no prefix.
+
+### global.imagePullSecrets
+
+Inject pull secrets into every pod. Accepts both string and object formats:
+
+```yaml
+global:
+  imagePullSecrets:
+    - name: my-pull-secret
+```
+
+Chart-level `imagePullSecrets` (under a sub-chart's values root) act as a fallback when
+`global.imagePullSecrets` is empty.
+
+## Installing the Chart
+
+```bash
+helm install kubeflow oci://dp.apps.rancher.io/charts/kubeflow \
+  --namespace kubeflow \
+  --set global.imagePullSecrets[0].name=application-collection
+```
+
+To mirror all images through a private registry:
+
+```bash
+helm install kubeflow oci://dp.apps.rancher.io/charts/kubeflow \
+  --namespace kubeflow \
+  --set global.imageRegistry=my-registry.example.com \
+  --set global.imagePullSecrets[0].name=my-pull-secret
+```
+
+## Values
+
+{{ template "chart.valuesSection" . }}

@@ -1,0 +1,28 @@
+{{- if .Values.trainer.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-trainer"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    sidecar.istio.io/nativeSidecar: "true"
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test
+    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.busybox.registry "repository" .Values.testImages.busybox.repository "tag" .Values.testImages.busybox.tag "Values" .Values) }}
+    command:
+    - sh
+    - -c
+    - |
+      nc -zw5 kubeflow-trainer-controller-manager.kubeflow.svc.cluster.local 8080 \
+        && echo "Trainer controller metrics port reachable" \
+        || (echo "Trainer controller TCP check failed" && exit 1)
+      wget -qO- --timeout=10 http://kubeflow-trainer-controller-manager.kubeflow:8081/healthz \
+        && echo "Trainer controller healthz OK" \
+        || (echo "Trainer controller healthz check failed" && exit 1)
+{{- end }}

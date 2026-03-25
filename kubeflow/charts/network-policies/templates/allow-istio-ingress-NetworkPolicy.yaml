@@ -1,0 +1,16 @@
+# Allow all ingress from the istio-system namespace (Envoy sidecar + ingress gateway).
+# This is required for Istio service mesh traffic and the ingress gateway to reach pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-ingress
+  namespace: kubeflow
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system

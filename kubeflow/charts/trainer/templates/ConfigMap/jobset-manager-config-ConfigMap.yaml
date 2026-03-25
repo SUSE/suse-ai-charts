@@ -1,0 +1,19 @@
+{{- if .Values.jobset.controller.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    control-plane: jobset-controller-manager
+  name: jobset-manager-config
+  namespace: kubeflow
+data:
+  controller_manager_config.yaml: |
+    apiVersion: config.jobset.x-k8s.io/v1alpha1
+    kind: Configuration
+    leaderElection:
+      leaderElect: true
+    internalCertManagement:
+      enable: true
+      webhookServiceName: jobset-webhook-service
+      webhookSecretName: jobset-webhook-server-cert
+{{- end }}

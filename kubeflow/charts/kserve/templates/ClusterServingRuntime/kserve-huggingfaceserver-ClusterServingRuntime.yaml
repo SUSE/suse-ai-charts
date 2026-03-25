@@ -1,0 +1,25 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: ClusterServingRuntime
+metadata:
+  name: kserve-huggingfaceserver
+spec:
+  annotations:
+    prometheus.kserve.io/path: /metrics
+    prometheus.kserve.io/port: '8080'
+  containers:
+  - image: {{ include "kserve.image" .Values.huggingfaceServer }}
+    name: kserve-container
+    resources:
+      limits:
+        cpu: '4'
+        memory: 8Gi
+      requests:
+        cpu: '1'
+        memory: 2Gi
+  protocolVersions:
+  - v2
+  - grpc-v2
+  supportedModelFormats:
+  - autoSelect: true
+    name: huggingface
+    version: '1'

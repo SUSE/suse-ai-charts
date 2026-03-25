@@ -1,0 +1,16 @@
+# Allow all ingress from within the kubeflow namespace (pod-to-pod within the namespace).
+# Required for KFP components, metadata server, and the central dashboard to reach each other.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: kubeflow
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kubeflow

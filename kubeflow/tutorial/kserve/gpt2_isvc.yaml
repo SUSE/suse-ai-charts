@@ -1,0 +1,26 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gpt2
+  namespace: kubeflow-user-example-com
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: huggingface
+      # v2: enables Open Inference Protocol v2 (/v2/models/…) and the OpenAI-compat
+      # endpoints (/openai/v1/completions, /openai/v1/chat/completions).
+      # Use /v2/models/gpt2/infer for raw v2 inference; use /openai/v1/… for OpenAI-compat.
+      protocolVersion: v2
+      storageUri: hf://openai-community/gpt2   # HuggingFace Hub: org/model format required
+      args:
+        - --model_name=gpt2             # name used in /openai/v1/completions "model" field
+        - --dtype=float32                # float32 required for CPU inference
+        - --max_length=512
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi

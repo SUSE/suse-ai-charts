@@ -1,0 +1,221 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for container image registry pull secrets
+  imagePullSecrets: []
+
+controllerManager:
+  image:
+    registry: docker.io
+    repository: kserve/kserve-controller
+    tag: v0.16.0
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    limits:
+      cpu: 100m
+      memory: 300Mi
+    requests:
+      cpu: 100m
+      memory: 200Mi
+
+kubeRbacProxy:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/kube-rbac-proxy
+    tag: "0.20.2"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+storageInitializer:
+  image:
+    registry: docker.io
+    repository: kserve/storage-initializer
+    tag: v0.16.0
+    pullPolicy: IfNotPresent
+
+# Serving runtime images - these are used by ClusterServingRuntime resources
+tensorflowServing:
+  image:
+    registry: docker.io
+    repository: tensorflow/serving
+    tag: "2.6.2"
+    pullPolicy: IfNotPresent
+
+huggingfaceServer:
+  image:
+    registry: docker.io
+    repository: kserve/huggingfaceserver
+    tag: v0.16.0
+    pullPolicy: IfNotPresent
+
+xgbServer:
+  image:
+    registry: docker.io
+    repository: kserve/xgbserver
+    tag: v0.15.2
+    pullPolicy: IfNotPresent
+
+lgbServer:
+  image:
+    registry: docker.io
+    repository: kserve/lgbserver
+    tag: v0.15.2
+    pullPolicy: IfNotPresent
+
+sklearnServer:
+  image:
+    registry: docker.io
+    repository: kserve/sklearnserver
+    tag: v0.15.2
+    pullPolicy: IfNotPresent
+
+paddleServer:
+  image:
+    registry: docker.io
+    repository: kserve/paddleserver
+    tag: v0.15.2
+    pullPolicy: IfNotPresent
+
+pmmlServer:
+  image:
+    registry: docker.io
+    repository: kserve/pmmlserver
+    tag: v0.15.2
+    pullPolicy: IfNotPresent
+
+tritonServer:
+  image:
+    registry: nvcr.io
+    repository: nvidia/tritonserver
+    tag: "23.05-py3"
+    pullPolicy: IfNotPresent
+
+mlServer:
+  image:
+    registry: docker.io
+    repository: seldonio/mlserver
+    tag: "1.5.0"
+    pullPolicy: IfNotPresent
+
+torchServe:
+  image:
+    registry: docker.io
+    repository: pytorch/torchserve-kfs
+    tag: "0.9.0"
+    pullPolicy: IfNotPresent
+
+# Domain for InferenceService external URLs.
+# Must match knativeServing.domain — both are set from the _kserveAccess.domain
+# anchor in the umbrella chart so they stay in sync automatically.
+ingressDomain: "example.com"
+
+inferenceServiceConfig:
+  agent: |
+    {
+        "image" : "kserve/agent:v0.16.0",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1"
+    }
+  batcher: |
+    {
+        "image" : "kserve/agent:v0.16.0",
+        "memoryRequest": "1Gi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "1",
+        "cpuLimit": "1"
+    }
+  credentials: |
+    {
+       "gcs": {
+           "gcsCredentialFileName": "gcloud-application-credentials.json"
+       },
+       "s3": {
+           "s3AccessKeyIDName": "AWS_ACCESS_KEY_ID",
+           "s3SecretAccessKeyName": "AWS_SECRET_ACCESS_KEY",
+           "s3Endpoint": "",
+           "s3UseHttps": "",
+           "s3Region": "",
+           "s3VerifySSL": "",
+           "s3UseVirtualBucket": "",
+           "s3UseAnonymousCredential": "",
+           "s3CABundle": ""
+       }
+    }
+  deploy: |
+    {
+      "defaultDeploymentMode": "Serverless"
+    }
+  explainers: |
+    {
+        "alibi": {
+            "image" : "kserve/alibi-explainer",
+            "defaultImageVersion": "v0.16.0"
+        },
+        "aix": {
+            "image" : "kserve/aix-explainer",
+            "defaultImageVersion": "v0.16.0"
+        },
+        "art": {
+            "image" : "kserve/art-explainer",
+            "defaultImageVersion": "v0.16.0"
+        }
+    }
+  ingress: |
+    {
+      "ingressGateway": "kubeflow/kubeflow-gateway",
+      "ingressService": "istio.istio-system.svc.cluster.local",
+      "localGateway": "knative-serving/knative-local-gateway",
+      "localGatewayService": "knative-local-gateway.istio-system.svc.cluster.local",
+      "ingressDomain": "example.com",
+      "ingressClassName": "istio",
+      "domainTemplate": "{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}",
+      "urlScheme": "http",
+      "disableIstioVirtualHost": false
+    }
+  logger: |
+    {
+        "image" : "kserve/agent:v0.16.0",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1",
+        "defaultUrl": "http://default-broker"
+    }
+  metricsAggregator: |
+    {
+      "enableMetricAggregation": "false",
+      "enablePrometheusScraping" : "false"
+    }
+  router: |
+    {
+        "image" : "kserve/router:v0.16.0",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1"
+    }
+  storageInitializer: |
+    {
+        "image" : "kserve/storage-initializer:v0.16.0",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1",
+        "storageSpecSecretName": "storage-config",
+        "caBundleConfigMapName": "",
+        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
+        "enableModelcar": false,
+        "cpuModelcar": "10m",
+        "memoryModelcar": "15Mi",
+        "uidModelcar": 10
+    }
