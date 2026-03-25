@@ -1038,10 +1038,10 @@ kubectl get clusterservingruntimes
 kubectl apply -f tutorial/kserve/gpt2_isvc.yaml
 ```
 
-The predictor pod starts a `storage-initializer` init container that is skipped
-(no `storageUri` is set); the main container downloads GPT-2 from Hugging Face
-Hub directly.  This takes 1-3 minutes on the first run depending on network
-speed.
+The predictor pod starts a `storage-initializer` init container that downloads
+GPT-2 from Hugging Face Hub (via the `hf://` URI in `storageUri`) before the
+main container starts serving.  This takes 1-3 minutes on the first run
+depending on network speed.
 
 Watch until `READY = True`:
 
@@ -1204,6 +1204,13 @@ print(chat.choices[0].message.content)
 
 For a GPU-accelerated deployment, update `storageUri`, `--model_name`, `dtype`, and
 resources — everything else stays the same:
+
+> **`--model_name` and the `"model"` field:** The value you pass as `--model_name`
+> is what you must use in the `"model"` field of every `/openai/v1/completions`
+> or `/openai/v1/chat/completions` request.  If you omit `--model_name` from the
+> IS args entirely, the model is registered under the InferenceService name by
+> default (the `ClusterServingRuntime` supplies `--model_name={{.Name}}`, where
+> `{{.Name}}` is substituted with the IS metadata name at pod creation time).
 
 ```yaml
 # excerpt — fields to change in gpt2_isvc.yaml

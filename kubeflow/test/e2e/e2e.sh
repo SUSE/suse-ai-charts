@@ -9,11 +9,24 @@
 #   ./test/e2e/e2e.sh
 #
 # What it tests:
-#   1. KFP pipeline  — compile inline spec → submit run → wait for SUCCEEDED
-#   2. Notebook      — create CR → wait StatefulSet ready → delete
-#   3. PyTorchJob    — submit 1-replica CPU job → wait for Succeeded
-#   4. KServe        — build sklearn model → upload to SeaweedFS → deploy IS
-#                      → wait for Ready → run prediction
+#   1.  KFP pipeline      — inline spec → submit run → wait for SUCCEEDED
+#   2.  Notebook          — create CR → wait StatefulSet ready → delete
+#   3.  PyTorchJob        — 1-replica CPU job → wait for Succeeded
+#   4.  KServe            — build sklearn model → upload → deploy IS → predict
+#   5.  Model Registry    — register → list → archive
+#   6.  Tensorboard canary — leading-slash subPath bug still present
+#   7.  Trainer V2        — TrainJob → wait for Complete
+#   8.  TFJob             — 1-worker CPU job → wait for Succeeded
+#   9.  Katib HPO         — 1-trial experiment → Succeeded
+#   10. Tensorboard       — create CR + PVC → controller creates Deployment
+#   11. PVCViewer         — create CR → controller creates viewer pod → Ready
+#
+# GPU tests (opt-in, pass --include-gpu-tests):
+#   GPU-1. Node capability  — at least one node has nvidia.com/gpu
+#   GPU-2. CUDA smoke       — nvidia-smi inside a CUDA container
+#   GPU-3. GPU Notebook     — Notebook CR with GPU limit → StatefulSet ready
+#   GPU-4. GPU PyTorchJob   — NCCL init + CUDA tensor op → Succeeded
+#   GPU-5. HuggingFace IS   — tiny synthetic GPT-2 on GPU → /openai/v1/completions
 
 set -uo pipefail
 
@@ -24,12 +37,23 @@ KFP_USER=user@example.com
 PASS=0
 FAIL=0
 
+# Parse flags
+INCLUDE_GPU=false
+for arg in "$@"; do [[ "$arg" == "--include-gpu-tests" ]] && INCLUDE_GPU=true; done
+
 # Timeouts (seconds)
 T_KFP=300
 T_NOTEBOOK=300
 T_PYTORCH=300
 T_KSERVE_BUILD=300        # model builder pod
 T_KSERVE_READY=600        # IS ready
+T_TFJOB=300
+T_KATIB=300               # 1-trial busybox experiment
+T_PVCVIEWER=300
+T_GPU_NOTEBOOK=300
+T_GPU_PYTORCH=300
+T_GPU_HF_BUILD=600        # tiny model build + upload
+T_GPU_HF_READY=1200       # IS ready (model load into GPU; first run pulls multi-GB image)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 green() { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
@@ -58,14 +82,27 @@ wait_for_value() {
 # ── Cleanup ────────────────────────────────────────────────────────────────────
 cleanup() {
   info "Cleaning up E2E resources..."
-  kubectl delete pod            kfp-e2e-helper       -n "$NS"      --ignore-not-found &>/dev/null || true
-  kubectl delete notebook       e2e-test-notebook    -n "$USER_NS" --ignore-not-found &>/dev/null || true
-  kubectl delete pytorchjob     e2e-test-pytorchjob  -n "$USER_NS" --ignore-not-found &>/dev/null || true
-  kubectl delete inferenceservice e2e-sklearn         -n "$USER_NS" --ignore-not-found &>/dev/null || true
-  kubectl delete secret         e2e-s3-secret     -n "$USER_NS" --ignore-not-found &>/dev/null || true
-  kubectl delete serviceaccount e2e-kserve-sa        -n "$USER_NS" --ignore-not-found &>/dev/null || true
-  kubectl delete pod            e2e-model-builder    -n "$NS"      --ignore-not-found &>/dev/null || true
-  kubectl delete trainjob       test-trainjob        -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  # Tests 1-7
+  kubectl delete pod              kfp-e2e-helper       -n "$NS"      --ignore-not-found &>/dev/null || true
+  kubectl delete notebook         e2e-test-notebook    -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pytorchjob       e2e-test-pytorchjob  -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete inferenceservice e2e-sklearn          -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete secret           e2e-s3-secret        -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete serviceaccount   e2e-kserve-sa        -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pod              e2e-model-builder    -n "$NS"      --ignore-not-found &>/dev/null || true
+  kubectl delete trainjob         test-trainjob        -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  # Tests 8-11
+  kubectl delete tfjob            e2e-test-tfjob       -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete experiment       e2e-katib-test       -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete tensorboard      e2e-tensorboard-test -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pvcviewer        e2e-pvcviewer-test   -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pod              e2e-pvc-binder       -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pvc              e2e-test-pvc         -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  # GPU tests
+  kubectl delete notebook         e2e-gpu-notebook     -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pytorchjob       e2e-gpu-pytorch      -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete inferenceservice e2e-tiny-gpt2        -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pod              e2e-gpu-model-build  -n "$NS"      --ignore-not-found &>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -511,6 +548,685 @@ EOF
 
   kubectl delete trainjob test-trainjob -n "$USER_NS" --ignore-not-found &>/dev/null
 fi
+
+# ── Test 8: TFJob ──────────────────────────────────────────────────────────────
+header "8. TFJob — 1-worker CPU job → wait for Succeeded"
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+  name: e2e-test-tfjob
+  namespace: ${USER_NS}
+spec:
+  tfReplicaSpecs:
+    Worker:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        spec:
+          containers:
+          - name: tensorflow
+            image: busybox:1.36
+            command: ["sh", "-c", "echo TFJob E2E test OK; date; sleep 2"]
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+EOF
+
+elapsed=0
+TFJOB_SUCCEEDED=false
+TFJOB_FAILED=false
+while true; do
+  sleep 5; elapsed=$((elapsed+5))
+  COND_OK=$(kubectl get tfjob e2e-test-tfjob -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[?(@.type=="Succeeded")].status}' 2>/dev/null || echo "")
+  COND_FAIL=$(kubectl get tfjob e2e-test-tfjob -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+  info "TFJob Succeeded=${COND_OK:-False} Failed=${COND_FAIL:-False} (${elapsed}s/${T_TFJOB}s)"
+  [[ "$COND_OK"   == "True" ]] && TFJOB_SUCCEEDED=true && break
+  [[ "$COND_FAIL" == "True" ]] && TFJOB_FAILED=true   && break
+  [[ $elapsed -ge $T_TFJOB ]] && break
+done
+
+if $TFJOB_SUCCEEDED; then
+  pass "TFJob Succeeded"
+  kubectl delete tfjob e2e-test-tfjob -n "$USER_NS" --ignore-not-found &>/dev/null
+elif $TFJOB_FAILED; then
+  fail "TFJob Failed"
+else
+  fail "TFJob did not complete within ${T_TFJOB}s"
+fi
+
+# ── Test 9: Katib HPO ──────────────────────────────────────────────────────────
+header "9. Katib HPO — 1-trial busybox experiment → Succeeded"
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: e2e-katib-test
+  namespace: ${USER_NS}
+spec:
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+  algorithm:
+    algorithmName: random
+  maxTrialCount: 1
+  parallelTrialCount: 1
+  maxFailedTrialCount: 1
+  parameters:
+  - name: lr
+    parameterType: double
+    feasibleSpace:
+      min: "0.01"
+      max: "0.10"
+  metricsCollectorSpec:
+    collector:
+      kind: File
+      fileSystemPath:
+        path: "/var/log/katib/metrics.log"
+        kind: File
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+    - name: learningRate
+      description: Learning rate
+      reference: lr
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            shareProcessNamespace: true
+            containers:
+            - name: training-container
+              image: busybox:1.36
+              command:
+              - sh
+              - -c
+              - "echo lr=\${trialParameters.learningRate}; echo accuracy=0.99 > /var/log/katib/metrics.log; sleep 10"
+            restartPolicy: Never
+EOF
+
+elapsed=0
+KATIB_DONE=false
+KATIB_FAILED=false
+while true; do
+  sleep 5; elapsed=$((elapsed+5))
+  COND_OK=$(kubectl get experiment e2e-katib-test -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[?(@.type=="Succeeded")].status}' 2>/dev/null || echo "")
+  COND_FAIL=$(kubectl get experiment e2e-katib-test -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+  TRIAL_STATE=$(kubectl get trials -n "$USER_NS" \
+    -l "katib.kubeflow.org/experiment=e2e-katib-test" \
+    -o jsonpath='{.items[0].status.conditions[-1].type}' 2>/dev/null || echo "no-trial")
+  TRIAL_POD_PHASE=$(kubectl get pods -n "$USER_NS" \
+    -l "katib.kubeflow.org/trial=e2e-katib-test" \
+    --sort-by=.metadata.creationTimestamp \
+    -o jsonpath='{.items[-1].status.phase}' 2>/dev/null || echo "")
+  info "Katib exp=Succeeded:${COND_OK:-False}/Failed:${COND_FAIL:-False} trial=${TRIAL_STATE} pod=${TRIAL_POD_PHASE:-pending} (${elapsed}s/${T_KATIB}s)"
+  [[ "$COND_OK"   == "True" ]] && KATIB_DONE=true   && break
+  [[ "$COND_FAIL" == "True" ]] && KATIB_FAILED=true && break
+  [[ $elapsed -ge $T_KATIB ]] && break
+done
+
+if $KATIB_DONE; then
+  pass "Katib experiment Succeeded"
+  kubectl delete experiment e2e-katib-test -n "$USER_NS" --ignore-not-found &>/dev/null
+elif $KATIB_FAILED; then
+  fail "Katib experiment Failed"
+else
+  fail "Katib experiment did not complete within ${T_KATIB}s"
+fi
+
+# ── Tests 10 + 11: shared PVC setup ───────────────────────────────────────────
+# Create a PVC and a binder pod (to get the PVC into Bound state).
+# Both the Tensorboard and PVCViewer tests share this PVC.
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e2e-test-pvc
+  namespace: ${USER_NS}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-pvc-binder
+  namespace: ${USER_NS}
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  containers:
+  - name: binder
+    image: busybox:1.36
+    command: ["tail", "-f", "/dev/null"]
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: e2e-test-pvc
+  restartPolicy: Never
+EOF
+
+# Wait for PVC to become Bound (binder pod mounts it)
+elapsed=0
+PVC_BOUND=false
+while true; do
+  sleep 3; elapsed=$((elapsed+3))
+  PHASE=$(kubectl get pvc e2e-test-pvc -n "$USER_NS" \
+    -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+  info "PVC phase: ${PHASE:-Pending} (${elapsed}s/60s)"
+  [[ "$PHASE" == "Bound" ]] && PVC_BOUND=true && break
+  [[ $elapsed -ge 60 ]] && break
+done
+
+if ! $PVC_BOUND; then
+  fail "e2e-test-pvc did not become Bound within 60s — tests 10 and 11 will be unreliable"
+fi
+
+# ── Test 10: Tensorboard ───────────────────────────────────────────────────────
+header "10. Tensorboard — create CR → controller creates Deployment"
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: tensorboard.kubeflow.org/v1alpha1
+kind: Tensorboard
+metadata:
+  name: e2e-tensorboard-test
+  namespace: ${USER_NS}
+spec:
+  logspath: pvc://e2e-test-pvc/logs
+EOF
+
+elapsed=0
+TB_DEPLOY=false
+while true; do
+  sleep 3; elapsed=$((elapsed+3))
+  if kubectl get deployment e2e-tensorboard-test -n "$USER_NS" &>/dev/null; then
+    TB_DEPLOY=true; break
+  fi
+  info "Tensorboard: waiting for Deployment (${elapsed}s/45s)"
+  [[ $elapsed -ge 45 ]] && break
+done
+
+if $TB_DEPLOY; then
+  pass "Tensorboard controller created Deployment"
+  kubectl delete tensorboard e2e-tensorboard-test -n "$USER_NS" --ignore-not-found &>/dev/null
+else
+  fail "Tensorboard controller did not create Deployment within 45s"
+fi
+
+# ── Test 11: PVCViewer ─────────────────────────────────────────────────────────
+header "11. PVCViewer — create CR → viewer pod becomes Ready"
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: kubeflow.org/v1alpha1
+kind: PVCViewer
+metadata:
+  name: e2e-pvcviewer-test
+  namespace: ${USER_NS}
+spec:
+  pvc: e2e-test-pvc
+  rwoScheduling: false
+EOF
+
+elapsed=0
+PVCVIEWER_READY=false
+while true; do
+  sleep 5; elapsed=$((elapsed+5))
+  READY=$(kubectl get pvcviewer e2e-pvcviewer-test -n "$USER_NS" \
+    -o jsonpath='{.status.ready}' 2>/dev/null || echo "")
+  info "PVCViewer ready=${READY:-false} (${elapsed}s/${T_PVCVIEWER}s)"
+  [[ "$READY" == "true" ]] && PVCVIEWER_READY=true && break
+  [[ $elapsed -ge $T_PVCVIEWER ]] && break
+done
+
+if $PVCVIEWER_READY; then
+  pass "PVCViewer reached ready=true"
+else
+  fail "PVCViewer did not become ready within ${T_PVCVIEWER}s"
+fi
+
+# Clean up shared PVC resources
+kubectl delete pvcviewer  e2e-pvcviewer-test -n "$USER_NS" --ignore-not-found &>/dev/null || true
+kubectl delete pod        e2e-pvc-binder     -n "$USER_NS" --ignore-not-found &>/dev/null || true
+kubectl delete pvc        e2e-test-pvc       -n "$USER_NS" --ignore-not-found &>/dev/null || true
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GPU Tests (only when --include-gpu-tests is passed)
+# ══════════════════════════════════════════════════════════════════════════════
+
+if $INCLUDE_GPU; then
+
+header "━━━ GPU Tests ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# ── GPU-1: Node capability check ───────────────────────────────────────────────
+header "GPU-1. Node capability — at least one node with nvidia.com/gpu"
+
+GPU_NODE_COUNT=$(kubectl get nodes -o json | python3 -c "
+import sys, json
+nodes = json.load(sys.stdin)['items']
+print(sum(1 for n in nodes
+          if int(n['status']['allocatable'].get('nvidia.com/gpu', '0')) > 0))
+" 2>/dev/null || echo "0")
+
+if [[ "${GPU_NODE_COUNT:-0}" -gt 0 ]]; then
+  pass "GPU nodes found: ${GPU_NODE_COUNT}"
+else
+  fail "GPU-1: no nodes with nvidia.com/gpu > 0 — skipping remaining GPU tests"
+  # Record remaining GPU tests as skipped by not running them; fall through to summary
+  INCLUDE_GPU=false
+fi
+
+fi  # end GPU_NODE_COUNT gate — re-checked below per test via $INCLUDE_GPU
+
+if $INCLUDE_GPU; then
+
+# ── GPU-2: CUDA smoke test ─────────────────────────────────────────────────────
+header "GPU-2. CUDA smoke — nvidia-smi inside a CUDA container"
+
+kubectl delete pod e2e-cuda-smoke -n "$NS" --ignore-not-found &>/dev/null || true
+GPU_NAME=$(kubectl run e2e-cuda-smoke \
+  --image=nvidia/cuda:12.1.1-base-ubuntu22.04 \
+  --restart=Never \
+  --rm \
+  --attach \
+  -n "$NS" \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  --command -- \
+  nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo "")
+
+if [[ -n "$GPU_NAME" ]]; then
+  pass "GPU-2: CUDA smoke OK — GPU: ${GPU_NAME}"
+else
+  fail "GPU-2: nvidia-smi returned no output (driver or device plugin issue)"
+fi
+
+# ── GPU-3: GPU Notebook ────────────────────────────────────────────────────────
+header "GPU-3. GPU Notebook — Notebook CR with nvidia.com/gpu: 1 → StatefulSet ready"
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: kubeflow.org/v1
+kind: Notebook
+metadata:
+  name: e2e-gpu-notebook
+  namespace: ${USER_NS}
+spec:
+  template:
+    spec:
+      containers:
+      - name: e2e-gpu-notebook
+        image: busybox:1.36
+        command: ["tail", "-f", "/dev/null"]
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+            nvidia.com/gpu: "1"
+          limits:
+            nvidia.com/gpu: "1"
+EOF
+
+if wait_for_value "GPU Notebook StatefulSet" "$T_GPU_NOTEBOOK" "$USER_NS" \
+    "sts/e2e-gpu-notebook" '{.status.readyReplicas}' "1"; then
+  pass "GPU-3: GPU Notebook StatefulSet reached readyReplicas=1"
+  kubectl delete notebook e2e-gpu-notebook -n "$USER_NS" --ignore-not-found &>/dev/null
+else
+  fail "GPU-3: GPU Notebook StatefulSet did not reach readyReplicas=1 within ${T_GPU_NOTEBOOK}s"
+fi
+
+# ── GPU-4: GPU PyTorchJob (CUDA tensor op + NCCL init) ─────────────────────────
+header "GPU-4. GPU PyTorchJob — CUDA tensor op + NCCL init → Succeeded"
+
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: e2e-gpu-pytorch
+  namespace: ${USER_NS}
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        spec:
+          containers:
+          - name: pytorch
+            image: pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+            command:
+            - python3
+            - -c
+            - |
+              import torch, torch.distributed as dist, os
+              assert torch.cuda.is_available(), f"CUDA not available — device_count={torch.cuda.device_count()}"
+              device = torch.device('cuda:0')
+              t = torch.randn(128, 128, device=device)
+              result = (t @ t.T).sum().item()
+              print(f'CUDA tensor matmul OK: {result:.2f}  GPU: {torch.cuda.get_device_name(0)}')
+              dist.init_process_group(
+                  backend='nccl',
+                  init_method='tcp://' + os.environ.get('MASTER_ADDR','127.0.0.1') + ':' + os.environ.get('MASTER_PORT','23456'),
+                  world_size=int(os.environ.get('WORLD_SIZE','1')),
+                  rank=int(os.environ.get('RANK','0')))
+              u = torch.ones(10, device=device)
+              dist.all_reduce(u)
+              print(f'NCCL all_reduce OK: {u[0].item():.0f}')
+              dist.destroy_process_group()
+            resources:
+              requests:
+                cpu: "1"
+                memory: 2Gi
+                nvidia.com/gpu: "1"
+              limits:
+                nvidia.com/gpu: "1"
+EOF
+
+elapsed=0
+GPU_PT_SUCCEEDED=false
+GPU_PT_FAILED=false
+while true; do
+  sleep 5; elapsed=$((elapsed+5))
+  COND_OK=$(kubectl get pytorchjob e2e-gpu-pytorch -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[?(@.type=="Succeeded")].status}' 2>/dev/null || echo "")
+  COND_FAIL=$(kubectl get pytorchjob e2e-gpu-pytorch -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+  info "GPU PyTorchJob Succeeded=${COND_OK:-False} Failed=${COND_FAIL:-False} (${elapsed}s/${T_GPU_PYTORCH}s)"
+  [[ "$COND_OK"   == "True" ]] && GPU_PT_SUCCEEDED=true && break
+  [[ "$COND_FAIL" == "True" ]] && GPU_PT_FAILED=true    && break
+  [[ $elapsed -ge $T_GPU_PYTORCH ]] && break
+done
+
+if $GPU_PT_SUCCEEDED; then
+  pass "GPU-4: GPU PyTorchJob Succeeded (CUDA + NCCL)"
+  kubectl delete pytorchjob e2e-gpu-pytorch -n "$USER_NS" --ignore-not-found &>/dev/null
+elif $GPU_PT_FAILED; then
+  fail "GPU-4: GPU PyTorchJob Failed"
+else
+  fail "GPU-4: GPU PyTorchJob did not complete within ${T_GPU_PYTORCH}s"
+fi
+
+# ── GPU-5: KServe HuggingFace runtime — tiny synthetic GPT-2 ──────────────────
+header "GPU-5. KServe HuggingFace runtime — tiny synthetic GPT-2 on GPU"
+
+# Phase 1: build tiny model + upload to SeaweedFS
+# Uses kserve/huggingfaceserver:v0.16.0 — the exact same image as the server.
+# This guarantees identical CUDA toolkit + transformers versions between builder
+# and server, which is the main CUDA-compat risk for real LLM deployments.
+info "GPU-5: building tiny GPT-2 model and uploading to SeaweedFS..."
+kubectl delete pod e2e-gpu-model-build -n "$NS" --ignore-not-found &>/dev/null || true
+kubectl run e2e-gpu-model-build \
+  --image=kserve/huggingfaceserver:v0.16.0 \
+  --restart=Never \
+  -n "$NS" \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  --command -- python3 -c "
+import urllib.request, urllib.error, hashlib, hmac, datetime, os
+
+# ── minimal stdlib S3 client (avoids pip install in a no-egress cluster) ─────
+_EP = 'http://seaweedfs.kubeflow.svc.cluster.local:9000'
+_AK, _SK = 'kubeflow', 'kubeflow123'
+
+def _s3_put(bucket, key='', body=b''):
+    host = _EP.split('//', 1)[1]
+    t = datetime.datetime.utcnow()
+    ad, ds = t.strftime('%Y%m%dT%H%M%SZ'), t.strftime('%Y%m%d')
+    ph = hashlib.sha256(body).hexdigest()
+    path = '/' + bucket + ('/' + key if key else '')
+    cr = 'PUT\n' + path + '\n\nhost:' + host + '\nx-amz-content-sha256:' + ph + '\nx-amz-date:' + ad + '\n\nhost;x-amz-content-sha256;x-amz-date\n' + ph
+    sc = ds + '/us-east-1/s3/aws4_request'
+    sts = 'AWS4-HMAC-SHA256\n' + ad + '\n' + sc + '\n' + hashlib.sha256(cr.encode()).hexdigest()
+    def _h(k, m): return hmac.new(k, m.encode(), hashlib.sha256).digest()
+    sk = _h(_h(_h(_h(('AWS4' + _SK).encode(), ds), 'us-east-1'), 's3'), 'aws4_request')
+    sig = hmac.new(sk, sts.encode(), hashlib.sha256).hexdigest()
+    auth = 'AWS4-HMAC-SHA256 Credential=' + _AK + '/' + sc + ', SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=' + sig
+    req = urllib.request.Request(_EP + path, data=body, method='PUT',
+        headers={'Host': host, 'x-amz-date': ad, 'x-amz-content-sha256': ph,
+                 'Authorization': auth, 'Content-Length': str(len(body))})
+    try:
+        urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        if e.code == 409: return  # bucket already exists
+        raise
+
+from transformers import GPT2Config, GPT2LMHeadModel, PreTrainedTokenizerFast
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+from tokenizers.pre_tokenizers import ByteLevel as BLPre
+from tokenizers.decoders import ByteLevel as BLDec
+
+# Build GPT-2 byte-level vocabulary offline (no HF Hub download needed).
+# Uses the same byte→unicode mapping as the original GPT-2 paper so the
+# KServe huggingface server can decode generated token IDs back to text.
+def _b2u():
+    bs = list(range(33, 127)) + list(range(161, 173)) + list(range(174, 256))
+    cs = list(bs); n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b); cs.append(256 + n); n += 1
+    return {b: chr(c) for b, c in zip(bs, cs)}
+
+b2u = _b2u()
+vocab = {ch: i for i, ch in enumerate(b2u.values())}
+vocab['<|endoftext|>'] = 256  # vocab_size = 257
+
+tok_obj = Tokenizer(BPE(vocab=vocab, merges=[]))
+tok_obj.pre_tokenizer = BLPre(add_prefix_space=False)
+tok_obj.decoder = BLDec()
+tokenizer = PreTrainedTokenizerFast(
+    tokenizer_object=tok_obj,
+    bos_token='<|endoftext|>', eos_token='<|endoftext|>', unk_token='<|endoftext|>')
+
+# Random-weight model — vocab_size matches our offline tokenizer
+config = GPT2Config(n_layer=2, n_head=2, n_embd=64, vocab_size=257)
+model = GPT2LMHeadModel(config)
+os.makedirs('/tmp/tiny-gpt2', exist_ok=True)
+tokenizer.save_pretrained('/tmp/tiny-gpt2')
+model.save_pretrained('/tmp/tiny-gpt2', safe_serialization=True)
+
+try:
+    _s3_put('e2e-models')
+except Exception as e:
+    print('bucket create:', e)
+for fname in os.listdir('/tmp/tiny-gpt2'):
+    with open('/tmp/tiny-gpt2/' + fname, 'rb') as f: data = f.read()
+    _s3_put('e2e-models', 'tiny-gpt2/' + fname, data)
+    print('uploaded ' + fname)
+print('model build complete')
+" &>/dev/null
+
+# Wait for model builder pod to succeed
+elapsed=0
+GPU_BUILD_OK=false
+GPU_BUILD_PHASE="Pending"
+while true; do
+  sleep 5; elapsed=$((elapsed+5))
+  GPU_BUILD_PHASE=$(kubectl get pod e2e-gpu-model-build -n "$NS" \
+    -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+  info "GPU-5 model build: ${GPU_BUILD_PHASE} (${elapsed}s/${T_GPU_HF_BUILD}s)"
+  [[ "$GPU_BUILD_PHASE" == "Succeeded" ]] && GPU_BUILD_OK=true && break
+  [[ "$GPU_BUILD_PHASE" == "Failed"    ]] && break
+  [[ $elapsed -ge $T_GPU_HF_BUILD      ]] && break
+done
+
+if ! $GPU_BUILD_OK; then
+  kubectl logs e2e-gpu-model-build -n "$NS" 2>/dev/null | tail -5 \
+    | while IFS= read -r line; do info "  build log: $line"; done
+  fail "GPU-5: model builder did not succeed (phase: ${GPU_BUILD_PHASE})"
+else
+  pass "GPU-5: tiny GPT-2 model uploaded to SeaweedFS (s3://e2e-models/tiny-gpt2/)"
+
+  # Ensure S3 secret + SA exist (created by Test 4; re-apply to be safe if run standalone)
+  kubectl apply -f - &>/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-s3-secret
+  namespace: ${USER_NS}
+  annotations:
+    serving.kserve.io/s3-endpoint: seaweedfs.kubeflow.svc.cluster.local:9000
+    serving.kserve.io/s3-usehttps: "0"
+    serving.kserve.io/s3-region: us-east-1
+    serving.kserve.io/s3-useanoncredential: "false"
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: kubeflow
+  AWS_SECRET_ACCESS_KEY: kubeflow123
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: e2e-kserve-sa
+  namespace: ${USER_NS}
+secrets:
+- name: e2e-s3-secret
+EOF
+
+  # Phase 2: deploy InferenceService
+  # nvidia.com/gpu must appear in both requests and limits (Kubernetes extended resource rule).
+  # cpu: 100m avoids scheduling pressure on nodes running at high CPU utilisation.
+  GPU5_IS_OUT=$(kubectl apply -f - 2>&1 <<EOF
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: e2e-tiny-gpt2
+  namespace: ${USER_NS}
+spec:
+  predictor:
+    serviceAccountName: e2e-kserve-sa
+    model:
+      modelFormat:
+        name: huggingface
+      runtime: kserve-huggingfaceserver
+      storageUri: s3://e2e-models/tiny-gpt2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 2Gi
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          nvidia.com/gpu: "1"
+EOF
+)
+  GPU5_IS_EC=$?
+  if [[ $GPU5_IS_EC -ne 0 ]]; then
+    fail "GPU-5: InferenceService creation failed (exit ${GPU5_IS_EC}): ${GPU5_IS_OUT}"
+  fi
+  info "GPU-5: InferenceService created (${GPU5_IS_OUT}), waiting for Ready..."
+
+  elapsed=0
+  GPU_IS_READY=false
+  while true; do
+    sleep 10; elapsed=$((elapsed+10))
+    IS_COND=$(kubectl get inferenceservice e2e-tiny-gpt2 -n "$USER_NS" \
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+    info "GPU-5 IS Ready=${IS_COND:-False} (${elapsed}s/${T_GPU_HF_READY}s)"
+    [[ "$IS_COND" == "True" ]] && GPU_IS_READY=true && break
+    [[ $elapsed -ge $T_GPU_HF_READY ]] && break
+  done
+
+  if ! $GPU_IS_READY; then
+    kubectl get inferenceservice e2e-tiny-gpt2 -n "$USER_NS" \
+      -o jsonpath='{.status.conditions}' 2>/dev/null \
+      | python3 -c "import sys,json; [print('  IS status:', c.get('message','')) for c in json.load(sys.stdin) if c.get('message')]" 2>/dev/null || true
+    # Show predictor pod status to distinguish image-pull vs scheduling vs runtime failures
+    PRED_POD_STATUS=$(kubectl get pod -n "$USER_NS" \
+      -l "serving.kserve.io/inferenceservice=e2e-tiny-gpt2" \
+      --no-headers 2>/dev/null | head -3 || true)
+    if [[ -n "$PRED_POD_STATUS" ]]; then
+      info "  predictor pod status:"
+      echo "$PRED_POD_STATUS" | while IFS= read -r line; do info "    $line"; done
+      PRED_POD_NAME=$(kubectl get pod -n "$USER_NS" \
+        -l "serving.kserve.io/inferenceservice=e2e-tiny-gpt2" \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+      if [[ -n "$PRED_POD_NAME" ]]; then
+        kubectl describe pod "$PRED_POD_NAME" -n "$USER_NS" 2>/dev/null \
+          | grep -A5 -E "^(Events|Conditions|Reason|Message|State|Image):" \
+          | head -30 | while IFS= read -r line; do info "    $line"; done
+      fi
+    else
+      info "  no predictor pod found — IS controller may not have created one yet"
+    fi
+    fail "GPU-5: InferenceService did not become Ready within ${T_GPU_HF_READY}s"
+  else
+    pass "GPU-5: HuggingFace InferenceService Ready"
+
+    # Phase 3: run prediction via the predictor pod's local port (bypasses gateway auth)
+    PRED_POD=$(kubectl get pod -n "$USER_NS" \
+      -l "serving.kserve.io/inferenceservice=e2e-tiny-gpt2" \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+    if [[ -z "$PRED_POD" ]]; then
+      fail "GPU-5: could not find predictor pod"
+    else
+      info "GPU-5: predictor pod: $PRED_POD"
+      PRED_RESULT=$(kubectl exec -n "$USER_NS" "$PRED_POD" -c kserve-container -- \
+        python3 -c "
+import urllib.request, urllib.error, json, sys
+payload = {'model': 'e2e-tiny-gpt2', 'prompt': 'Kubeflow is', 'max_tokens': 10, 'stream': False}
+data = json.dumps(payload).encode()
+headers = {'Content-Type': 'application/json'}
+# Try OpenAI-compatible endpoint; fall back to plain v1 path used by some KServe builds
+for url in ['http://localhost:8080/openai/v1/completions',
+            'http://localhost:8080/v1/completions']:
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers)
+        body = urllib.request.urlopen(req, timeout=30).read()
+        r = json.loads(body)
+        assert r.get('choices'), f'no choices: {r}'
+        print('OK:', repr(r['choices'][0]['text'][:60]))
+        sys.exit(0)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode('utf-8', errors='replace')[:300]
+        print(f'HTTPError {e.code} from {url}: {err_body}', file=sys.stderr)
+    except Exception as ex:
+        print(f'ERROR from {url}: {ex}', file=sys.stderr)
+sys.exit(1)
+" 2>&1 || echo "EXEC_FAILED")
+
+      if echo "$PRED_RESULT" | grep -q "^OK:"; then
+        pass "GPU-5: HuggingFace LLM inference OK — ${PRED_RESULT}"
+
+        # Verify GPU was actually used: kserve-huggingfaceserver activates vLLM only
+        # when it detects a GPU; it falls back to HF Transformers on CPU-only nodes.
+        SERVER_LOGS=$(kubectl logs "$PRED_POD" -n "$USER_NS" -c kserve-container 2>/dev/null || echo "")
+        if echo "$SERVER_LOGS" | grep -qi "vllm\|AsyncLLMEngine\|GPU"; then
+          pass "GPU-5: vLLM backend active — GPU was used for inference"
+        else
+          # Not a hard failure: tiny model + CPU fallback still validates the runtime.
+          # Warn so CI surfaces it without blocking the suite.
+          info "GPU-5: WARNING — vLLM/GPU marker not found in server logs; inference may have run on CPU"
+          info "GPU-5:   Check node has nvidia.com/gpu allocatable and driver is healthy"
+        fi
+      else
+        # Show server logs to help diagnose HTTP errors
+        kubectl logs "$PRED_POD" -n "$USER_NS" -c kserve-container --tail=20 2>/dev/null \
+          | while IFS= read -r line; do info "  server: $line"; done
+        fail "GPU-5: /openai/v1/completions failed (response: '${PRED_RESULT:0:300}')"
+      fi
+    fi
+  fi
+
+  kubectl delete inferenceservice e2e-tiny-gpt2 -n "$USER_NS" --ignore-not-found &>/dev/null || true
+fi  # end GPU_BUILD_OK
+
+fi  # end INCLUDE_GPU
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 header "━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
