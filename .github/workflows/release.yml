@@ -42,6 +42,9 @@ jobs:
           CHARTS=$(ls -d */Chart.yaml | xargs -n1 dirname)
           echo "charts=$(echo $CHARTS | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
+      - name: Helm login to AppCo registry
+        run: |
+          helm registry login ${{ secrets.APPCO_REGISTRY }} -u ${{ secrets.APPCO_USER }} -p ${{ secrets.APPCO_TOKEN }}
 
       - name: Package charts
         if: ${{ steps.detect.outputs.charts != '' }}
@@ -55,6 +58,7 @@ jobs:
             NAME=$(yq -r '.name' Chart.yaml)
             TAG="${NAME}-${VERSION}"
 
+            helm dependency update
             helm package .
 
             echo "chart_name=$NAME" >> "$GITHUB_OUTPUT"
