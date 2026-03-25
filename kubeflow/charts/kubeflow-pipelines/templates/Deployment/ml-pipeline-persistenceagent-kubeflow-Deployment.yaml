@@ -100,5 +100,5 @@ spec:
           sources:
           - serviceAccountToken:
               audience: pipelines.kubeflow.org
-              expirationSeconds: 3600
+              expirationSeconds: 86400
               path: persistenceagent-sa-token

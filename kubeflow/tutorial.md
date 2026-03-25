@@ -550,7 +550,7 @@ spec:
     name: torch-distributed
   trainer:
     numNodes: 2
-    image: pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
+    image: pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
     command: ["python", "train.py", "--epochs=10"]
     resourcesPerNode:
       requests: { cpu: "2", memory: "4Gi" }
@@ -1529,7 +1529,7 @@ Upload and run as usual via the KFP UI (Pipelines → Upload Pipeline).
 **Key SDK calls** (from `03_gpu_pipeline.py`):
 
 ```python
-@dsl.component(base_image="pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime")
+@dsl.component(base_image="pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime")
 def train_on_gpu(...):
     import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1654,7 +1654,7 @@ schedules each trial pod on a node that satisfies the resource request.
 # Excerpt from a Katib Experiment — trialSpec container section
 containers:
 - name: training-container
-  image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+  image: pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
   resources:
     requests:
       cpu: "2"

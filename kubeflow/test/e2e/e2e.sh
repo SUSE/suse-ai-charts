@@ -907,7 +907,7 @@ spec:
         spec:
           containers:
           - name: pytorch
-            image: pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+            image: pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             command:
             - python3
             - -c
