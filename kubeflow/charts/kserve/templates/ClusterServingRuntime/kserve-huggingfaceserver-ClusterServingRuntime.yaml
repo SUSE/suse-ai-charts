@@ -9,6 +9,8 @@ spec:
   containers:
   - image: {{ include "kserve.image" .Values.huggingfaceServer }}
     name: kserve-container
+    args:
+    - --model_name={{`{{.Name}}`}}
     resources:
       limits:
         cpu: '4'
@@ -17,6 +19,7 @@ spec:
         cpu: '1'
         memory: 2Gi
   protocolVersions:
+  - v1
   - v2
   - grpc-v2
   supportedModelFormats:
