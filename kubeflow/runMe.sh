@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Kubeflow deployment script
 # Usage:
-#   ./runMe.sh <registry-username> <registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>]
+#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>]
 # Or set env vars:
-#   REGISTRY_USERNAME=<user> REGISTRY_TOKEN=<token> [CLOUDFLARE_API_KEY=<CloudFlare API Key>] [KUBECONFIG=<path>] ./runMe.sh
+#   APPCO_REGISTRY_USER=<user> APPCO_REGISTRY_TOKEN=<token> SUSE_AI_REGISTRY_USER=<user> SUSE_AI_REGISTRY_TOKEN=<token> [CLOUDFLARE_API_KEY=<CloudFlare API Key>] [KUBECONFIG=<path>] ./runMe.sh
 
 set -euo pipefail
 
@@ -19,11 +19,14 @@ for _a in "$@"; do
     *) _pos+=("$_a") ;;
   esac
 done
-REGISTRY_USERNAME="${_pos[0]:-${REGISTRY_USERNAME:-}}"
-REGISTRY_TOKEN="${_pos[1]:-${REGISTRY_TOKEN:-}}"
+APPCO_REGISTRY_USER="${_pos[0]:-${APPCO_REGISTRY_USER:-}}"
+APPCO_REGISTRY_TOKEN="${_pos[1]:-${APPCO_REGISTRY_TOKEN:-}}"
+SUSE_AI_REGISTRY_USER="${_pos[2]:-${SUSE_AI_REGISTRY_USER:-regcode}}"
+SUSE_AI_REGISTRY_TOKEN="${_pos[3]:-${SUSE_AI_REGISTRY_TOKEN:-}}"
 unset _pos _a _skip
 
 : ${CLOUDFLARE_API_KEY:=""}
+
 
 CUSTOM_VALUES_FILE=
 VALUES_ARGUMENT=
@@ -57,7 +60,7 @@ while [ $# -gt 0 ] ; do
       fi
       ;;
     *)
-      # for now assume they are AppCo cred args
+      # for now assume they are AppCo cred args and SUSE registry cred args
       shift
       ;;
   esac
@@ -71,21 +74,32 @@ if [ -n "$CUSTOM_VALUES_FILE" ]; then
   VALUES_ARGUMENT="--values $CUSTOM_VALUES_FILE"
 fi
 
-if [[ -z "$REGISTRY_USERNAME" || -z "$REGISTRY_TOKEN" ]]; then
-  echo "Usage: $0 <registry-username> <registry-token>"
-  echo "  or set REGISTRY_USERNAME and REGISTRY_TOKEN environment variables"
+if [[ -z "$APPCO_REGISTRY_USER" || -z "$APPCO_REGISTRY_TOKEN" || -z "$SUSE_AI_REGISTRY_USER" || -z "$SUSE_AI_REGISTRY_TOKEN" ]]; then
+  echo "Usage: $0 <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token>"
+  echo "  or set APPCO_REGISTRY_USER, APPCO_REGISTRY_TOKEN, SUSE_AI_REGISTRY_USER, and SUSE_AI_REGISTRY_TOKEN environment variables"
   exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "=== Step 1 & 2: Create namespaces and all the required secrets ==="
+# Helm registry logins
+echo "=== Step 1: Helm registry login ==="
+echo "$APPCO_REGISTRY_TOKEN" | helm registry login dp.apps.rancher.io --username "$APPCO_REGISTRY_USER" --password-stdin
+echo "$SUSE_AI_REGISTRY_TOKEN" | helm registry login registry.suse.com --username "$SUSE_AI_REGISTRY_USER" --password-stdin
+
+echo "=== Step 2 & 3: Create namespaces and all the required secrets ==="
 for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
   kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
   kubectl create secret docker-registry application-collection \
     --docker-server=dp.apps.rancher.io \
-    --docker-username="$REGISTRY_USERNAME" \
-    --docker-password="$REGISTRY_TOKEN" \
+    --docker-username="$APPCO_REGISTRY_USER" \
+    --docker-password="$APPCO_REGISTRY_TOKEN" \
+    -n "$ns" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  kubectl create secret docker-registry suse-ai-registry \
+    --docker-server=registry.suse.com \
+    --docker-username="$SUSE_AI_REGISTRY_USER" \
+    --docker-password="$SUSE_AI_REGISTRY_TOKEN" \
     -n "$ns" \
     --dry-run=client -o yaml | kubectl apply -f -
 done
@@ -98,7 +112,7 @@ if [ -n "$CLOUDFLARE_API_KEY" ]; then
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
-echo "=== Step 3: Label kubeflow namespaces for Helm ==="
+echo "=== Step 4: Label kubeflow namespaces for Helm ==="
 for ns in kubeflow kubeflow-user-example-com; do
   kubectl label namespace "$ns" app.kubernetes.io/managed-by=Helm --overwrite
   kubectl annotate namespace "$ns" \
@@ -107,7 +121,7 @@ for ns in kubeflow kubeflow-user-example-com; do
     --overwrite
 done
 
-echo "=== Step 4: Install cert-manager ==="
+echo "=== Step 5: Install cert-manager ==="
 helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
   --version 1.19.3 \
   --namespace cert-manager \
@@ -116,7 +130,7 @@ helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager
   --set global.imagePullSecrets[0].name=application-collection \
   --wait --timeout 5m
 
-echo "=== Step 5: Install Istio ==="
+echo "=== Step 6: Install Istio ==="
 helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --version 1.1.3 \
   --namespace istio-system \
@@ -125,7 +139,7 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --force-conflicts \
   --wait --timeout 5m
 
-echo "=== Step 6: Package Kubeflow sub-charts ==="
+echo "=== Step 7: Package Kubeflow sub-charts ==="
 # Remove stale tarballs for local (file://) sub-charts so helm dependency update
 # always repackages them from source. External OCI/repo charts are left in place
 # and redownloaded only when their version changes.
@@ -139,7 +153,7 @@ grep -B2 'repository:.*file://' "$SCRIPT_DIR/Chart.yaml" \
 
 helm dependency update "$SCRIPT_DIR"
 
-echo "=== Step 7: Install Kubeflow ==="
+echo "=== Step 8: Install Kubeflow ==="
 # --force-conflicts: cert-manager-cainjector and the clusterrole-aggregation-controller
 # modify fields (caBundle, aggregated .rules) that Helm's server-side apply tracks.
 # --force-conflicts lets Helm reclaim ownership of those fields on each upgrade.

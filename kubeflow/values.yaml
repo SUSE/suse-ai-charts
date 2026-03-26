@@ -82,6 +82,7 @@ global:
   # not Helm time, so it cannot use Helm values).
   imagePullSecrets:
     - name: application-collection
+    - name: suse-ai-registry
 
   # Private/air-gapped registry prefix.
   # When set, sub-chart image helpers will prepend this value to all image references.

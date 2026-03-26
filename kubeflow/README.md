@@ -74,7 +74,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | Istio | 1.1.3 | Installed by `runMe.sh`; or pre-install manually |
 | Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
 | SUSE Application Collection credentials | — | Username + token for `dp.apps.rancher.io` (application-collection secret) |
-| SUSE Registry credentials | — | Username + token for `registry.suse.com` (suse-registry secret) — required when sub-charts pull from SUSE Registry |
+| SUSE Registry credentials | — | Username + token for `registry.suse.com` (suse-ai-registry secret) |
 
 **Storage class:** All PVCs use the cluster default StorageClass unless `global.storageClass` is set.
 For single-node clusters the Local Path Provisioner is sufficient for development.
@@ -111,18 +111,19 @@ steps before it.
 
 Prerequisite: A RKE2 cluster with a default storageClass configured.
 
-1. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `kubeflow-user-example-com`
-2. Creates `application-collection` and `suse-registry` image pull secrets in each namespace
-3. Labels the `kubeflow` and `kubeflow-user-example-com` namespaces for Helm ownership
-4. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
-5. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled
-6. Packages sub-charts via `helm dependency update`
-7. Installs the Kubeflow umbrella chart
+1. Performs Helm registry logins for `dp.apps.rancher.io` and `registry.suse.com`
+2. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `kubeflow-user-example-com`
+3. Creates `application-collection` (for dp.apps.rancher.io) and `suse-ai-registry` (for registry.suse.com) image pull secrets in each namespace
+4. Labels the `kubeflow` and `kubeflow-user-example-com` namespaces for Helm ownership
+5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
+6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled
+7. Packages sub-charts via `helm dependency update`
+8. Installs the Kubeflow umbrella chart
 
 #### Basic usage (NodePort / port-forward access)
 
 ```bash
-./runMe.sh
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token>
 ```
 
 After install the script prints the access URL automatically (NodePort or port-forward instructions
@@ -137,7 +138,7 @@ Password: 12341234
 #### Full argument reference
 
 ```bash
-./runMe.sh <registry-username> <registry-token> \
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
   [--kubeconfig <path-to-kubeconfig>] \
   [--cloudflare-api-key <CF-API-KEY>] \
   [-f <path-to-values-override.yaml>]
@@ -145,8 +146,10 @@ Password: 12341234
 
 | Argument | Env var alternative | Description |
 |----------|---------------------|-------------|
-| `<registry-username>` | `REGISTRY_USERNAME` | SUSE Application Collection username (for `dp.apps.rancher.io`) |
-| `<registry-token>` | `REGISTRY_TOKEN` | SUSE Application Collection token / password (for `dp.apps.rancher.io`) |
+| `<appco-registry-username>` | `APPCO_REGISTRY_USER` | SUSE Application Collection username (for `dp.apps.rancher.io`) |
+| `<appco-registry-token>` | `APPCO_REGISTRY_TOKEN` | SUSE Application Collection token / password (for `dp.apps.rancher.io`) |
+| `<suse-ai-registry-username>` | `SUSE_REGISTRY_USER` | SUSE Registry username (default: `regcode`) |
+| `<suse-ai-registry-token>` | `SUSE_REGISTRY_TOKEN` | SUSE Registry token / password (for `registry.suse.com`) SCC_REG_CODE for AI|
 | `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
 | `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
@@ -157,7 +160,7 @@ Password: 12341234
 Create a `my-values.yaml` file with your overrides (see [Configuration Scenarios](#configuration-scenarios) below), then:
 
 ```bash
-./runMe.sh <registry-username> <registry-token> -f my-values.yaml
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f my-values.yaml
 ```
 
 ---
@@ -171,7 +174,21 @@ Prerequisite: A RKE2 cluster with a default storageClass configured.
 
 > **Note:** using the latest versions of the helm charts is recommended.
 
-#### Step 1 — Create namespaces
+#### Step 1 — Helm registry login
+
+```bash
+# Login to SUSE Application Collection registry
+helm registry login dp.apps.rancher.io \
+  --username=<appco-registry-username> \
+  --password=<appco-registry-token>
+
+# Login to SUSE Registry
+helm registry login registry.suse.com \
+  --username=regcode \
+  --password=<suse-ai-registry-token>
+```
+
+#### Step 2 — Create namespaces
 
 ```bash
 for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
@@ -179,31 +196,31 @@ for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
 done
 ```
 
-#### Step 2 — Create image pull secrets
+#### Step 3 — Create image pull secrets
 
 ```bash
 # Create application-collection pull secret (SUSE Application Collection — dp.apps.rancher.io)
 for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
   kubectl create secret docker-registry application-collection \
     --docker-server=dp.apps.rancher.io \
-    --docker-username=<registry-username> \
-    --docker-password=<registry-token> \
+    --docker-username=<appco-registry-username> \
+    --docker-password=<appco-registry-token> \
     -n "$ns" \
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
-# Create suse-registry pull secret (SUSE Registry — registry.suse.com)
+# Create suse-ai-registry pull secret (SUSE Registry — registry.suse.com)
 for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
-  kubectl create secret docker-registry suse-registry \
+  kubectl create secret docker-registry suse-ai-registry \
     --docker-server=registry.suse.com \
-    --docker-username=<suse-registry-username> \
-    --docker-password=<suse-registry-token> \
+    --docker-username=regcode \
+    --docker-password=<suse-ai-registry-token> \
     -n "$ns" \
     --dry-run=client -o yaml | kubectl apply -f -
 done
 ```
 
-#### Step 3 — Label namespaces for Helm
+#### Step 4 — Label namespaces for Helm
 
 ```bash
 for ns in kubeflow kubeflow-user-example-com; do
@@ -215,7 +232,7 @@ for ns in kubeflow kubeflow-user-example-com; do
 done
 ```
 
-#### Step 4 — Install cert-manager
+#### Step 5 — Install cert-manager
 
 ```bash
 helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
@@ -227,7 +244,7 @@ helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager
   --wait --timeout 5m
 ```
 
-#### Step 5 — Install Istio
+#### Step 6 — Install Istio
 
 ```bash
 helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
@@ -238,7 +255,7 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --wait --timeout 5m
 ```
 
-#### Step 6 — Install Kubeflow
+#### Step 7 — Install Kubeflow
 
 Install directly from the OCI registry (no source checkout required):
 
@@ -483,7 +500,7 @@ monitoring:
 Install:
 
 ```bash
-./runMe.sh <registry-username> <registry-token> \
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
   --cloudflare-api-key "<YOUR-CLOUDFLARE-API-TOKEN>" \
   -f prod-values.yaml
 ```
