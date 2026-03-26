@@ -477,7 +477,6 @@ monitoring:
 #         requests.memory: 8Gi
 #     - email: alice-smith@corp.com
 #       namespace: alice-smith-ext    # must differ from above
-additionalUsers: []
 
 # ============================================================================
 # Subchart Overrides
@@ -776,6 +775,18 @@ externaldns:
 
 # --- User Namespace ---
 user-namespace:
+  # Additional user profiles. Each entry creates a Profile CR and deploys all
+  # KFP per-namespace resources (artifact server, viz server, credentials,
+  # authorization policies) in the user's namespace.
+  #
+  # Example:
+  #   additionalUsers:
+  #     - email: alice@example.com
+  #       namespace: alice        # explicit name recommended
+  #     - email: bob@example.com
+  #       namespace: bob
+  additionalUsers: []
+
   # KFP per-namespace resources — credentials must match pipelines.seaweedfs above.
   pipelines:
     seaweedfs:

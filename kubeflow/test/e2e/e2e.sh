@@ -39,7 +39,13 @@ FAIL=0
 
 # Parse flags
 INCLUDE_GPU=false
-for arg in "$@"; do [[ "$arg" == "--include-gpu-tests" ]] && INCLUDE_GPU=true; done
+for arg in "$@"; do
+  case "$arg" in
+    --include-gpu-tests) INCLUDE_GPU=true ;;
+    --user-namespace=*)  USER_NS="${arg#*=}" ;;
+    --user-email=*)      KFP_USER="${arg#*=}" ;;
+  esac
+done
 
 # Timeouts (seconds)
 T_KFP=300
@@ -640,6 +646,9 @@ spec:
       kind: Job
       spec:
         template:
+          metadata:
+            annotations:
+              sidecar.istio.io/inject: "false"
           spec:
             shareProcessNamespace: true
             containers:
