@@ -1,4 +1,3 @@
-{{- $root := . -}}
 {{- if .Values.istio.ingressGateway.principal }}
 {{- range .Values.additionalUsers }}
 {{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
@@ -14,9 +13,9 @@ spec:
   - from:
     - source:
         principals:
-        - {{ $root.Values.istio.ingressGateway.principal | quote }}
+        - {{ $.Values.istio.ingressGateway.principal | quote }}
     when:
-    - key: request.headers[{{ $root.Values.userIdHeader }}]
+    - key: request.headers[{{ $.Values.userIdHeader }}]
       values:
       - {{ .email | quote }}
 {{- end }}

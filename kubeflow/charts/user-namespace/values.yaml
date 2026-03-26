@@ -24,6 +24,10 @@ userIdHeader: "kubeflow-userid"
 awsIamForServiceAccount:
   awsIamRole:
 
+# Additional user profiles to create. Each entry must have an 'email' field;
+# 'namespace' is optional (defaults to a slug derived from the email).
+additionalUsers: []
+
 # KFP per-namespace resources.
 # Replaces metacontroller-based provisioning (metacontroller v4.x cannot use
 # core 'namespaces' as CompositeController parent — known v4 regression).
