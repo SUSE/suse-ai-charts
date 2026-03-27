@@ -461,24 +461,6 @@ preflightChecks:
 monitoring:
   enabled: false  # set true after Rancher Monitoring is installed
 
-# Additional user namespaces (multi-tenancy).
-# Each entry creates a Profile CR and Namespace with proper owner annotation.
-# namespace: (optional) explicit namespace name — RECOMMENDED to avoid slug collisions.
-#   If omitted, the namespace is auto-generated from the email (@ → "--", . → "-").
-#   WARNING: emails differing only in "." vs "-" (e.g. alice.smith@corp.com vs
-#   alice-smith@corp.com) produce the same auto-generated slug. Use explicit
-#   namespace names to disambiguate.
-# Example:
-#   additionalUsers:
-#     - email: alice.smith@corp.com
-#       namespace: alice-smith        # explicit — avoids collision
-#       resourceQuota:
-#         requests.cpu: "4"
-#         requests.memory: 8Gi
-#     - email: alice-smith@corp.com
-#       namespace: alice-smith-ext    # must differ from above
-additionalUsers: []
-
 # ============================================================================
 # Subchart Overrides
 # ============================================================================
@@ -776,6 +758,18 @@ externaldns:
 
 # --- User Namespace ---
 user-namespace:
+  # Additional user profiles. Each entry creates a Profile CR and deploys all
+  # KFP per-namespace resources (artifact server, viz server, credentials,
+  # authorization policies) in the user's namespace.
+  #
+  # Example:
+  #   additionalUsers:
+  #     - email: alice@example.com
+  #       namespace: alice        # explicit name recommended
+  #     - email: bob@example.com
+  #       namespace: bob
+  additionalUsers: []
+
   # KFP per-namespace resources — credentials must match pipelines.seaweedfs above.
   pipelines:
     seaweedfs:

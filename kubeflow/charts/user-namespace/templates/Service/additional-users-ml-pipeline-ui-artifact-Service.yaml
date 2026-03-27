@@ -1,0 +1,20 @@
+{{- range .Values.additionalUsers }}
+{{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
+{{- $namespaceName := .namespace | default $emailSlug }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-pipeline-ui-artifact
+  namespace: {{ $namespaceName }}
+  labels:
+    app: ml-pipeline-ui-artifact
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    app: ml-pipeline-ui-artifact
+{{- end }}

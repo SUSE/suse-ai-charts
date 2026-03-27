@@ -807,14 +807,15 @@ user namespace created at install time.
 
 # The default user namespace is always created (kubeflow-user-example-com).
 # Add more users here — each gets a Profile CR and an isolated namespace.
-additionalUsers:
-  - email: alice@example.com
-    namespace: alice                 # explicit name recommended — avoids email slug collisions
-    resourceQuota:
-      requests.cpu: "4"
-      requests.memory: 8Gi
-  - email: bob@example.com
-    namespace: bob
+user-namespace:
+  additionalUsers:
+    - email: alice@example.com
+      namespace: alice               # explicit name recommended — avoids email slug collisions
+      resourceQuota:
+        requests.cpu: "4"
+        requests.memory: 8Gi
+    - email: bob@example.com
+      namespace: bob
 ```
 
 > **Important:** The `namespace` field is optional but strongly recommended. Without it, the
@@ -824,23 +825,46 @@ additionalUsers:
 
 ### Adding users after install
 
-Apply a Profile CR manually:
+Add the user to your values file and run `helm upgrade`:
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: kubeflow.org/v1
-kind: Profile
-metadata:
-  name: alice
-spec:
-  owner:
-    kind: User
-    name: alice@example.com
-EOF
+helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+  --version <version> \
+  -n kubeflow --reuse-values \
+  --set "user-namespace.additionalUsers[0].email=alice@example.com" \
+  --set "user-namespace.additionalUsers[0].namespace=alice"
 ```
 
-The profiles controller creates the namespace and all required resources (RoleBindings,
-ServiceAccounts, AuthorizationPolicies) automatically.
+Or add the user to your values file and re-run the upgrade:
+
+```yaml
+# my-values.yaml
+user-namespace:
+  additionalUsers:
+    - email: alice@example.com
+      namespace: alice
+```
+
+**OCI (production):**
+```bash
+helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+  --version <version> \
+  -n kubeflow -f my-values.yaml
+```
+
+**From source (development):**
+```bash
+helm upgrade kubeflow -n kubeflow --force-conflicts -f my-values.yaml .
+```
+
+This creates the Profile CR and deploys all required KFP per-namespace resources
+(pipeline artifact server, visualization server, credentials, authorization policies)
+in a single step.
+
+> **Note:** Do not add users by applying a `Profile` CR directly with `kubectl`.
+> The profiles controller only creates namespace-level RBAC — it does not deploy the
+> KFP per-namespace resources that pipelines depend on. Users added this way will have
+> an incomplete environment and pipeline runs will fail.
 
 ---
 

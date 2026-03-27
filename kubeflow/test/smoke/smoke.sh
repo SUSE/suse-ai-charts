@@ -14,6 +14,13 @@ set -uo pipefail
 
 NS=kubeflow
 USER_NS=kubeflow-user-example-com
+
+for arg in "$@"; do
+  case "$arg" in
+    --user-namespace=*) USER_NS="${arg#*=}" ;;
+  esac
+done
+
 PASS=0
 FAIL=0
 WARNINGS=0

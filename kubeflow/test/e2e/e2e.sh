@@ -39,7 +39,13 @@ FAIL=0
 
 # Parse flags
 INCLUDE_GPU=false
-for arg in "$@"; do [[ "$arg" == "--include-gpu-tests" ]] && INCLUDE_GPU=true; done
+for arg in "$@"; do
+  case "$arg" in
+    --include-gpu-tests) INCLUDE_GPU=true ;;
+    --user-namespace=*)  USER_NS="${arg#*=}" ;;
+    --user-email=*)      KFP_USER="${arg#*=}" ;;
+  esac
+done
 
 # Timeouts (seconds)
 T_KFP=300
@@ -640,6 +646,9 @@ spec:
       kind: Job
       spec:
         template:
+          metadata:
+            annotations:
+              sidecar.istio.io/inject: "false"
           spec:
             shareProcessNamespace: true
             containers:
@@ -739,6 +748,10 @@ if ! $PVC_BOUND; then
   fail "e2e-test-pvc did not become Bound within 60s — tests 10 and 11 will be unreliable"
 fi
 
+# Delete the binder pod now that the PVC is Bound — keeping it running would
+# hold the RWO volume and prevent the PVCViewer pod (test 11) from attaching it.
+kubectl delete pod e2e-pvc-binder -n "$USER_NS" --ignore-not-found &>/dev/null || true
+
 # ── Test 10: Tensorboard ───────────────────────────────────────────────────────
 header "10. Tensorboard — create CR → controller creates Deployment"
 
@@ -802,9 +815,8 @@ else
 fi
 
 # Clean up shared PVC resources
-kubectl delete pvcviewer  e2e-pvcviewer-test -n "$USER_NS" --ignore-not-found &>/dev/null || true
-kubectl delete pod        e2e-pvc-binder     -n "$USER_NS" --ignore-not-found &>/dev/null || true
-kubectl delete pvc        e2e-test-pvc       -n "$USER_NS" --ignore-not-found &>/dev/null || true
+kubectl delete pvcviewer e2e-pvcviewer-test -n "$USER_NS" --ignore-not-found &>/dev/null || true
+kubectl delete pvc       e2e-test-pvc       -n "$USER_NS" --ignore-not-found &>/dev/null || true
 
 # ══════════════════════════════════════════════════════════════════════════════
 # GPU Tests (only when --include-gpu-tests is passed)

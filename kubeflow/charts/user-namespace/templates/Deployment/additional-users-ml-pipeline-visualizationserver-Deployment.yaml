@@ -1,0 +1,37 @@
+{{- $root := . -}}
+{{- range .Values.additionalUsers }}
+{{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
+{{- $namespaceName := .namespace | default $emailSlug }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: ml-pipeline-visualizationserver
+  name: ml-pipeline-visualizationserver
+  namespace: {{ $namespaceName }}
+spec:
+  selector:
+    matchLabels:
+      app: ml-pipeline-visualizationserver
+  template:
+    metadata:
+      labels:
+        app: ml-pipeline-visualizationserver
+    spec:
+      {{- include "user-namespace.imagePullSecrets" $root | nindent 6 }}
+      containers:
+      - image: {{ include "user-namespace.image" $root.Values.pipelines.visualizationServer }}
+        imagePullPolicy: IfNotPresent
+        name: ml-pipeline-visualizationserver
+        ports:
+        - containerPort: 8888
+        resources:
+          requests:
+            cpu: 50m
+            memory: 200Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+      serviceAccountName: default-editor
+{{- end }}

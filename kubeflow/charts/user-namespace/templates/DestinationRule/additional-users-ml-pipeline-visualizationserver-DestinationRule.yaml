@@ -1,0 +1,15 @@
+{{- range .Values.additionalUsers }}
+{{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
+{{- $namespaceName := .namespace | default $emailSlug }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: ml-pipeline-visualizationserver
+  namespace: {{ $namespaceName }}
+spec:
+  host: ml-pipeline-visualizationserver
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
