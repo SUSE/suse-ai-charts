@@ -1,0 +1,27 @@
+# ============================================================================
+# DEMO / DEVELOPMENT OVERRIDES — DO NOT USE IN PRODUCTION
+# ============================================================================
+global:
+  demoMode: true  # disables credential validation; for local development only
+
+# Repeat the demo defaults here so the chart renders without errors in demo mode.
+# Replace all values below with real secrets before any production deployment.
+auth:
+  oidc:
+    clientSecret: "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok"
+    cookieSecret: "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc="
+  initialUser:
+    email: "user@example.com"
+    passwordHash: "$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm"
+
+pipelines:
+  seaweedfs:
+    accessKey: "kubeflow"
+    secretKey: "kubeflow123"
+
+# ============================================================================
+
+user-namespace:
+  additionalUsers:
+    - email: alice@example.com
+      namespace: alice

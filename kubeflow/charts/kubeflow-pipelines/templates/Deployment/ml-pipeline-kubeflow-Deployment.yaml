@@ -66,27 +66,27 @@ spec:
             configMapKeyRef:
               key: bucketName
               name: pipeline-install-config
-        - name: DBCONFIG_USER
+        - name: DBCONFIG_MYSQLCONFIG_USER
           valueFrom:
             secretKeyRef:
               key: username
               name: mysql-secret
-        - name: DBCONFIG_PASSWORD
+        - name: DBCONFIG_MYSQLCONFIG_PASSWORD
           valueFrom:
             secretKeyRef:
               key: password
               name: mysql-secret
-        - name: DBCONFIG_DBNAME
+        - name: DBCONFIG_MYSQLCONFIG_DBNAME
           valueFrom:
             configMapKeyRef:
               key: pipelineDb
               name: pipeline-install-config
-        - name: DBCONFIG_HOST
+        - name: DBCONFIG_MYSQLCONFIG_HOST
           valueFrom:
             configMapKeyRef:
               key: dbHost
               name: pipeline-install-config
-        - name: DBCONFIG_PORT
+        - name: DBCONFIG_MYSQLCONFIG_PORT
           valueFrom:
             configMapKeyRef:
               key: dbPort
