@@ -5,3 +5,27 @@ with a human-readable error when required dependencies are misconfigured.
 {{- if and .Values.modelRegistry.enabled (not .Values.pipelines.enabled) }}
 {{- fail "modelRegistry.enabled=true requires pipelines.enabled=true (model-registry-server shares KFP's MariaDB and mysql-secret)" }}
 {{- end }}
+
+{{- /*
+  Credential hygiene: fail fast if well-known demo defaults are still present
+  and the operator has not explicitly opted in via global.demoMode=true.
+*/}}
+{{- if not .Values.global.demoMode }}
+
+{{- if eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok" }}
+{{- fail "SECURITY: auth.oidc.clientSecret is the well-known demo value.\nGenerate a real secret: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
+{{- end }}
+
+{{- if eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" }}
+{{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
+{{- end }}
+
+{{- if eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow" }}
+{{- fail "SECURITY: pipelines.seaweedfs.accessKey is the well-known demo value.\nSet a real value or for development only: set global.demoMode=true in your values." }}
+{{- end }}
+
+{{- if eq (.Values.pipelines.seaweedfs.secretKey | default "") "kubeflow123" }}
+{{- fail "SECURITY: pipelines.seaweedfs.secretKey is the well-known demo value.\nGenerate: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
+{{- end }}
+
+{{- end }}

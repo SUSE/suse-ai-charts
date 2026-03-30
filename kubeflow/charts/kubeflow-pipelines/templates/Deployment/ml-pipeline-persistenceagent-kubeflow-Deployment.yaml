@@ -50,6 +50,9 @@ spec:
           value: '86400'
         - name: NUM_WORKERS
           value: '2'
+        # The persistence agent connects to ml-pipeline via gRPC, not MySQL directly.
+        # These env vars are included for consistency with upstream manifests; the binary
+        # does not establish a MySQL connection in normal operation.
         - name: DBCONFIG_USER
           valueFrom:
             secretKeyRef:

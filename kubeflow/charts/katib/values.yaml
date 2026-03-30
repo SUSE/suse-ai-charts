@@ -76,8 +76,6 @@ mariadb:
     storageClass: ""
     storageSize: 10Gi
     accessMode: ReadWriteOnce
-  # base64 encoded "test"
-  rootPassword: dGVzdA==
 
 # Katib config - KatibConfig v1beta1 format required by Katib v0.17+
 # Must be under the key "katib-config.yaml" in the katib-config ConfigMap.

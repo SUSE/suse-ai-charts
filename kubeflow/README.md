@@ -569,6 +569,7 @@ Full JSON schema: [`charts/kubeflow/values.schema.json`](charts/kubeflow/values.
 | `global.imagePullSecrets` | `[{name: application-collection}]` | Registry pull secrets — defined once, used everywhere |
 | `global.imageRegistry` | `""` | Optional private registry prefix for air-gapped deployments |
 | `global.labels` | `{}` | Common labels applied to all managed resources |
+| `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
 | `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer |
 | `global.gateway.name` | `kubeflow/kubeflow-gateway` | Istio Gateway reference used by all VirtualServices |
 
@@ -682,12 +683,15 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 ## Production Hardening
 
 The chart ships with demo defaults that are **not suitable for production**. Address these before
-exposing the deployment to any network or storing sensitive data. A security warning is printed
-by `helm install`/`helm upgrade` if any demo defaults are still active.
+exposing the deployment to any network or storing sensitive data.
+
+By default (`global.demoMode: false`) the chart **fails at render time** with a `SECURITY:` error
+if any well-known demo credential is still present. To suppress this during local development, set
+`global.demoMode: true` in your values file — never set this in production.
 
 ### 1. Change all default credentials
 
-The three demo secrets that trigger the NOTES.txt warning:
+The credentials that trigger the render-time security check:
 
 ```yaml
 # In your values override file
@@ -725,11 +729,13 @@ user-namespace:
       secretKey: "<STRONG-SECRET-KEY>"    # must match pipelines.seaweedfs.secretKey
 ```
 
-> **MariaDB root password:** The chart initialises `mysql-secret` with an empty root password on
-> first install. Set a non-empty password by patching the secret before upgrading:
+> **MariaDB root passwords:** Both the KFP and Katib MySQL secrets are **auto-generated** (24-char
+> random password) on first install and preserved across upgrades — no action required. To rotate,
+> delete the secret and run `helm upgrade` to regenerate:
 > ```bash
-> kubectl patch secret mysql-secret -n kubeflow \
->   --type='json' -p='[{"op":"replace","path":"/data/password","value":"'$(echo -n "STRONG_PASSWORD" | base64)'"}]'
+> kubectl delete secret mysql-secret -n kubeflow        # KFP
+> kubectl delete secret katib-mysql-secrets -n kubeflow # Katib
+> helm upgrade kubeflow . -f my-values.yaml -n kubeflow
 > ```
 
 ### 2. Use an external identity provider

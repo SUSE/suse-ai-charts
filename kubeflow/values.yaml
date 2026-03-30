@@ -91,6 +91,11 @@ global:
   # Leave empty to use the default registry specified in each sub-chart's values.
   imageRegistry: ""
 
+  # Demo mode: set true ONLY for local development/tutorial.
+  # When false (default), Helm fails at render time if any credential is a known demo default.
+  # NEVER set true in production.
+  demoMode: false
+
   # oauth2-proxy enablement
   oauth2Proxy:
     enabled: true
@@ -223,7 +228,7 @@ oauth2-proxy:
     - name: OAUTH2_PROXY_COOKIE_SECURE
       value: "false"
     - name: OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY
-      value: "true"
+      value: "false"
     - name: OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS
       value: "true"
     - name: OAUTH2_PROXY_EXTRA_JWT_ISSUERS
@@ -354,11 +359,6 @@ pipelines:
       resources:
         requests:
           storage: 20Gi
-    podTemplates:
-      containers:
-        mariadb:
-          env:
-            MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
     metrics:
       enabled: false
     # Scheduled backup CronJob + PVC. Enabled by default.
