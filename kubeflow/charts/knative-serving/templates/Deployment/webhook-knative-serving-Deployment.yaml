@@ -52,7 +52,7 @@ spec:
           value: '8443'
         - name: METRICS_DOMAIN
           value: knative.dev/internal/serving
-        image: {{ include "knative-serving.image" (dict "image" .Values.webhook.image "context" .) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.webhook.image.registry) }}{{ . }}/{{ end }}{{ .Values.webhook.image.repository }}{{- if .Values.webhook.image.digest }}@{{ .Values.webhook.image.digest }}{{- else }}:{{ .Values.webhook.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-serving.imagePullPolicy" (dict "image" .Values.webhook.image "context" .) }}
         livenessProbe:
           failureThreshold: 6

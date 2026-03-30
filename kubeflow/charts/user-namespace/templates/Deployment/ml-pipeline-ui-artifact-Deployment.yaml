@@ -17,7 +17,7 @@ spec:
       {{- include "user-namespace.imagePullSecrets" . | nindent 6 }}
       containers:
       - name: ml-pipeline-ui-artifact
-        image: {{ include "user-namespace.image" .Values.pipelines.frontend }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.pipelines.frontend.registry) }}{{ . }}/{{ end }}{{ .Values.pipelines.frontend.repository }}{{- if .Values.pipelines.frontend.digest }}@{{ .Values.pipelines.frontend.digest }}{{- else }}:{{ .Values.pipelines.frontend.tag }}{{- end }}"
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000

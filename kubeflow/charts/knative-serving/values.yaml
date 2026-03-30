@@ -101,19 +101,21 @@ netIstioWebhook:
 
 # Queue sidecar image used in config-deployment ConfigMap
 queueSidecarImage:
-  registry: gcr.io
-  repository: knative-releases/knative.dev/serving/cmd/queue
-  tag: ""
-  digest: sha256:b78cfa015872b12cf64f01fc21f29190c6f2fa69aadbb90162fa98e843781777
-  pullPolicy: IfNotPresent
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/serving/cmd/queue
+    tag: ""
+    digest: sha256:b78cfa015872b12cf64f01fc21f29190c6f2fa69aadbb90162fa98e843781777
+    pullPolicy: IfNotPresent
 
 # Queue proxy image used in the queue-proxy Image resource
 queueProxy:
-  registry: gcr.io
-  repository: knative-releases/knative.dev/serving/cmd/queue
-  tag: ""
-  digest: sha256:179c0c4892ea4a70e78bc52ac21b03cd7f1a763d2ecc78e7bbaa1ae59c86c
-  pullPolicy: IfNotPresent
+  image:
+    registry: gcr.io
+    repository: knative-releases/knative.dev/serving/cmd/queue
+    tag: ""
+    digest: sha256:179c0c4892ea4a70e78bc52ac21b03cd7f1a763d2ecc78e7bbaa1ae59c86c
+    pullPolicy: IfNotPresent
 
 # Domain for InferenceService external URLs.
 # Override with <node-ip>.nip.io or your real domain.

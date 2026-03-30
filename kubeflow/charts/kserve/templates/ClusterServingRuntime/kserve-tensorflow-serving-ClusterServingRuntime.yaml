@@ -15,7 +15,7 @@ spec:
     - --rest_api_timeout_in_ms=60000
     command:
     - /usr/bin/tensorflow_model_server
-    image: {{ include "kserve.image" .Values.tensorflowServing }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.tensorflowServing.image.registry) }}{{ . }}/{{ end }}{{ .Values.tensorflowServing.image.repository }}{{- if .Values.tensorflowServing.image.digest }}@{{ .Values.tensorflowServing.image.digest }}{{- else }}:{{ .Values.tensorflowServing.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

@@ -35,7 +35,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: {{ include "katib.image" (dict "registry" .Values.controller.image.registry "repository" .Values.controller.image.repository "tag" .Values.controller.image.tag "digest" .Values.controller.image.digest "Values" .Values) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.controller.image.registry) }}{{ . }}/{{ end }}{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
         livenessProbe:
           httpGet:
             path: /healthz

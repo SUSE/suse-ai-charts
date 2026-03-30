@@ -40,7 +40,7 @@ spec:
               fieldPath: metadata.namespace
         - name: SECRET_NAME
           value: kserve-webhook-server-cert
-        image: {{ include "kserve.image" .Values.controllerManager.image | quote }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.controllerManager.image.registry) }}{{ . }}/{{ end }}{{ .Values.controllerManager.image.repository }}{{- if .Values.controllerManager.image.digest }}@{{ .Values.controllerManager.image.digest }}{{- else }}:{{ .Values.controllerManager.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.controllerManager.image.pullPolicy }}
         name: manager
         ports:
@@ -76,7 +76,7 @@ spec:
         - --upstream=http://127.0.0.1:8080/
         - --logtostderr=true
         - --v=10
-        image: {{ include "kserve.image" .Values.kubeRbacProxy.image | quote }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.kubeRbacProxy.image.registry) }}{{ . }}/{{ end }}{{ .Values.kubeRbacProxy.image.repository }}{{- if .Values.kubeRbacProxy.image.digest }}@{{ .Values.kubeRbacProxy.image.digest }}{{- else }}:{{ .Values.kubeRbacProxy.image.tag }}{{- end }}"
         name: kube-rbac-proxy
         ports:
           - containerPort: 8443

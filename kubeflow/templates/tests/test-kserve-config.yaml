@@ -87,7 +87,7 @@ spec:
   serviceAccountName: "{{ .Release.Name }}-kserve-config-test"
   containers:
   - name: test
-    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.kubectl.registry "repository" .Values.testImages.kubectl.repository "tag" .Values.testImages.kubectl.tag "Values" .Values) }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.testImages.kubectl.registry) }}{{ . }}/{{ end }}{{ .Values.testImages.kubectl.repository }}{{- if .Values.testImages.kubectl.digest }}@{{ .Values.testImages.kubectl.digest }}{{- else }}:{{ .Values.testImages.kubectl.tag }}{{- end }}"
     command:
     - sh
     - -c

@@ -13,7 +13,7 @@ spec:
   restartPolicy: Never
   containers:
   - name: test
-    image: {{ include "kubeflow.image" (dict "registry" .Values.testImages.mariadb.registry "repository" .Values.testImages.mariadb.repository "tag" .Values.testImages.mariadb.tag "Values" .Values) }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.testImages.mariadb.registry) }}{{ . }}/{{ end }}{{ .Values.testImages.mariadb.repository }}{{- if .Values.testImages.mariadb.digest }}@{{ .Values.testImages.mariadb.digest }}{{- else }}:{{ .Values.testImages.mariadb.tag }}{{- end }}"
     env:
     - name: MYSQL_PWD
       valueFrom:

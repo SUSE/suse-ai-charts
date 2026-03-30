@@ -14,7 +14,7 @@ spec:
     - --http-port=8080
     - --allow-grpc=true
     - --allow-http=true
-    image: {{ include "kserve.image" .Values.tritonServer }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.tritonServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.tritonServer.image.repository }}{{- if .Values.tritonServer.image.digest }}@{{ .Values.tritonServer.image.digest }}{{- else }}:{{ .Values.tritonServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

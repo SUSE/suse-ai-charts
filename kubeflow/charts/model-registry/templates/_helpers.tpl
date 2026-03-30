@@ -51,27 +51,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Render a container image string from image values.
-Call as: include "model-registry.image" (dict "image" .Values.<component>.image "global" .Values.global)
-If digest is set, renders as: [registry/]repository:tag@digest
-global.imageRegistry overrides per-image registry when no per-image registry is set.
-*/}}
-{{- define "model-registry.image" -}}
-{{- $img := .image -}}
-{{- $registry := $img.registry -}}
-{{- if not $registry -}}
-{{- $globalRegistry := "" -}}
-{{- if and .global (hasKey .global "imageRegistry") -}}
-{{- $globalRegistry = .global.imageRegistry -}}
-{{- end -}}
-{{- $registry = $globalRegistry -}}
-{{- end -}}
-{{- $ref := "" -}}
-{{- if $registry -}}{{- $ref = printf "%s/%s:%s" $registry $img.repository $img.tag -}}{{- else -}}{{- $ref = printf "%s:%s" $img.repository $img.tag -}}{{- end -}}
-{{- if $img.digest -}}{{- printf "%s@%s" $ref $img.digest -}}{{- else -}}{{- $ref -}}{{- end -}}
-{{- end -}}
-
-{{/*
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "model-registry.imagePullSecrets" -}}

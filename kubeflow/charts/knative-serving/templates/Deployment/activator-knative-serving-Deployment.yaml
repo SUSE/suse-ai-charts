@@ -46,7 +46,7 @@ spec:
           value: config-observability
         - name: METRICS_DOMAIN
           value: knative.dev/internal/serving
-        image: {{ include "knative-serving.image" (dict "image" .Values.activator.image "context" .) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.activator.image.registry) }}{{ . }}/{{ end }}{{ .Values.activator.image.repository }}{{- if .Values.activator.image.digest }}@{{ .Values.activator.image.digest }}{{- else }}:{{ .Values.activator.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-serving.imagePullPolicy" (dict "image" .Values.activator.image "context" .) }}
         livenessProbe:
           failureThreshold: 12

@@ -38,7 +38,7 @@ spec:
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
       containers:
       - name: seaweedfs
-        image: {{ include "kubeflow-pipelines.image" .Values.seaweedfs.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.seaweedfs.image.registry) }}{{ . }}/{{ end }}{{ .Values.seaweedfs.image.repository }}{{- if .Values.seaweedfs.image.digest }}@{{ .Values.seaweedfs.image.digest }}{{- else }}:{{ .Values.seaweedfs.image.tag }}{{- end }}"
         imagePullPolicy: IfNotPresent
         args:
         - server

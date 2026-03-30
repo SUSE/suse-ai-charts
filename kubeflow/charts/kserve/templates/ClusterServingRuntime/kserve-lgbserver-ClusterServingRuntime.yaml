@@ -12,7 +12,7 @@ spec:
     - --model_dir=/mnt/models
     - --http_port=8080
     - --nthread=1
-    image: {{ include "kserve.image" .Values.lgbServer }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.lgbServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.lgbServer.image.repository }}{{- if .Values.lgbServer.image.digest }}@{{ .Values.lgbServer.image.digest }}{{- else }}:{{ .Values.lgbServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

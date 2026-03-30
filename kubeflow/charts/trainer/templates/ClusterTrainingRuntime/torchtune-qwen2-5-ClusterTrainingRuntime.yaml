@@ -23,7 +23,7 @@ spec:
                 spec:
                   containers:
                     - name: dataset-initializer
-                      image: {{ include "trainer.image" .Values.runtimes.torchtune.images.datasetInitializer }}
+                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.torchtune.images.datasetInitializer.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.torchtune.images.datasetInitializer.repository }}{{- if .Values.runtimes.torchtune.images.datasetInitializer.digest }}@{{ .Values.runtimes.torchtune.images.datasetInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.datasetInitializer.tag }}{{- end }}"
                       env:
                         - name: STORAGE_URI
                           value: hf://tatsu-lab/alpaca
@@ -44,7 +44,7 @@ spec:
                 spec:
                   containers:
                     - name: model-initializer
-                      image: {{ include "trainer.image" .Values.runtimes.torchtune.images.modelInitializer }}
+                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.torchtune.images.modelInitializer.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.torchtune.images.modelInitializer.repository }}{{- if .Values.runtimes.torchtune.images.modelInitializer.digest }}@{{ .Values.runtimes.torchtune.images.modelInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.modelInitializer.tag }}{{- end }}"
                       env:
                         - name: STORAGE_URI
                           value: hf://Qwen/Qwen2.5-1.5B-Instruct
@@ -70,7 +70,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: {{ include "trainer.image" .Values.runtimes.torchtune.images.trainer }}
+                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.torchtune.images.trainer.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.torchtune.images.trainer.repository }}{{- if .Values.runtimes.torchtune.images.trainer.digest }}@{{ .Values.runtimes.torchtune.images.trainer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.trainer.tag }}{{- end }}"
                       command:
                         - tune
                         - run

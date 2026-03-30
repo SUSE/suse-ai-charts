@@ -48,7 +48,7 @@ spec:
           value: {{ .Values.controller.env.registriesNamespace | quote }}
         - name: SKIP_TLS_VERIFY
           value: {{ .Values.controller.env.skipTlsVerify | quote }}
-        image: {{ include "model-registry.image" (dict "image" .Values.controller.image "global" .Values.global) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.controller.image.registry) }}{{ . }}/{{ end }}{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false

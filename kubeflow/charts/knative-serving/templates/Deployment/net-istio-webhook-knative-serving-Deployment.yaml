@@ -41,7 +41,7 @@ spec:
           value: knative.dev/net-istio
         - name: WEBHOOK_NAME
           value: net-istio-webhook
-        image: {{ include "knative-serving.image" (dict "image" .Values.netIstioWebhook.image "context" .) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.netIstioWebhook.image.registry) }}{{ . }}/{{ end }}{{ .Values.netIstioWebhook.image.repository }}{{- if .Values.netIstioWebhook.image.digest }}@{{ .Values.netIstioWebhook.image.digest }}{{- else }}:{{ .Values.netIstioWebhook.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-serving.imagePullPolicy" (dict "image" .Values.netIstioWebhook.image "context" .) }}
         name: webhook
         ports:
