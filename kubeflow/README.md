@@ -799,7 +799,21 @@ preflightChecks:
 Runs a hook Job before install that validates the default StorageClass exists and cert-manager
 CRDs are registered.
 
-### 7. Resource quotas per user namespace
+### 7. Enable High Availability
+
+Apply `ha-overrides.yaml` (provided in the repo) on top of your base values to scale the Katib
+controller, training-operator, and KServe controller to 2 replicas. KFP and Dex
+PodDisruptionBudgets are already enabled by default.
+
+```bash
+helm upgrade kubeflow . -f <your-values>.yaml -f ha-overrides.yaml -n kubeflow
+```
+
+> PDBs protect against voluntary disruptions (node drains) but only provide meaningful coverage
+> with 2+ replicas. With a single replica, the PDB allows full eviction.
+> See the [Known Limitations](#known-limitations) section for which controllers support HA.
+
+### 8. Resource quotas per user namespace
 
 ```yaml
 additionalUsers:
@@ -1156,11 +1170,12 @@ kubectl get authorizationpolicy -A
 - **SeaweedFS is single-node, non-replicated.** Pipeline artifact storage has no HA; a SeaweedFS
   pod restart causes a brief (~10–60s) S3 outage. For production HA, replace SeaweedFS with an
   external S3-compatible store.
-- **Most Kubeflow controllers are single-replica only.** Leader election is not confirmed for
-  notebook-controller, profiles-controller, tensorboard-controller, training-operator, and several
-  KFP components. Setting `replicaCount > 1` for these controllers causes undefined behavior
-  (duplicate reconciliation, data corruption). Only kserve-controller-manager, pvcviewer-controller,
-  and model-registry-controller have confirmed leader election.
+- **Not all Kubeflow controllers support multiple replicas.** Leader election is confirmed for
+  katib-controller (v0.17+), training-operator, kserve-controller-manager, pvcviewer-controller,
+  and model-registry-controller — these are safe to scale via `ha-overrides.yaml`. It is **not**
+  confirmed for notebook-controller, profiles-controller, tensorboard-controller, and several KFP
+  background workers; setting `replicaCount > 1` for those may cause duplicate reconciliation or
+  data corruption.
 - **CRDs are not automatically upgraded by `helm upgrade`.** Kubeflow CRDs are placed in `crds/`
   subdirectories; Helm intentionally skips them on upgrade. After a chart version bump, run:
   ```bash
