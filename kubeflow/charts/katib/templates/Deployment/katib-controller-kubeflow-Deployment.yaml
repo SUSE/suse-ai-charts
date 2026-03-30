@@ -28,7 +28,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: {{ include "katib.image" .Values.controller.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.controller.image.registry) }}{{ . }}/{{ end }}{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
         livenessProbe:
           httpGet:

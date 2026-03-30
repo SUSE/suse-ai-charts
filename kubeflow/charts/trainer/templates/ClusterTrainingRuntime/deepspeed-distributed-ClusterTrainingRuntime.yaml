@@ -32,7 +32,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: {{ include "trainer.image" .Values.runtimes.deepspeed.image }}
+                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.deepspeed.image.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
         - name: node
@@ -42,7 +42,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: {{ include "trainer.image" .Values.runtimes.deepspeed.image }}
+                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.deepspeed.image.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
                       command:

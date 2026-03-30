@@ -26,7 +26,7 @@ spec:
         application-crd-id: kubeflow-pipelines
     spec:
       containers:
-      - image: {{ include "kubeflow-pipelines.image" .Values.visualizationServer.image }}
+      - image: "{{ with (coalesce .Values.global.imageRegistry .Values.visualizationServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.visualizationServer.image.repository }}{{- if .Values.visualizationServer.image.digest }}@{{ .Values.visualizationServer.image.digest }}{{- else }}:{{ .Values.visualizationServer.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.visualizationServer.image.pullPolicy }}
         livenessProbe:
           exec:

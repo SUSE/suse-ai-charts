@@ -21,22 +21,3 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
-
-{{/*
-Build image reference from registry, repository, and tag.
-If global.imageRegistry is set and image.registry is empty, global is used as fallback.
-Usage: {{ include "pvcviewer-controller.image" .Values.image }}
-*/}}
-{{- define "pvcviewer-controller.image" -}}
-{{- $registry := .registry -}}
-{{- if not $registry -}}
-{{- $globalRegistry := "" -}}
-{{- if hasKey .Values "global" -}}
-{{- if hasKey .Values.global "imageRegistry" -}}
-{{- $globalRegistry = .Values.global.imageRegistry -}}
-{{- end -}}
-{{- end -}}
-{{- $registry = $globalRegistry -}}
-{{- end -}}
-{{- if $registry -}}{{- printf "%s/%s:%s" $registry .repository .tag -}}{{- else -}}{{- printf "%s:%s" .repository .tag -}}{{- end -}}
-{{- end -}}

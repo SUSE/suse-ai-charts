@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: manager
-        image: {{ include "trainer.image" .Values.jobset.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.jobset.image.registry) }}{{ . }}/{{ end }}{{ .Values.jobset.image.repository }}{{- if .Values.jobset.image.digest }}@{{ .Values.jobset.image.digest }}{{- else }}:{{ .Values.jobset.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.jobset.image.pullPolicy }}
         args:
         - --config=/controller_manager_config.yaml

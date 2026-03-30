@@ -55,7 +55,7 @@ spec:
             configMapKeyRef:
               key: dbPort
               name: pipeline-install-config
-        image: {{ include "kubeflow-pipelines.image" .Values.metadataGrpc.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.metadataGrpc.image.registry) }}{{ . }}/{{ end }}{{ .Values.metadataGrpc.image.repository }}{{- if .Values.metadataGrpc.image.digest }}@{{ .Values.metadataGrpc.image.digest }}{{- else }}:{{ .Values.metadataGrpc.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataGrpc.image.pullPolicy }}
         livenessProbe:
           initialDelaySeconds: 3

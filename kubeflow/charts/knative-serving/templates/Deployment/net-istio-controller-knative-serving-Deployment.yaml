@@ -37,7 +37,7 @@ spec:
           value: 'false'
         - name: METRICS_DOMAIN
           value: knative.dev/net-istio
-        image: {{ include "knative-serving.image" (dict "image" .Values.netIstioController.image "context" .) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.netIstioController.image.registry) }}{{ . }}/{{ end }}{{ .Values.netIstioController.image.repository }}{{- if .Values.netIstioController.image.digest }}@{{ .Values.netIstioController.image.digest }}{{- else }}:{{ .Values.netIstioController.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-serving.imagePullPolicy" (dict "image" .Values.netIstioController.image "context" .) }}
         name: controller
         ports:

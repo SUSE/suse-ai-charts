@@ -62,25 +62,6 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Render a container image string from image values.
-*/}}
-{{- define "trainer.image" -}}
-{{- $registry := .registry -}}
-{{- if not $registry -}}
-{{- $globalRegistry := "" -}}
-{{- if hasKey . "Values" -}}
-{{- if hasKey .Values "global" -}}
-{{- if hasKey .Values.global "imageRegistry" -}}
-{{- $globalRegistry = .Values.global.imageRegistry -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- $registry = $globalRegistry -}}
-{{- end -}}
-{{- if $registry -}}{{- printf "%s/%s:%s" $registry .repository .tag -}}{{- else -}}{{- printf "%s/%s:%s" .registry .repository .tag -}}{{- end -}}
-{{- end -}}
-
-{{/*
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "trainer.imagePullSecrets" -}}

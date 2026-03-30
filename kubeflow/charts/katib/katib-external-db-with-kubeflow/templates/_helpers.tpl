@@ -60,23 +60,3 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
-
-{{/*
-Render a container image string from image values.
-If digest is set, renders as: [registry/]repository:tag@digest
-*/}}
-{{- define "katib.image" -}}
-{{- $registry := .registry -}}
-{{- if not $registry -}}
-{{- $globalRegistry := "" -}}
-{{- if hasKey .Values "global" -}}
-{{- if hasKey .Values.global "imageRegistry" -}}
-{{- $globalRegistry = .Values.global.imageRegistry -}}
-{{- end -}}
-{{- end -}}
-{{- $registry = $globalRegistry -}}
-{{- end -}}
-{{- $ref := "" -}}
-{{- if $registry -}}{{- $ref = printf "%s/%s:%s" $registry .repository .tag -}}{{- else -}}{{- $ref = printf "%s:%s" .repository .tag -}}{{- end -}}
-{{- if .digest -}}{{- printf "%s@%s" $ref .digest -}}{{- else -}}{{- $ref -}}{{- end -}}
-{{- end -}}

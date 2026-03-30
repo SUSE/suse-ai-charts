@@ -23,5 +23,5 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: {{ include "trainer.image" .Values.runtimes.torch.distributed.image }}
+                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.torch.distributed.image.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.torch.distributed.image.repository }}{{- if .Values.runtimes.torch.distributed.image.digest }}@{{ .Values.runtimes.torch.distributed.image.digest }}{{- else }}:{{ .Values.runtimes.torch.distributed.image.tag }}{{- end }}"
 {{- end }}

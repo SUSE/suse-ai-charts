@@ -35,7 +35,7 @@ spec:
         envFrom:
         - configMapRef:
             name: profiles-config-46c7tgh6fd
-        image: {{ include "profiles-and-kfam.image" .Values.kfam.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.kfam.image.registry) }}{{ . }}/{{ end }}{{ .Values.kfam.image.repository }}{{- if .Values.kfam.image.digest }}@{{ .Values.kfam.image.digest }}{{- else }}:{{ .Values.kfam.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.kfam.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false
@@ -69,7 +69,7 @@ spec:
         envFrom:
         - configMapRef:
             name: profiles-config-46c7tgh6fd
-        image: {{ include "profiles-and-kfam.image" .Values.profileController.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.profileController.image.registry) }}{{ . }}/{{ end }}{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.profileController.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false

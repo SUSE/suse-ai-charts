@@ -15,7 +15,7 @@ spec:
     env:
     - name: TS_SERVICE_ENVELOPE
       value: '{{`{{.Labels.serviceEnvelope}}`}}'
-    image: {{ include "kserve.image" .Values.torchServe }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.torchServe.image.registry) }}{{ . }}/{{ end }}{{ .Values.torchServe.image.repository }}{{- if .Values.torchServe.image.digest }}@{{ .Values.torchServe.image.digest }}{{- else }}:{{ .Values.torchServe.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

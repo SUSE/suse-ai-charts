@@ -29,7 +29,7 @@ spec:
               fieldPath: metadata.namespace
         - name: APP_DISABLE_AUTH
           value: 'false'
-        image: {{ include "katib.image" (dict "registry" .Values.ui.image.registry "repository" .Values.ui.image.repository "tag" .Values.ui.image.tag "digest" .Values.ui.image.digest "Values" .Values) }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.ui.image.registry) }}{{ . }}/{{ end }}{{ .Values.ui.image.repository }}:{{ .Values.ui.image.tag }}"
         name: katib-ui
         ports:
         - containerPort: 8080

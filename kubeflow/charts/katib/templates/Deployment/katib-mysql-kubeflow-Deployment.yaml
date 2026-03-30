@@ -36,7 +36,7 @@ spec:
           value: 'true'
         - name: MYSQL_DATABASE
           value: katib
-        image: {{ include "katib.image" .Values.mariadb.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.mariadb.image.registry) }}{{ . }}/{{ end }}{{ .Values.mariadb.image.repository }}{{- if .Values.mariadb.image.digest }}@{{ .Values.mariadb.image.digest }}{{- else }}:{{ .Values.mariadb.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
         livenessProbe:
           exec:

@@ -7,7 +7,7 @@ spec:
     prometheus.kserve.io/path: /metrics
     prometheus.kserve.io/port: '8080'
   containers:
-  - image: {{ include "kserve.image" .Values.huggingfaceServer }}
+  - image: "{{ with (coalesce .Values.global.imageRegistry .Values.huggingfaceServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.huggingfaceServer.image.repository }}{{- if .Values.huggingfaceServer.image.digest }}@{{ .Values.huggingfaceServer.image.digest }}{{- else }}:{{ .Values.huggingfaceServer.image.tag }}{{- end }}"
     name: kserve-container
     args:
     - --model_name={{`{{.Name}}`}}

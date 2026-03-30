@@ -62,34 +62,6 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Build image reference from registry, repository, tag, and optional digest.
-If digest is set, renders as: [registry/]repository:tag@digest
-Usage: {{ include "kserve.image" .Values.controllerManager.image }}
-
-Supports both flat structure (.registry, .repository, .tag, .digest)
-and nested structure (.image.registry, .image.repository, .image.tag, .image.digest)
-*/}}
-{{- define "kserve.image" -}}
-{{- $image := . }}
-{{- if hasKey . "image" }}
-{{- $image = .image }}
-{{- end }}
-{{- $registry := $image.registry }}
-{{- if not $registry }}
-{{- $globalRegistry := "" }}
-{{- if hasKey .Values "global" }}
-{{- if hasKey .Values.global "imageRegistry" }}
-{{- $globalRegistry = .Values.global.imageRegistry }}
-{{- end }}
-{{- end }}
-{{- $registry = $globalRegistry }}
-{{- end }}
-{{- $ref := "" -}}
-{{- if $registry -}}{{- $ref = printf "%s/%s:%s" $registry $image.repository $image.tag -}}{{- else -}}{{- $ref = printf "%s:%s" $image.repository $image.tag -}}{{- end -}}
-{{- if $image.digest -}}{{- printf "%s@%s" $ref $image.digest -}}{{- else -}}{{- $ref -}}{{- end -}}
-{{- end -}}
-
-{{/*
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "kserve.imagePullSecrets" -}}

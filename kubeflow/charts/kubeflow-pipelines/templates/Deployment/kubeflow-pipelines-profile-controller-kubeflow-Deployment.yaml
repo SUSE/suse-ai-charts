@@ -64,7 +64,7 @@ spec:
         envFrom:
         - configMapRef:
             name: kubeflow-pipelines-profile-controller-env-5252m69c4c
-        image: {{ include "kubeflow-pipelines.image" .Values.profileController.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.profileController.image.registry) }}{{ . }}/{{ end }}{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.profileController.image.pullPolicy }}
         name: profile-controller
         ports:

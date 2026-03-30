@@ -11,7 +11,7 @@ spec:
     - --model_name={{`{{.Name}}`}}
     - --model_dir=/mnt/models
     - --http_port=8080
-    image: {{ include "kserve.image" .Values.sklearnServer }}
+    image: "{{ with (coalesce .Values.global.imageRegistry .Values.sklearnServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.sklearnServer.image.repository }}{{- if .Values.sklearnServer.image.digest }}@{{ .Values.sklearnServer.image.digest }}{{- else }}:{{ .Values.sklearnServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

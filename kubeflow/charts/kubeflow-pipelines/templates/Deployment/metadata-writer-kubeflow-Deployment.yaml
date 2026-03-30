@@ -28,7 +28,7 @@ spec:
       - env:
         - name: NAMESPACE_TO_WATCH
           value: ''
-        image: {{ include "kubeflow-pipelines.image" .Values.metadataWriter.image }}
+        image: "{{ with (coalesce .Values.global.imageRegistry .Values.metadataWriter.image.registry) }}{{ . }}/{{ end }}{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataWriter.image.pullPolicy }}
         name: main
         {{- with .Values.metadataWriter.resources }}

@@ -12,8 +12,6 @@ image:
 
 replicaCount: 1
 
-resources: {}
-
 # Indicate if NVIDIA GPU Operator is deployed on the cluster.
 # This will enable the notebooks to support NVIDIA GPU.
 nvidiaGPU:

@@ -61,22 +61,6 @@ Create the name of the service account to use
 {{- end }}
 {{- end }}
 
-{{/*
-Render a container image string from image values.
-*/}}
-{{- define "notebook-controller.image" -}}
-{{- $registry := .registry -}}
-{{- if not $registry -}}
-{{- $globalRegistry := "" -}}
-{{- if hasKey .Values "global" -}}
-{{- if hasKey .Values.global "imageRegistry" -}}
-{{- $globalRegistry = .Values.global.imageRegistry -}}
-{{- end -}}
-{{- end -}}
-{{- $registry = $globalRegistry -}}
-{{- end -}}
-{{- if $registry -}}{{- printf "%s/%s:%s" $registry .repository .tag -}}{{- else -}}{{- printf "%s:%s" .repository .tag -}}{{- end -}}
-{{- end -}}
 
 {{/*
 Return the proper Docker Image Registry Secret Names

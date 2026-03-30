@@ -109,39 +109,3 @@ Uses the chart-level image.pullPolicy as primary, falling back to global.imagePu
 {{- end }}
 {{- $policy -}}
 {{- end -}}
-
-{{/*
-Build image reference from registry, repository, tag, and digest.
-If global.imageRegistry is set, it is used as fallback.
-If digest is provided, image uses @sha256:... format; otherwise uses :tag format.
-Usage: {{ include "knative-eventing.image" (dict "image" .Values.controller.image "context" .) }}
-
-Supports both flat structure (.registry, .repository, .tag, .digest)
-and nested structure (.image.registry, .image.repository, .image.tag, .image.digest)
-*/}}
-{{- define "knative-eventing.image" -}}
-{{- $image := . }}
-{{- if hasKey . "image" }}
-{{- $image = .image }}
-{{- end }}
-{{- $registry := $image.registry }}
-{{- if not $registry }}
-{{- $globalRegistry := "" }}
-{{- if hasKey . "context" }}
-{{- $ctx := .context }}
-{{- if hasKey $ctx.Values "global" }}
-{{- if hasKey $ctx.Values.global "imageRegistry" }}
-{{- $globalRegistry = $ctx.Values.global.imageRegistry }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- $registry = $globalRegistry }}
-{{- end }}
-{{- $ref := "" -}}
-{{- if $image.digest -}}
-{{- if $registry -}}{{- $ref = printf "%s/%s@%s" $registry $image.repository $image.digest -}}{{- else -}}{{- $ref = printf "%s@%s" $image.repository $image.digest -}}{{- end -}}
-{{- else if $image.tag -}}
-{{- if $registry -}}{{- $ref = printf "%s/%s:%s" $registry $image.repository $image.tag -}}{{- else -}}{{- $ref = printf "%s:%s" $image.repository $image.tag -}}{{- end -}}
-{{- end -}}
-{{- $ref -}}
-{{- end -}}

@@ -61,27 +61,6 @@ Create the name of the service account to use
 {{- end }}
 {{- end }}
 
-{{/*
-Build image reference from registry, repository, tag, and optional digest.
-If digest is set, renders as: [registry/]repository:tag@digest
-This allows SHA256 pinning for supply-chain security without losing human-readable tags.
-Usage: {{ include "kubeflow-pipelines.image" .Values.someComponent.image }}
-*/}}
-{{- define "kubeflow-pipelines.image" -}}
-{{- $registry := .registry -}}
-{{- if not $registry -}}
-{{- $globalRegistry := "" -}}
-{{- if hasKey .Values "global" -}}
-{{- if hasKey .Values.global "imageRegistry" -}}
-{{- $globalRegistry = .Values.global.imageRegistry -}}
-{{- end -}}
-{{- end -}}
-{{- $registry = $globalRegistry -}}
-{{- end -}}
-{{- $ref := "" -}}
-{{- if $registry -}}{{- $ref = printf "%s/%s:%s" $registry .repository .tag -}}{{- else -}}{{- $ref = printf "%s:%s" .repository .tag -}}{{- end -}}
-{{- if .digest -}}{{- printf "%s@%s" $ref .digest -}}{{- else -}}{{- $ref -}}{{- end -}}
-{{- end -}}
 
 {{/*
 Return the proper Docker Image Registry Secret Names
