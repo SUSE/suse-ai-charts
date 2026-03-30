@@ -9,6 +9,7 @@ metadata:
   name: kserve-controller-manager
   namespace: kubeflow
 spec:
+  replicas: {{ .Values.controllerManager.replicaCount }}
   selector:
     matchLabels:
       app: kserve

@@ -8,8 +8,11 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
+# PodDisruptionBudgets for KFP critical path components.
+# With maxUnavailable: 1 and single replicas this is a no-op; meaningful protection
+# requires replicaCount >= 2 (use ha-overrides.yaml).
 pdb:
-  enabled: false
+  enabled: true
   maxUnavailable: 1
 
 # MySQL/MariaDB secret configuration.

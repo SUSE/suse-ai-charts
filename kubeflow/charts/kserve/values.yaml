@@ -5,6 +5,8 @@ global:
   imagePullSecrets: []
 
 controllerManager:
+  # Increase to 2+ via ha-overrides.yaml for HA deployments.
+  replicaCount: 1
   image:
     registry: docker.io
     repository: kserve/kserve-controller

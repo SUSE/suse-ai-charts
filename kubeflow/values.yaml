@@ -209,10 +209,12 @@ dex:
     limits:
       cpu: 500m
       memory: 512Mi
-  # PodDisruptionBudget — enable in production to protect against voluntary disruptions.
-  # Dex is in the critical auth path; losing it during a node drain blocks all logins.
+  # PodDisruptionBudget — protects against voluntary disruptions (node drains).
+  # With maxUnavailable: 1 and a single replica this is a no-op; meaningful protection
+  # requires replicaCount >= 2 (use ha-overrides.yaml). Dex is in the critical auth
+  # path — losing it blocks all logins.
   podDisruptionBudget:
-    enabled: false
+    enabled: true
     maxUnavailable: 1
 
 

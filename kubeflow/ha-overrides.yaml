@@ -1,0 +1,26 @@
+# ============================================================================
+# HIGH AVAILABILITY OVERRIDES
+# Apply on top of your base values file:
+#   helm upgrade kubeflow . -f <your-values>.yaml -f ha-overrides.yaml -n kubeflow
+#
+# Prerequisites:
+#   - Cluster with at least 2 nodes to allow replicas to be scheduled separately
+#   - Sufficient CPU/memory headroom for the additional controller replicas
+#   - CNI that supports NetworkPolicy if networkPolicies.enabled=true
+# Note: This file does not configure pod anti-affinity or topology spread constraints.
+# If node-level redundancy is required, add affinity rules in your own values overlay.
+#
+# Note: KFP and Dex PodDisruptionBudgets are enabled by default and do not
+# need to be set here.
+# ============================================================================
+
+katib:
+  controller:
+    replicaCount: 2   # leader election enabled in Katib v0.17+
+
+training-operator:
+  replicaCount: 2     # leader election enabled
+
+kserve:
+  controllerManager:
+    replicaCount: 2   # leader election enabled
