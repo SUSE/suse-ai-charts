@@ -163,6 +163,13 @@ Create a `my-values.yaml` file with your overrides (see [Configuration Scenarios
 ./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f my-values.yaml
 ```
 
+Or Use the `demo-overrides.yaml` example provided in the [repo](https://github.com/SUSE/suse-ai-charts/tree/main/kubeflow).
+**Never use `demo-overrides.yaml` in production**
+
+```bash
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f demo-overrides.yaml
+```
+
 ---
 
 ### Mode 2 — Manual Helm install (OCI, recommended for production)
@@ -252,6 +259,8 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --namespace istio-system \
   --set global.imagePullSecrets[0].name=application-collection \
   --set gateway.enabled=true \
+  --force-conflicts \
+  --server-side=true \
   --wait --timeout 5m
 ```
 
@@ -265,10 +274,11 @@ helm upgrade --install kubeflow \
   --version 0.3.1 \
   -n kubeflow \
   --force-conflicts \
+  --server-side=true \
   --wait --timeout 15m
 ```
 
-To apply a values override file:
+To apply a values override file, for example the `demo-overrides.yaml` provided in the [repo](https://github.com/SUSE/suse-ai-charts/tree/main/kubeflow). **Never use `demo-overrides.yaml` in production**:
 
 ```bash
 helm upgrade --install kubeflow \
@@ -276,8 +286,9 @@ helm upgrade --install kubeflow \
   --version 0.3.1 \
   -n kubeflow \
   --force-conflicts \
+  --server-side=true \
   --wait --timeout 15m \
-  -f my-values.yaml
+  -f demo-overrides.yaml
 ```
 
 > `--force-conflicts` is required because cert-manager-cainjector, istiod (pilot-discovery), and
@@ -294,8 +305,9 @@ helm upgrade --install kubeflow \
 > helm upgrade --install kubeflow charts/kubeflow \
 >   -n kubeflow \
 >   --force-conflicts \
+>   --server-side=true \
 >   --wait --timeout 15m \
->   -f my-values.yaml
+>   -f demo-overrides.yaml
 > ```
 
 ---

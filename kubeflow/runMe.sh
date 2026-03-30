@@ -137,7 +137,7 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --set global.imagePullSecrets[0].name=application-collection \
   --set gateway.enabled=true \
   --force-conflicts \
-  --server-side \
+  --server-side=true \
   --wait --timeout 5m
 
 echo "=== Step 7: Package Kubeflow sub-charts ==="
@@ -161,7 +161,7 @@ echo "=== Step 8: Install Kubeflow ==="
 helm upgrade --install kubeflow "$SCRIPT_DIR" \
   -n kubeflow \
   --force-conflicts \
-  --server-side \
+  --server-side=true \
   --wait --timeout 15m $VALUES_ARGUMENT
 
 echo ""

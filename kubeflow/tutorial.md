@@ -61,7 +61,7 @@ Open `http://<KUBEFLOW_HOST>` in your browser.
 | Email    | `user@example.com` |
 | Password | `12341234`         |
 
-> **Note — Demo mode:** This tutorial uses `my-values.yaml` which sets `global.demoMode: true`
+> **Note — Demo mode:** This tutorial uses `demo-overrides.yaml` which sets `global.demoMode: true`
 > and retains well-known demo credentials. The chart's credential validation is suppressed in this
 > mode. **Never use these credentials in production.** See
 > [Production Hardening](README.md#production-hardening) before any real deployment.
