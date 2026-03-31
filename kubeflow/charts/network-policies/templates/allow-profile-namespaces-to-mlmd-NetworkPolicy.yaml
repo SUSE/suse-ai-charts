@@ -1,0 +1,24 @@
+# Allow profile namespace pods to reach the MLMD gRPC service directly.
+# The KFP system DAG driver (running in user namespaces) calls metadata-grpc-service:8080
+# for GetContextByTypeAndName operations during pipeline execution.
+# Scoped to metadata-grpc-server pods only — not all kubeflow pods on port 8080 — to avoid
+# exposing katib-controller metrics and other unrelated port-8080 listeners.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-profile-namespaces-to-mlmd
+  namespace: kubeflow
+spec:
+  podSelector:
+    matchLabels:
+      component: metadata-grpc-server
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: kubeflow-profile
+    ports:
+    - port: 8080
+      protocol: TCP

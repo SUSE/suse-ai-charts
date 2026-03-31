@@ -109,7 +109,8 @@ NEXT STEPS
    - Set up TLS certificates (set kubeflow-istio-resources.tls.source=selfSigned|letsEncrypt|secret)
    - Configure persistent storage with a production-grade StorageClass
    - Set resource quotas per namespace
-   - Review NetworkPolicies (set networkPolicies.enabled=true)
+   - NetworkPolicies are enabled by default; disable with networkPolicies.enabled=false
+     on CNIs without NetworkPolicy support
 
 DOCUMENTATION
 -------------

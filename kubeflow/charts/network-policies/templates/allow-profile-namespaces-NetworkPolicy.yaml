@@ -1,0 +1,39 @@
+# Allow profile (user) namespaces to reach KFP, SeaweedFS, and Katib services in kubeflow.
+# Pipeline executor pods, Argo artifact sidecars, storage-initializer init containers, and
+# Katib metrics-collector sidecars all run in user namespaces and call back into kubeflow:
+#   8888 — KFP API server    (kfp-launcher → ml-pipeline)
+#   9090 — metadata envoy    (kfp-launcher → MLMD via envoy proxy)
+#   8333 — SeaweedFS S3      (Argo artifact sidecar + KServe storage-initializer)
+#          Note: the seaweedfs Service exposes port 9000 but targetPort is 8333 — NP
+#          matches the pod port (targetPort), not the service port.
+#   6789 — Katib DB manager  (metrics-collector sidecar → katib-db-manager)
+# MLMD gRPC (port 8080) is handled by allow-profile-namespaces-to-mlmd with a targeted
+# podSelector to avoid exposing katib-controller and other port-8080 listeners.
+# All other ports remain blocked by the deny-all-ingress-kubeflow policy.
+#
+# Namespace selector uses app.kubernetes.io/part-of: kubeflow-profile — the canonical
+# Kubeflow label applied by the profiles controller to every user namespace. The admission
+# webhook uses the same selector, confirming the label is present before workloads run.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-profile-namespaces
+  namespace: kubeflow
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: kubeflow-profile
+    ports:
+    - port: 8888
+      protocol: TCP
+    - port: 9090
+      protocol: TCP
+    - port: 8333
+      protocol: TCP
+    - port: 6789
+      protocol: TCP

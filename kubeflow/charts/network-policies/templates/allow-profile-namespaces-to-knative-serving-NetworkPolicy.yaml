@@ -1,0 +1,21 @@
+# Allow Knative queue-proxy sidecars (running in user/profile namespaces) to reach
+# the Knative autoscaler in knative-serving.
+# The queue-proxy opens a websocket to autoscaler:8080 to report per-pod request stats.
+# Without this, autoscaler never sees the revision as ready → InferenceService stays Unknown.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-profile-namespaces-to-knative-serving
+  namespace: knative-serving
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: kubeflow-profile
+    ports:
+    - port: 8080
+      protocol: TCP

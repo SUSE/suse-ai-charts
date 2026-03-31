@@ -828,11 +828,18 @@ user-namespace:
 Replace Dex static passwords with an LDAP, SAML, or upstream OIDC connector. Add a `connectors`
 block to `dex.config` and remove `staticPasswords` + `enablePasswordDB: true`.
 
-### 3. Enable NetworkPolicies
+### 3. NetworkPolicies
+
+NetworkPolicies are **enabled by default**. They use an ingress-only deny-by-default model
+— egress is unrestricted so components can reach external services (HuggingFace, container
+registries, etc.).
+
+Supported by Calico, Cilium, Canal, and any other CNI that enforces NetworkPolicy.
+Disable only if your CNI does not:
 
 ```yaml
 networkPolicies:
-  enabled: true   # requires Calico, Cilium, or Canal CNI
+  enabled: false
 ```
 
 ### 4. Enable TLS
