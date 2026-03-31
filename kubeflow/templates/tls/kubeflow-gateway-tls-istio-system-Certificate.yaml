@@ -14,8 +14,11 @@ spec:
 {{- if eq $kir.tls.source "selfSigned" }}
     name: {{ $kir.tls.issuer | default "kubeflow-selfsigned" }}
     kind: Issuer
-{{- else }}
+{{- else if eq $kir.tls.source "letsEncrypt" }}
     name: {{ $kir.tls.issuer | default "kubeflow-letsencrypt" }}
+    kind: ClusterIssuer
+{{- else }}
+    name: {{ $kir.tls.issuerRef.name }}
     kind: ClusterIssuer
 {{- end }}
   dnsNames:
