@@ -116,7 +116,8 @@ Prerequisite: A RKE2 cluster with a default storageClass configured.
 3. Creates `application-collection` (for dp.apps.rancher.io) and `suse-ai-registry` (for registry.suse.com) image pull secrets in each namespace
 4. Labels the `kubeflow` and `kubeflow-user-example-com` namespaces for Helm ownership
 5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
-6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled
+6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled. 
+Note: By default, the Istio Gateway service is of type LoadBalancer, which requires your environment to have a load balancer capable of assigning an external IP from its pool. If a load balancer is not available, you must override the Istio configuration by specifying one or more external IPs in istio-override.yaml.
 7. Packages sub-charts via `helm dependency update`
 8. Installs the Kubeflow umbrella chart
 
