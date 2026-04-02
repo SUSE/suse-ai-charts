@@ -1,0 +1,10 @@
+global:
+  imagePullSecrets:
+    - application-collection
+gateway:
+  enabled: true
+  #type: LoadBalancer
+  #service:
+  #  externalIPs: 
+  #  - 192.168.1.20
+
