@@ -684,7 +684,7 @@ kubeflow-istio-resources:
   externalDNSEnabled: false
 
   tls:
-    source: ""          # "" | "selfSigned" | "letsEncrypt" | "secret"
+    source: ""          # "" | "selfSigned" | "letsEncrypt" | "secret" | "issuerRef"
     issuer: ""          # Override ClusterIssuer name; auto-set to kubeflow-letsencrypt when source=letsEncrypt
     existingSecret: ""  # Pre-existing Secret in istio-system (source: secret)
     credentialName: kubeflow-gateway-tls
@@ -707,6 +707,13 @@ kubeflow-istio-resources:
     #   apiTokenSecretRef:
     #     name: cloudflare-api-token-secret
     #     key: api-token
+
+    # If you are using an existing cluster issuer (i.e. by setting source to
+    # "issuerRef" above), you must fill in the issuerRef section.
+    # NOTE: the existing issuer must be a "clusterissuer".
+    #
+    # issuerRef:
+    #   name: <name of the existing cluster issuer>
 
 # --- External DNS (optional) ---
 # Automatically creates/updates DNS records for kubeflow-istio-resources.hostname.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Kubeflow deployment script
 # Usage:
-#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>]
+#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>] [--disable-cert-manager]
 # Or set env vars:
 #   APPCO_REGISTRY_USER=<user> APPCO_REGISTRY_TOKEN=<token> SUSE_AI_REGISTRY_USER=<user> SUSE_AI_REGISTRY_TOKEN=<token> [CLOUDFLARE_API_KEY=<CloudFlare API Key>] [KUBECONFIG=<path>] ./runMe.sh
 
@@ -30,6 +30,7 @@ unset _pos _a _skip
 
 CUSTOM_VALUES_FILE=
 VALUES_ARGUMENT=
+ENABLE_CERT_MANAGER=1
 while [ $# -gt 0 ] ; do
   case "$1" in
     -f | --values-file)
@@ -59,12 +60,25 @@ while [ $# -gt 0 ] ; do
         exit 1
       fi
       ;;
+    --disable-external-dns)
+      ENABLE_EXTERNAL_DNS=0
+      shift
+      ;;
+    --disable-cert-manager)
+      ENABLE_CERT_MANAGER=0
+      shift
+      ;;
     *)
       # for now assume they are AppCo cred args and SUSE registry cred args
       shift
       ;;
   esac
 done
+
+NAMESPACES_TO_CREATE=("istio-system" "kubeflow" "kubeflow-user-example-com")
+if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
+  NAMESPACES_TO_CREATE+=("cert-manager")
+fi
 
 if [ -n "$CUSTOM_VALUES_FILE" ]; then
   if [ ! -f $CUSTOM_VALUES_FILE ]; then
@@ -88,7 +102,7 @@ echo "$APPCO_REGISTRY_TOKEN" | helm registry login dp.apps.rancher.io --username
 echo "$SUSE_AI_REGISTRY_TOKEN" | helm registry login registry.suse.com --username "$SUSE_AI_REGISTRY_USER" --password-stdin
 
 echo "=== Step 2 & 3: Create namespaces and all the required secrets ==="
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
+for ns in "${NAMESPACES_TO_CREATE[@]}"; do
   kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
   kubectl create secret docker-registry application-collection \
     --docker-server=dp.apps.rancher.io \
@@ -121,14 +135,16 @@ for ns in kubeflow kubeflow-user-example-com; do
     --overwrite
 done
 
-echo "=== Step 5: Install cert-manager ==="
-helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
-  --version 1.19.3 \
-  --namespace cert-manager \
-  --set crds.enabled=true \
-  --set crds.keep=true \
-  --set global.imagePullSecrets[0].name=application-collection \
-  --wait --timeout 5m
+echo "=== Step 5: Optionally install cert-manager ==="
+if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
+  helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
+    --version 1.19.3 \
+    --namespace cert-manager \
+    --set crds.enabled=true \
+    --set crds.keep=true \
+    --set global.imagePullSecrets[0].name=application-collection \
+    --wait --timeout 5m
+fi
 
 echo "=== Step 6: Install Istio ==="
 helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \

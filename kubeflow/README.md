@@ -154,6 +154,7 @@ Password: 12341234
 | `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
 | `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
+| `--disable-cert-manager` | - | Do not upgrade/install cert-manager, use an existing one instead |
 
 
 #### Using a values override file with `runMe.sh`
@@ -578,6 +579,65 @@ auth:
     clientSecret: "<STRONG-RANDOM-32-CHAR-SECRET>"
 # ... (rest of credentials)
 ```
+
+### Production: Use existing external-dns and cert-manager
+
+If the existing environment already has `externa-dns` and `cert-manager`, KubeFlow
+can make use of them providing that the follow conditions are satisfied.
+
+1. `external-dns` must be configured to watch for the `istio-gateway` source.
+   You can check the deplayment with the `kubectl` CLI. e.g.
+
+```bash
+$ kubectl get deployment external-dns -n external-dns -o yaml | grep source=
+        - --source=service
+        - --source=ingress
+        - --source=istio-gateway
+```
+
+2. A cluster issuer must exist in the environment, and it is configured to issue certificates
+   from a production public CA such as LetsEncrypt. You can check the deployment with the
+   `kubectl` CLI. e.g.
+
+```bash
+$ kubectl get clusterissuer
+NAME                     READY   AGE
+letsencrypt-production   True    75m
+```
+
+To configure KubeFlow to use existing `external-dns` and `cert-manager`:
+
+Then reference it in your values:
+
+```yaml
+# prod-values.yaml
+kubeflow-istio-resources:
+  hostname: "kubeflow.example.com"
+  externalDNSEnabled: true
+  tls:
+    source: "issuerRef"
+    httpsRedirect: true
+
+    issuerRef:
+      name: letsencrypt-production
+
+externaldns:
+  enabled: false
+
+# Change credentials as shown in the Let's Encrypt scenario above
+auth:
+  oidc:
+    clientSecret: "<STRONG-RANDOM-32-CHAR-SECRET>"
+# ... (rest of credentials)
+```
+> **Note:** when adding `istio-gateway` as a source to `external-dns`, make
+> sure the Istio CRDs are installed. Otherwise, `external-dns` pod may keep
+> crashing with an error indicating failure to list Istion gateway resource.
+> However the error will eventually go away after Istio is installed by
+> KubeFlow.
+
+> **Note:** if you are using `runMe.sh` for the installation, make sure to
+> specify the `--disable-cert-manager` option to skip installing `cert-manager`.
 
 ---
 

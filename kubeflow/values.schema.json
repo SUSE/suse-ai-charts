@@ -368,8 +368,8 @@
           "properties": {
             "source": {
               "type": "string",
-              "enum": ["", "selfSigned", "letsEncrypt", "secret"],
-              "description": "TLS mode: empty=HTTP only, selfSigned=cert-manager self-signed, letsEncrypt=ACME, secret=BYO cert"
+              "enum": ["", "selfSigned", "letsEncrypt", "secret", "issuerRef"],
+              "description": "TLS mode: empty=HTTP only, selfSigned=cert-manager self-signed, letsEncrypt=ACME, secret=BYO cert, isserRef=existing cluster issuer"
             },
             "issuer": {
               "type": "string",
@@ -406,7 +406,17 @@
                   "description": "Challenge solver: cloudflare (dns01, requires externalDns.cloudflare.apiToken) or http01"
                 }
               }
-            }
+            },
+	    "issuerRef": {
+              "type": "object",
+	      "description": "An existing cluster issuer.",
+	      "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Existing cluster issuer name"
+                }
+              }
+	    }
           }
         }
       }
