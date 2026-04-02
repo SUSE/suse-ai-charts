@@ -1,0 +1,23 @@
+# Allow the Kubernetes API server to reach admission webhook services in knative-serving.
+# Required for KServe to create Knative Service (ksvc) objects for InferenceService
+# predictors — the Knative validating webhook runs on port 443 and is called on every
+# ksvc CREATE/UPDATE.
+#
+# Covered webhook services and their ports:
+#   443  — webhook.knative-serving.svc (config + serving validation)
+#   8443 — net-istio-webhook (networking layer webhook)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apiserver-webhooks-knative-serving
+  namespace: knative-serving
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 443
+      protocol: TCP
+    - port: 8443
+      protocol: TCP

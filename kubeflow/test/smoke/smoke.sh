@@ -278,6 +278,17 @@ else
   fail "KServe ingressService wrong: '$INGRESS_SVC' (expected istio.istio-system.svc.cluster.local)"
 fi
 
+# Auto-generated passwords must be non-empty (lookup+randAlphaNum pattern — empty means generation failed)
+pw=$(kubectl get secret mysql-secret -n "$NS" \
+  -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
+[ -n "$pw" ] && pass "mysql-secret password is non-empty" \
+             || fail "mysql-secret password is empty — auto-generation may have failed"
+
+pw=$(kubectl get secret katib-mysql-secrets -n "$NS" \
+  -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' 2>/dev/null | base64 -d)
+[ -n "$pw" ] && pass "katib-mysql-secrets password is non-empty" \
+             || fail "katib-mysql-secrets password is empty — auto-generation may have failed"
+
 # ── Section 6: Service connectivity (TCP) ─────────────────────────────────────
 header "6. Service connectivity (TCP)"
 
@@ -316,6 +327,12 @@ check_http "Dex OIDC discovery"       "http://kubeflow-dex.${NS}.svc.cluster.loc
 check_http "oauth2-proxy ping"        "http://kubeflow-oauth2-proxy.${NS}.svc.cluster.local:80/ping"
 check_http "SeaweedFS master health"  "http://seaweedfs.${NS}.svc.cluster.local:9333/cluster/status"
 check_http "Profiles metrics"         "http://profiles-kfam.${NS}.svc.cluster.local:8081/metrics"
+
+# ── Section 9: PodDisruptionBudgets ───────────────────────────────────────────
+header "9. PodDisruptionBudgets"
+check_resource pdb ml-pipeline
+check_resource pdb metadata-grpc-deployment
+check_resource pdb workflow-controller
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 header "━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -3,6 +3,10 @@ apiVersion: trainer.kubeflow.org/v1alpha1
 kind: ClusterTrainingRuntime
 metadata:
   name: torchtune-llama3.2-3b
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
   labels:
     trainer.kubeflow.org/framework: torchtune
 spec:
