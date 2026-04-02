@@ -150,7 +150,8 @@ echo "=== Step 6: Install Istio ==="
 helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --version 1.1.3 \
   --namespace istio-system \
-  -f istio-overrides.yaml \
+  --set global.imagePullSecrets[0].name=application-collection \
+  --set gateway.enabled=true \
   --force-conflicts \
   --server-side=true \
   --wait --timeout 5m

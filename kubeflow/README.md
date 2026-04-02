@@ -72,6 +72,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | Helm | >= 4.0 | Required for OCI chart support |
 | cert-manager | 1.19.3 | Installed by `runMe.sh`; or pre-install manually |
 | Istio | 1.1.3 | Installed by `runMe.sh`; or pre-install manually |
+| Load Balancer (i.e. metallb) | - | It is required when used in conjunction with external-dns and cert-manager. Tested with MetalLB v0.15.3 |
 | Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
 | SUSE Application Collection credentials | — | Username + token for `dp.apps.rancher.io` (application-collection secret) |
 | SUSE Registry credentials | — | Username + token for `registry.suse.com` (suse-ai-registry secret) |
@@ -117,7 +118,6 @@ Prerequisite: A RKE2 cluster with a default storageClass configured.
 4. Labels the `kubeflow` and `kubeflow-user-example-com` namespaces for Helm ownership
 5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
 6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled. 
-Note: By default, the Istio Gateway service is of type LoadBalancer, which requires your environment to have a load balancer capable of assigning an external IP from its pool. If a load balancer is not available, you must override the Istio configuration by specifying one or more external IPs in istio-override.yaml. The external IP configured for this gateway should be unique and must not conflict with external IPs used by other ingress or gateway services, unless traffic routing is explicitly managed.
 7. Packages sub-charts via `helm dependency update`
 8. Installs the Kubeflow umbrella chart
 
@@ -360,7 +360,7 @@ See [Non-prod: Named hostname over HTTP](#non-prod-named-hostname-over-http) for
 See [Non-prod: Self-signed TLS](#non-prod-self-signed-tls) or
 [Production: Let's Encrypt TLS + external-dns](#production-lets-encrypt-tls--external-dns).
 
-> **Note:** When using Let's Encrypt as the issuer for Gateway TLS certificate, `external-dns` is required for DNS-01 challenges.
+> **Note:** When using Let's Encrypt as the issuer for Gateway TLS certificate, `external-dns` is required for DNS-01 challenges. Furthermore, a load balancer (i.e. MetallLB) must be used in conjunction with `external-dns`. This is to ensure `external-dns` can properly obtain the external IP from the load balancer to create the DNS record.
 
 ---
 
