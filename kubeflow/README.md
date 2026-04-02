@@ -117,7 +117,7 @@ Prerequisite: A RKE2 cluster with a default storageClass configured.
 4. Labels the `kubeflow` and `kubeflow-user-example-com` namespaces for Helm ownership
 5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
 6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled. 
-Note: By default, the Istio Gateway service is of type LoadBalancer, which requires your environment to have a load balancer capable of assigning an external IP from its pool. If a load balancer is not available, you must override the Istio configuration by specifying one or more external IPs in istio-override.yaml.
+Note: By default, the Istio Gateway service is of type LoadBalancer, which requires your environment to have a load balancer capable of assigning an external IP from its pool. If a load balancer is not available, you must override the Istio configuration by specifying one or more external IPs in istio-override.yaml. The external IP configured for this gateway should be unique and must not conflict with external IPs used by other ingress or gateway services, unless traffic routing is explicitly managed.
 7. Packages sub-charts via `helm dependency update`
 8. Installs the Kubeflow umbrella chart
 
@@ -447,6 +447,12 @@ kubeflow-istio-resources:
       email: "admin@example.com"   # your ACME account email
       server: prod                 # prod | staging (use staging first to test)
       solver: cloudflare           # dns01 via Cloudflare
+    # Configuring cloudflare since solver is cloudflare
+    cloudflare:
+      email: "admin@example.com"
+      apiTokenSecretRef:
+        name: cloudflare-api-key
+        key: apiKey
 
 # external-dns — watches the Istio Gateway and creates/updates DNS records
 externaldns:
@@ -460,6 +466,12 @@ externaldns:
   txtOwnerId: "kubeflow"   # unique per cluster — prevents conflicts
   sources:
     - istio-gateway
+  env:
+    - name: CF_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cloudflare-api-key
+          key: apiKey
 
 # ── Credentials — change ALL of these ───────────────────────────────────────────
 auth:
@@ -504,7 +516,7 @@ user-namespace:
 
 # ── Optional hardening ───────────────────────────────────────────────────────────
 networkPolicies:
-  enabled: true   # requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal)
+  enabled: false   # set to true when using CNI that enforces NetworkPolicy (Calico, Cilium, Canal)
 
 monitoring:
   enabled: false  # set true after Rancher Monitoring (kube-prometheus-stack) is installed
