@@ -632,9 +632,11 @@ spec:
   metricsCollectorSpec:
     collector:
       kind: File
+    source:
       fileSystemPath:
         path: "/var/log/katib/metrics.log"
         kind: File
+        format: TEXT
   trialTemplate:
     primaryContainerName: training-container
     trialParameters:
@@ -661,6 +663,24 @@ spec:
             restartPolicy: Never
 EOF
 
+# On a fresh install cert-manager takes a moment to inject the CA bundle into the
+# ValidatingWebhookConfiguration. The placeholder value is "Cg==" (base64 of "\n").
+# Wait until the real cert is injected before applying the Experiment, otherwise the
+# webhook server rejects the CREATE with a TLS error and failurePolicy:Ignore drops it.
+_katib_webhook_ready=false
+for _i in $(seq 1 12); do
+  _ca=$(kubectl get validatingwebhookconfiguration katib.kubeflow.org \
+    -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null || true)
+  if [[ -n "$_ca" && "$_ca" != "Cg==" ]]; then
+    _katib_webhook_ready=true
+    break
+  fi
+  sleep 5
+done
+unset _ca _i
+$_katib_webhook_ready || info "katib webhook CA not ready after 60s — applying anyway"
+unset _katib_webhook_ready
+
 elapsed=0
 KATIB_DONE=false
 KATIB_FAILED=false
@@ -677,7 +697,9 @@ while true; do
     -l "katib.kubeflow.org/trial=e2e-katib-test" \
     --sort-by=.metadata.creationTimestamp \
     -o jsonpath='{.items[-1].status.phase}' 2>/dev/null || echo "")
-  info "Katib exp=Succeeded:${COND_OK:-False}/Failed:${COND_FAIL:-False} trial=${TRIAL_STATE} pod=${TRIAL_POD_PHASE:-pending} (${elapsed}s/${T_KATIB}s)"
+  SUGGESTION_STATE=$(kubectl get suggestion e2e-katib-test -n "$USER_NS" \
+    -o jsonpath='{.status.conditions[-1].type}' 2>/dev/null || echo "no-suggestion")
+  info "Katib exp=Succeeded:${COND_OK:-False}/Failed:${COND_FAIL:-False} suggestion=${SUGGESTION_STATE} trial=${TRIAL_STATE} pod=${TRIAL_POD_PHASE:-pending} (${elapsed}s/${T_KATIB}s)"
   [[ "$COND_OK"   == "True" ]] && KATIB_DONE=true   && break
   [[ "$COND_FAIL" == "True" ]] && KATIB_FAILED=true && break
   [[ $elapsed -ge $T_KATIB ]] && break

@@ -714,11 +714,11 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 
 ---
 
-### Optional features (disabled by default)
+### Optional features
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `networkPolicies.enabled` | `false` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Do not enable with bare Flannel. |
+| `networkPolicies.enabled` | `false` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Disable with bare Flannel or any CNI that does not enforce NetworkPolicy. |
 | `preflightChecks.enabled` | `false` | Pre-install hook Job that validates default StorageClass and cert-manager CRDs |
 | `preflightChecks.image.registry` | `dp.apps.rancher.io` | Registry for the preflight kubectl image |
 | `preflightChecks.image.repository` | `containers/kubectl` | Repository for the preflight kubectl image |
@@ -828,11 +828,18 @@ user-namespace:
 Replace Dex static passwords with an LDAP, SAML, or upstream OIDC connector. Add a `connectors`
 block to `dex.config` and remove `staticPasswords` + `enablePasswordDB: true`.
 
-### 3. Enable NetworkPolicies
+### 3. NetworkPolicies
+
+NetworkPolicies are **disabled by default**. They use an ingress-only deny-by-default model
+— egress is unrestricted so components can reach external services (HuggingFace, container
+registries, etc.).
+
+Supported by Calico, Cilium, Canal, and any other CNI that enforces NetworkPolicy.
+Disable if your CNI does not enforce NetworkPolicy.
 
 ```yaml
 networkPolicies:
-  enabled: true   # requires Calico, Cilium, or Canal CNI
+  enabled: true
 ```
 
 ### 4. Enable TLS

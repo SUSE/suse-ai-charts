@@ -28,14 +28,13 @@ unset _pos _a _skip
 : ${CLOUDFLARE_API_KEY:=""}
 
 
-CUSTOM_VALUES_FILE=
 VALUES_ARGUMENT=
 ENABLE_CERT_MANAGER=1
 while [ $# -gt 0 ] ; do
   case "$1" in
     -f | --values-file)
       if [ -n "${2-}" ]; then
-        CUSTOM_VALUES_FILE="$2"
+        VALUES_ARGUMENT="$VALUES_ARGUMENT --values $2"
 	shift
       else
 	echo "ERROR: values file must be specified with $1 argument"
@@ -78,14 +77,6 @@ done
 NAMESPACES_TO_CREATE=("istio-system" "kubeflow" "kubeflow-user-example-com")
 if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
   NAMESPACES_TO_CREATE+=("cert-manager")
-fi
-
-if [ -n "$CUSTOM_VALUES_FILE" ]; then
-  if [ ! -f $CUSTOM_VALUES_FILE ]; then
-    echo "ERROR: unable to access values file $CUSTOM_VALUES_FILE. Please make sure it exist or accessible."
-    exit 1
-  fi
-  VALUES_ARGUMENT="--values $CUSTOM_VALUES_FILE"
 fi
 
 if [[ -z "$APPCO_REGISTRY_USER" || -z "$APPCO_REGISTRY_TOKEN" || -z "$SUSE_AI_REGISTRY_USER" || -z "$SUSE_AI_REGISTRY_TOKEN" ]]; then

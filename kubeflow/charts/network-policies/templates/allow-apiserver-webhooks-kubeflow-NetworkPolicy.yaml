@@ -1,0 +1,23 @@
+# Allow the Kubernetes API server to reach admission webhook services in the kubeflow
+# namespace. The kube-apiserver runs on the host network (not as a CNI pod) so it cannot
+# be matched by namespaceSelector; a port-scoped allow-from-all is the standard pattern.
+#
+# Covered webhook services and their ports:
+#   443  — kserve-webhook-server-service, pvcviewer-webhook-service, admission-webhook
+#   9443 — katib-controller (metrics-collector mutating webhook),
+#           training-operator, kubeflow-trainer-controller-manager
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apiserver-webhooks-kubeflow
+  namespace: kubeflow
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 443
+      protocol: TCP
+    - port: 9443
+      protocol: TCP
