@@ -442,12 +442,12 @@ tensorboard:
 # Security / Network
 # ============================================================================
 
-# NetworkPolicies — deny-all-ingress by default with explicit allow rules.
+# NetworkPolicies — when enabled, deny-all-ingress with explicit allow rules.
 # Egress is unrestricted so components can reach external services (HuggingFace, registries, etc.).
 # Supported by Calico, Cilium, Canal, and any other CNI that enforces NetworkPolicy.
-# Disable only if your CNI does not enforce NetworkPolicy.
+# Disable if your CNI does not enforce NetworkPolicy.
 networkPolicies:
-  enabled: true
+  enabled: false
 
 # Pre-install preflight checks (Helm hook Job).
 # Validates: default StorageClass exists, cert-manager CRDs present.

@@ -59,7 +59,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | MariaDB (Katib) | inline | kubeflow | Katib experiment DB |
 | SeaweedFS | inline | kubeflow | Pipeline artifact store (S3-compatible, Docker Hub image — requires internet access) |
 | external-dns | SUSE Application Collection `external-dns` 1.20.0 | kubeflow | Automatic DNS record management for Cloudflare (disabled by default) |
-| NetworkPolicies | local | kubeflow / knative-serving | Deny-all + explicit allow NetworkPolicies (enabled by default) |
+| NetworkPolicies | local | kubeflow / knative-serving | Deny-all + explicit allow NetworkPolicies (disabled by default) |
 | Monitoring | local | kubeflow | ServiceMonitors + PrometheusRules for Rancher Monitoring (disabled by default) |
 
 ---
@@ -718,7 +718,7 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `networkPolicies.enabled` | `true` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Disable with bare Flannel or any CNI that does not enforce NetworkPolicy. |
+| `networkPolicies.enabled` | `false` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Disable with bare Flannel or any CNI that does not enforce NetworkPolicy. |
 | `preflightChecks.enabled` | `false` | Pre-install hook Job that validates default StorageClass and cert-manager CRDs |
 | `preflightChecks.image.registry` | `dp.apps.rancher.io` | Registry for the preflight kubectl image |
 | `preflightChecks.image.repository` | `containers/kubectl` | Repository for the preflight kubectl image |
@@ -830,7 +830,7 @@ block to `dex.config` and remove `staticPasswords` + `enablePasswordDB: true`.
 
 ### 3. NetworkPolicies
 
-NetworkPolicies are **enabled by default**. They use an ingress-only deny-by-default model
+NetworkPolicies are **disabled by default**. They use an ingress-only deny-by-default model
 — egress is unrestricted so components can reach external services (HuggingFace, container
 registries, etc.).
 
