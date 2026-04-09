@@ -273,7 +273,7 @@ Install directly from the OCI registry (no source checkout required):
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.1 \
+  --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
   --server-side=true \
@@ -285,7 +285,7 @@ To apply a values override file, for example the `demo-overrides.yaml` provided 
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.1 \
+  --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
   --server-side=true \
@@ -536,7 +536,7 @@ Or manually:
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.1 \
+  --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
   --wait --timeout 15m \
@@ -989,7 +989,7 @@ in a single step.
 ```bash
 helm upgrade kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.1 \
+  --version 0.3.2 \
   -n kubeflow --force-conflicts --wait --timeout 15m
 ```
 
