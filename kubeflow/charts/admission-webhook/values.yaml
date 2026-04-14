@@ -4,8 +4,8 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 image:
-  registry: ghcr.io
-  repository: kubeflow/kubeflow/poddefaults-webhook
+  registry: stgregistry.suse.com
+  repository: ai/containers/poddefaults-webhook
   tag: v1.10.0
   pullPolicy: IfNotPresent
 

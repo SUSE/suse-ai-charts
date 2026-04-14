@@ -5,8 +5,8 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: docker.io
-  repository: kserve/models-web-app
+  registry: stgregistry.suse.com
+  repository: ai/containers/models-web-app
   tag: v0.13.0
   pullPolicy: IfNotPresent
 

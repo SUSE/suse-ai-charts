@@ -1,6 +1,6 @@
 image:
-  registry: ghcr.io
-  repository: kubeflow/kubeflow/central-dashboard
+  registry: stgregistry.suse.com
+  repository: ai/containers/central-dashboard
   tag: v1.10.0
   pullPolicy: IfNotPresent
 

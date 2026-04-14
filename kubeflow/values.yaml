@@ -477,8 +477,8 @@ monitoring:
 # --- Central Dashboard ---
 # central-dashboard:
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/kubeflow/central-dashboard
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/central-dashboard
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
@@ -493,8 +493,8 @@ monitoring:
 #   nvidiaGPU:
 #     enabled: false
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/kubeflow/jupyter-web-app
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/jupyter-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
@@ -503,8 +503,8 @@ monitoring:
 # --- Notebook Controller ---
 # notebook-controller:
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/kubeflow/notebook-controller
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/notebook-controller
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   resources: {}
@@ -516,8 +516,8 @@ monitoring:
 # --- Volumes Web App ---
 # volumes-web-app:
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/kubeflow/volumes-web-app
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/volumes-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
@@ -526,8 +526,8 @@ monitoring:
 # --- Tensorboards Web App ---
 # tensorboards-web-app:
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/kubeflow/tensorboards-web-app
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/tensorboards-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
@@ -536,8 +536,8 @@ monitoring:
 # --- Models Web App ---
 # models-web-app:
 #   image:
-#     registry: "docker.io"
-#     repository: kserve/models-web-app
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/models-web-app
 #     tag: v0.13.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
@@ -546,8 +546,8 @@ monitoring:
 # --- Admission Webhook ---
 # admission-webhook:
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/kubeflow/poddefaults-webhook
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/poddefaults-webhook
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   resources: {}
@@ -555,8 +555,8 @@ monitoring:
 # --- Training Operator ---
 # training-operator:
 #   image:
-#     registry: ghcr.io
-#     repository: kubeflow/training-v1/training-operator
+#     registry: stgregistry.suse.com
+#     repository: ai/containers/training-operator
 #     tag: v1-d6eb98e
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
@@ -567,14 +567,14 @@ monitoring:
 #   replicaCount: 1
 #   kfam:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/kubeflow/kfam
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/kfam
 #       tag: v1.10.0
 #     resources: {}
 #   profileController:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/kubeflow/profile-controller
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/profile-controller
 #       tag: v1.10.0
 #     resources: {}
 
@@ -583,8 +583,8 @@ monitoring:
 #   replicaCount: 1
 #   manager:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/kubeflow/tensorboard-controller
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/tensorboard-controller
 #       tag: v1.10.0
 #     resources: {}
 
@@ -592,14 +592,14 @@ monitoring:
 # katib:
 #   controller:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/katib/katib-controller
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/katib-controller
 #       tag: v0.19.0
 #     resources: {}
 #   ui:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/katib/katib-ui
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/katib-ui
 #       tag: v0.19.0
 #     resources: {}
 #   mariadb:
@@ -614,14 +614,14 @@ monitoring:
 # pipelines:
 #   apiServer:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/kfp-api-server
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/kfp-api-server
 #       tag: "2.15.0"
 #     resources: {}
 #   frontend:
 #     image:
-#       registry: ghcr.io
-#       repository: kubeflow/kfp-frontend
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/kfp-frontend
 #       tag: "2.15.0"
 #     resources: {}
 
@@ -629,8 +629,8 @@ monitoring:
 # kserve:
 #   controllerManager:
 #     image:
-#       registry: "docker.io"
-#       repository: kserve/kserve-controller
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/kserve-controller
 #       tag: v0.16.0
 #       pullPolicy: Always
 #     resources:
@@ -645,10 +645,9 @@ monitoring:
 # knative-serving:
 #   controller:
 #     image:
-#       registry: gcr.io
-#       repository: knative-releases/knative.dev/serving/cmd/controller
-#       tag: ""  # unused when digest is set
-#       digest: sha256:3718bf2e2f135ac70699db930145b22e52fb49bdd47a613b58cd0732853576da
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/serving/cmd/controller
+#       tag: "v1.20.0"  # unused when digest is set
 #       pullPolicy: IfNotPresent
 #     resources:
 #       limits:
@@ -662,10 +661,9 @@ monitoring:
 # knative-eventing:
 #   controller:
 #     image:
-#       registry: gcr.io
-#       repository: knative-releases/knative.dev/eventing/cmd/controller
-#       tag: "" # unused when digest is set
-#       digest: sha256:202f2c203154f30b642ddbd3843fad12637389a84bf097c22c216039469f704b
+#       registry: stgregistry.suse.com
+#       repository: ai/containers/eventing/cmd/controller
+#       tag: "v1.20.0" # unused when digest is set
 #       pullPolicy: IfNotPresent
 #     resources:
 #       requests:
@@ -786,12 +784,12 @@ user-namespace:
       accessKey: *seaweedfsAccessKey
       secretKey: *seaweedfsSecretKey
     visualizationServer:
-      registry: ghcr.io
-      repository: kubeflow/kfp-visualization-server
+      registry: stgregistry.suse.com
+      repository: ai/containers/kfp-visualization-server
       tag: "2.16.0"
     frontend:
-      registry: ghcr.io
-      repository: kubeflow/kfp-frontend
+      registry: stgregistry.suse.com
+      repository: ai/containers/kfp-frontend
       tag: "2.16.0"
 
 # Test images for Helm hook test Pods.

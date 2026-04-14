@@ -57,7 +57,7 @@ T_TFJOB=300
 T_KATIB=300               # 1-trial busybox experiment
 T_PVCVIEWER=300
 T_GPU_NOTEBOOK=300
-T_GPU_PYTORCH=300
+T_GPU_PYTORCH=600
 T_GPU_HF_BUILD=600        # tiny model build + upload
 T_GPU_HF_READY=1200       # IS ready (model load into GPU; first run pulls multi-GB image)
 
@@ -133,9 +133,9 @@ header "1. KFP Pipeline — submit inline run → wait for SUCCEEDED"
 # no mesh identity needed, and this avoids sidecar initialisation races.
 kubectl delete pod kfp-e2e-helper -n "$NS" --ignore-not-found >/dev/null 2>&1 || true
 kubectl run kfp-e2e-helper -n "$NS" \
-  --image=curlimages/curl:8.7.1 \
+  --image=dp.apps.rancher.io/containers/curl:8.14.1 \
   --restart=Never \
-  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}},"spec":{"imagePullSecrets":[{"name":"application-collection"}]}}' \
   --wait \
   --command -- sh -c "sleep 300" >/dev/null 2>&1
 
@@ -145,8 +145,8 @@ KFP_EXEC="kubectl exec kfp-e2e-helper -n $NS --"
 KFP_BASE="http://ml-pipeline.${NS}.svc.cluster.local:8888"
 KFP_RUN_NAME="e2e-test-$(date +%s)"
 
-if ! kubectl wait pod/kfp-e2e-helper -n "$NS" --for=condition=Ready --timeout=60s >/dev/null 2>&1; then
-  fail "KFP: helper pod did not become Ready within 60s"
+if ! kubectl wait pod/kfp-e2e-helper -n "$NS" --for=condition=Ready --timeout=120s >/dev/null 2>&1; then
+  fail "KFP: helper pod did not become Ready within 120s"
 else
   retries=15
   attempt=1
@@ -172,7 +172,7 @@ else
     info "Experiment ID: $EXP_ID"
 
     # Inline KFP v2 pipeline spec — single busybox echo step, no caching
-    PIPELINE_SPEC='{"components":{"comp-echo":{"executorLabel":"exec-echo"}},"deploymentSpec":{"executors":{"exec-echo":{"container":{"command":["sh","-c","echo Kubeflow E2E test OK; date"],"image":"busybox:1.36"}}}},"pipelineInfo":{"name":"e2e-test"},"root":{"dag":{"tasks":{"echo":{"cachingOptions":{"enableCache":false},"componentRef":{"name":"comp-echo"},"taskInfo":{"name":"echo"}}}}},"schemaVersion":"2.1.0","sdkVersion":"kfp-2.0.0"}'
+    PIPELINE_SPEC='{"components":{"comp-echo":{"executorLabel":"exec-echo"}},"deploymentSpec":{"executors":{"exec-echo":{"container":{"command":["sh","-c","echo Kubeflow E2E test OK; date"],"image":"dp.apps.rancher.io/containers/bci-busybox:15.7"}}}},"pipelineInfo":{"name":"e2e-test"},"root":{"dag":{"tasks":{"echo":{"cachingOptions":{"enableCache":false},"componentRef":{"name":"comp-echo"},"taskInfo":{"name":"echo"}}}}},"schemaVersion":"2.1.0","sdkVersion":"kfp-2.0.0"}'
 
     RUN_RESP=$($KFP_EXEC curl -s -X POST "${KFP_BASE}/apis/v2beta1/runs" \
       -H "Content-Type: application/json" \
@@ -219,9 +219,11 @@ metadata:
 spec:
   template:
     spec:
+      imagePullSecrets:
+      - name: application-collection
       containers:
       - name: e2e-test-notebook
-        image: busybox:1.36
+        image: dp.apps.rancher.io/containers/bci-busybox:15.7
         command: ["tail", "-f", "/dev/null"]
         resources:
           requests:
@@ -254,9 +256,11 @@ spec:
       restartPolicy: Never
       template:
         spec:
+          imagePullSecrets:
+          - name: application-collection
           containers:
           - name: pytorch
-            image: busybox:1.36
+            image: dp.apps.rancher.io/containers/bci-busybox:15.7
             command: ["sh", "-c", "echo PyTorchJob E2E test OK; date; sleep 2"]
             resources:
               requests:
@@ -292,11 +296,11 @@ fi
 header "4. KServe — build sklearn model → deploy IS → Ready → predict"
 
 # 4a: Build model + upload to SeaweedFS via a setup pod.
-#     Uses kserve/sklearnserver:v0.15.2 (same image as the server — identical
+#     Uses stgregistry.suse.com/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
 #     sklearn version avoids pickle compatibility issues).
 info "Launching model builder pod..."
 kubectl run e2e-model-builder \
-  --image=kserve/sklearnserver:v0.15.2 \
+  --image=stgregistry.suse.com/ai/containers/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}}}' \
@@ -540,8 +544,14 @@ spec:
     name: torch-distributed
   trainer:
     numNodes: 1
-    image: busybox:1.36
+    image: dp.apps.rancher.io/containers/bci-busybox:15.7
     command: ["sh", "-c", "echo Trainer V2 OK; date"]
+  podTemplateOverrides:
+  - targetJobs:
+    - name: node
+    spec:
+      imagePullSecrets:
+      - name: application-collection
 EOF
 
   info "Waiting 300s for TrainJob to complete..."
@@ -571,9 +581,11 @@ spec:
       restartPolicy: Never
       template:
         spec:
+          imagePullSecrets:
+          - name: application-collection
           containers:
           - name: tensorflow
-            image: busybox:1.36
+            image: dp.apps.rancher.io/containers/bci-busybox:15.7
             command: ["sh", "-c", "echo TFJob E2E test OK; date; sleep 2"]
             resources:
               requests:
@@ -653,9 +665,11 @@ spec:
               sidecar.istio.io/inject: "false"
           spec:
             shareProcessNamespace: true
+            imagePullSecrets:
+            - name: application-collection
             containers:
             - name: training-container
-              image: busybox:1.36
+              image: dp.apps.rancher.io/containers/bci-busybox:15.7
               command:
               - sh
               - -c
@@ -740,9 +754,11 @@ metadata:
   annotations:
     sidecar.istio.io/inject: "false"
 spec:
+  imagePullSecrets:
+  - name: application-collection
   containers:
   - name: binder
-    image: busybox:1.36
+    image: dp.apps.rancher.io/containers/bci-busybox:15.7
     command: ["tail", "-f", "/dev/null"]
     volumeMounts:
     - name: data
@@ -902,9 +918,11 @@ metadata:
 spec:
   template:
     spec:
+      imagePullSecrets:
+      - name: application-collection
       containers:
       - name: e2e-gpu-notebook
-        image: busybox:1.36
+        image: dp.apps.rancher.io/containers/bci-busybox:15.7
         command: ["tail", "-f", "/dev/null"]
         resources:
           requests:
@@ -941,7 +959,7 @@ spec:
         spec:
           containers:
           - name: pytorch
-            image: pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: stgregistry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             command:
             - python3
             - -c

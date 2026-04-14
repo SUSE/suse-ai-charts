@@ -4,8 +4,8 @@ global:
 
 server:
   image:
-    registry: ghcr.io
-    repository: kubeflow/model-registry/server
+    registry: stgregistry.suse.com
+    repository: ai/containers/model-registry/server
     tag: v0.3.7
     pullPolicy: IfNotPresent
     digest: ""
@@ -44,8 +44,8 @@ server:
 
 ui:
   image:
-    registry: ghcr.io
-    repository: kubeflow/model-registry/ui
+    registry: stgregistry.suse.com
+    repository: ai/containers/model-registry/ui
     tag: v0.3.7
     pullPolicy: IfNotPresent
     digest: ""
@@ -101,8 +101,8 @@ dbInit:
 controller:
   enabled: false
   image:
-    registry: ghcr.io
-    repository: kubeflow/model-registry/controller
+    registry: stgregistry.suse.com
+    repository: ai/containers/model-registry/controller
     tag: v0.3.7            # pinned — manifests use latest; same release train as server/ui
     pullPolicy: IfNotPresent
     digest: ""
@@ -139,8 +139,8 @@ kserve:
   storageContainer:
     enabled: false
     image:
-      registry: ghcr.io
-      repository: kubeflow/model-registry/storage-initializer
+      registry: stgregistry.suse.com
+      repository: ai/containers/model-registry/storage-initializer
       tag: v0.3.7          # pinned — manifests use latest; same release train as server/ui
       pullPolicy: IfNotPresent
       digest: ""

@@ -273,7 +273,7 @@ Install directly from the OCI registry (no source checkout required):
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.2 \
+  --version 0.3.1 \
   -n kubeflow \
   --force-conflicts \
   --server-side=true \
@@ -285,7 +285,7 @@ To apply a values override file, for example the `demo-overrides.yaml` provided 
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.2 \
+  --version 0.3.1 \
   -n kubeflow \
   --force-conflicts \
   --server-side=true \
@@ -536,7 +536,7 @@ Or manually:
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.2 \
+  --version 0.3.1 \
   -n kubeflow \
   --force-conflicts \
   --wait --timeout 15m \
@@ -989,7 +989,7 @@ in a single step.
 ```bash
 helm upgrade kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.3.2 \
+  --version 0.3.1 \
   -n kubeflow --force-conflicts --wait --timeout 15m
 ```
 
@@ -1173,6 +1173,36 @@ kubectl get configmap -n kubeflow -l app=tensorboard-controller -o yaml | grep -
 Required keys:
 - `ISTIO_HOST: "*"`
 - `ISTIO_GATEWAY: kubeflow/kubeflow-gateway` (must be in `namespace/name` format)
+
+If either key is wrong or missing, fix it via `helm upgrade` so the change persists across future upgrades.
+
+**From source:**
+
+```bash
+helm upgrade kubeflow . -n kubeflow \
+  --reuse-values --force-conflicts \
+  --set tensorboard-controller.configMapData.ISTIO_HOST="*" \
+  --set tensorboard-controller.configMapData.ISTIO_GATEWAY=kubeflow/kubeflow-gateway
+```
+
+**From OCI registry (production):**
+
+```bash
+helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+  --version <version> -n kubeflow \
+  --reuse-values --force-conflicts \
+  --set tensorboard-controller.configMapData.ISTIO_HOST="*" \
+  --set tensorboard-controller.configMapData.ISTIO_GATEWAY=kubeflow/kubeflow-gateway
+```
+
+Alternatively, add the values to your override file and re-run your normal upgrade command:
+
+```yaml
+tensorboard-controller:
+  configMapData:
+    ISTIO_HOST: "*"
+    ISTIO_GATEWAY: kubeflow/kubeflow-gateway
+```
 
 ### KServe InferenceService not progressing
 

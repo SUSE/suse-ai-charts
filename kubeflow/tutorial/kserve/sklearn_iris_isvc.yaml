@@ -24,7 +24,7 @@
 # Query (from inside the cluster)
 # --------------------------------
 #   # The in-cluster hostname follows: <name>.<namespace>.svc.cluster.local
-#   kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it -- \
+#   kubectl run curl-test --image=dp.apps.rancher.io/containers/curl --restart=Never --rm -it -- \
 #     curl -s -X POST \
 #       http://sklearn-iris.kubeflow-user-example-com.svc.cluster.local/v1/models/sklearn-iris:predict \
 #       -H "Content-Type: application/json" \

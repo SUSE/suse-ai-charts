@@ -10,8 +10,8 @@ global:
 # To update CRDs on upgrade: kubectl apply -f charts/apps/trainer/crds/
 
 image:
-  registry: ghcr.io
-  repository: kubeflow/trainer/trainer-controller-manager
+  registry: stgregistry.suse.com
+  repository: ai/containers/trainer-controller-manager
   tag: v2.1.0
   pullPolicy: IfNotPresent
 
@@ -51,8 +51,8 @@ jobset:
   controller:
     enabled: true
   image:
-    registry: registry.k8s.io
-    repository: jobset/jobset
+    registry: stgregistry.suse.com
+    repository: ai/containers/jobset
     tag: v0.10.1
     pullPolicy: IfNotPresent
 
@@ -61,22 +61,22 @@ runtimes:
   enabled: true
   deepspeed:
     image:
-      registry: ghcr.io
-      repository: kubeflow/trainer/deepspeed-runtime
+      registry: stgregistry.suse.com
+      repository: ai/containers/trainer/deepspeed-runtime
       tag: v2.1.0
       pullPolicy: IfNotPresent
   mlx:
     image:
-      registry: ghcr.io
-      repository: kubeflow/trainer/mlx-runtime
+      registry: stgregistry.suse.com
+      repository: ai/containers/trainer/mlx-runtime
       tag: v2.1.0
       pullPolicy: IfNotPresent
   torch:
     distributed:
       image:
-        registry: pytorch
-        repository: pytorch
-        tag: 2.7.1-cuda12.8-cudnn9-runtime
+        registry: stgregistry.suse.com
+        repository: ai/containers/pytorch
+        tag: 2.11.0-cuda12.8-cudnn9-runtime
         pullPolicy: IfNotPresent
   # TorchTune fine-tuning runtimes (Llama3, Qwen2.5) — requires GPU + HuggingFace token
   # Disabled by default; enable when running LLM fine-tuning workloads
@@ -84,17 +84,17 @@ runtimes:
     enabled: false
     images:
       trainer:
-        registry: ghcr.io
-        repository: kubeflow/trainer/torchtune-trainer
+        registry: stgregistry.suse.com
+        repository: ai/containers/trainer/torchtune-trainer
         tag: v2.1.0
         pullPolicy: IfNotPresent
       datasetInitializer:
-        registry: ghcr.io
-        repository: kubeflow/trainer/dataset-initializer
+        registry: stgregistry.suse.com
+        repository: ai/containers/trainer/dataset-initializer
         tag: v2.1.0
         pullPolicy: IfNotPresent
       modelInitializer:
-        registry: ghcr.io
-        repository: kubeflow/trainer/model-initializer
+        registry: stgregistry.suse.com
+        repository: ai/containers/trainer/model-initializer
         tag: v2.1.0
         pullPolicy: IfNotPresent

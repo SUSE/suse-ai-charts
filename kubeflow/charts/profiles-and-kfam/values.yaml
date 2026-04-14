@@ -8,8 +8,8 @@ replicaCount: 1
 
 kfam:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kubeflow/kfam
+    registry: stgregistry.suse.com
+    repository: ai/containers/kfam
     tag: v1.10.0
     pullPolicy: IfNotPresent
   resources:
@@ -29,8 +29,8 @@ kfam:
 
 profileController:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kubeflow/profile-controller
+    registry: stgregistry.suse.com
+    repository: ai/containers/profile-controller
     tag: v1.10.0
     pullPolicy: IfNotPresent
   resources:

@@ -5,8 +5,8 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: ghcr.io
-  repository: kubeflow/kubeflow/tensorboards-web-app
+  registry: stgregistry.suse.com
+  repository: ai/containers/tensorboards-web-app
   tag: v1.10.0
   pullPolicy: IfNotPresent
 

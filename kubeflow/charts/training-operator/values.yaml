@@ -5,8 +5,8 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: ghcr.io
-  repository: kubeflow/training-v1/training-operator
+  registry: stgregistry.suse.com
+  repository: ai/containers/training-operator
   tag: v1-3f15cb8
   pullPolicy: IfNotPresent
 

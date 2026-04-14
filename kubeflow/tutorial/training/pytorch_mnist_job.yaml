@@ -41,7 +41,7 @@ spec:
         spec:
           containers:
           - name: pytorch
-            image: python:3.11-slim
+            image: stgregistry.suse.com/ai/containers/python:3.11-slim
             imagePullPolicy: IfNotPresent
             resources:
               requests:
@@ -112,7 +112,7 @@ spec:
         spec:
           containers:
           - name: pytorch
-            image: python:3.11-slim
+            image: stgregistry.suse.com/ai/containers/python:3.11-slim
             imagePullPolicy: IfNotPresent
             resources:
               requests:
