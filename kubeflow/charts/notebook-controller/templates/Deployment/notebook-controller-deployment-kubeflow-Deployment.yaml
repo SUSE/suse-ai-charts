@@ -23,6 +23,7 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
+      {{- include "notebook-controller.imagePullSecrets" . | nindent 6 }}
       containers:
       - command:
         - /manager

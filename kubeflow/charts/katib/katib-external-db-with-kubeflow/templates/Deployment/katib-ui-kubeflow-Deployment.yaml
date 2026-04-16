@@ -17,6 +17,7 @@ spec:
       labels:
         katib.kubeflow.org/component: ui
     spec:
+      {{- include "katib.imagePullSecrets" . | nindent 6 }}
       containers:
       - args:
         - --port=8080

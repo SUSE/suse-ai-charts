@@ -8,7 +8,7 @@ replicaCount: 1
 
 manager:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/tensorboard-controller
     tag: v1.10.0
     pullPolicy: IfNotPresent
@@ -50,4 +50,4 @@ configMapData:
   ISTIO_GATEWAY: kubeflow/kubeflow-gateway
   ISTIO_HOST: "*"
   RWO_PVC_SCHEDULING: "True"
-  TENSORBOARD_IMAGE: stgregistry.suse.com/ai/containers/tensorflow:2.15.0
+  TENSORBOARD_IMAGE: registry.suse.com/ai/containers/tensorflow:2.15.0

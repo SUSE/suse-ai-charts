@@ -6,7 +6,7 @@ global:
 
 controller:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/katib-controller
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -22,7 +22,7 @@ controller:
 
 ui:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/katib-ui
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -55,7 +55,7 @@ ui:
 
 dbManager:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/katib-db-manager
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -102,30 +102,30 @@ katibConfig:
     runtime:
       suggestions:
         - algorithmName: random
-          image: "stgregistry.suse.com/ai/containers/suggestion-hyperopt:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-hyperopt:v0.19.0"
         - algorithmName: tpe
-          image: "stgregistry.suse.com/ai/containers/suggestion-hyperopt:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-hyperopt:v0.19.0"
         - algorithmName: grid
-          image: "stgregistry.suse.com/ai/containers/suggestion-optuna:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-optuna:v0.19.0"
         - algorithmName: hyperband
-          image: "stgregistry.suse.com/ai/containers/katib/suggestion-hyperband:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-hyperband:v0.19.0"
         - algorithmName: bayesianoptimization
-          image: "stgregistry.suse.com/ai/containers/suggestion-skopt:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-skopt:v0.19.0"
         - algorithmName: cmaes
-          image: "stgregistry.suse.com/ai/containers/suggestion-goptuna:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-goptuna:v0.19.0"
         - algorithmName: sobol
-          image: "stgregistry.suse.com/ai/containers/suggestion-goptuna:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-goptuna:v0.19.0"
         - algorithmName: multivariate-tpe
-          image: "stgregistry.suse.com/ai/containers/suggestion-optuna:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-optuna:v0.19.0"
         - algorithmName: enas
-          image: "stgregistry.suse.com/ai/containers/suggestion-enas:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-enas:v0.19.0"
           resources:
             limits:
               memory: "200Mi"
         - algorithmName: darts
-          image: "stgregistry.suse.com/ai/containers/suggestion-darts:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-darts:v0.19.0"
         - algorithmName: pbt
-          image: "stgregistry.suse.com/ai/containers/suggestion-pbt:v0.19.0"
+          image: "registry.suse.com/ai/containers/suggestion-pbt:v0.19.0"
           persistentVolumeClaimSpec:
             accessModes:
               - ReadWriteMany
@@ -134,32 +134,32 @@ katibConfig:
                 storage: "5Gi"
       metricsCollectors:
         - kind: StdOut
-          image: "stgregistry.suse.com/ai/containers/file-metrics-collector:v0.19.0"
+          image: "registry.suse.com/ai/containers/file-metrics-collector:v0.19.0"
         - kind: File
-          image: "stgregistry.suse.com/ai/containers/file-metrics-collector:v0.19.0"
+          image: "registry.suse.com/ai/containers/file-metrics-collector:v0.19.0"
         - kind: TensorFlowEvent
-          image: "stgregistry.suse.com/ai/containers/tfevent-metrics-collector:v0.19.0"
+          image: "registry.suse.com/ai/containers/tfevent-metrics-collector:v0.19.0"
           resources:
             limits:
               memory: "1Gi"
       earlyStoppings:
         - algorithmName: medianstop
-          image: "stgregistry.suse.com/ai/containers/earlystopping-medianstop:v0.19.0"
+          image: "registry.suse.com/ai/containers/earlystopping-medianstop:v0.19.0"
 
 # Trial templates images for the trial-templates ConfigMap
 trialImages:
   mxnetMNIST:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/mxnet-mnist
     tag: v0.15.0
     pullPolicy: IfNotPresent
   enasCNNCIFAR10CPU:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/enas-cnn-cifar10-cpu
     tag: v0.15.0
     pullPolicy: IfNotPresent
   pyTorchMNISTCPU:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/pytorch-mnist-cpu
     tag: v0.15.0
     pullPolicy: IfNotPresent

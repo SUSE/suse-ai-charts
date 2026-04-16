@@ -200,7 +200,7 @@ helm registry login registry.suse.com \
 #### Step 2 — Create namespaces
 
 ```bash
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
+for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-serving; do
   kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
 done
 ```
@@ -209,7 +209,7 @@ done
 
 ```bash
 # Create application-collection pull secret (SUSE Application Collection — dp.apps.rancher.io)
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
+for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-serving; do
   kubectl create secret docker-registry application-collection \
     --docker-server=dp.apps.rancher.io \
     --docker-username=<appco-registry-username> \
@@ -219,7 +219,7 @@ for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
 done
 
 # Create suse-ai-registry pull secret (SUSE Registry — registry.suse.com)
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com; do
+for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-serving; do
   kubectl create secret docker-registry suse-ai-registry \
     --docker-server=registry.suse.com \
     --docker-username=regcode \
@@ -232,7 +232,7 @@ done
 #### Step 4 — Label namespaces for Helm
 
 ```bash
-for ns in kubeflow kubeflow-user-example-com; do
+for ns in kubeflow kubeflow-user-example-com knative-serving; do
   kubectl label namespace "$ns" app.kubernetes.io/managed-by=Helm --overwrite
   kubectl annotate namespace "$ns" \
     meta.helm.sh/release-name=kubeflow \

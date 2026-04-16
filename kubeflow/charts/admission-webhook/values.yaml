@@ -4,7 +4,7 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
   repository: ai/containers/poddefaults-webhook
   tag: v1.10.0
   pullPolicy: IfNotPresent

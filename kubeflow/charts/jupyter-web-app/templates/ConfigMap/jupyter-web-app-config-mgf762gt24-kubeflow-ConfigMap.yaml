@@ -11,24 +11,24 @@ data:
     \ be available for users to edit.\n#\n# Note that some values can be templated.\
     \ Such values are the names of the\n# Volumes as well as their StorageClass\n\
     spawnerFormDefaults:\n  image:\n    # The container Image for the user's Jupyter\
-    \ Notebook\n    value: stgregistry.suse.com/ai/containers/notebook-servers/jupyter-scipy:v1.10.0\n\
-    \    # The list of available standard container Images\n    options:\n    - stgregistry.suse.com/ai/containers/notebook-servers/jupyter-scipy:v1.10.0\n\
-    \    - stgregistry.suse.com/ai/containers/notebook-servers/jupyter-tensorflow-full:v1.10.0\n\
-    \    - stgregistry.suse.com/ai/containers/notebook-servers/jupyter-tensorflow-cuda-full:v1.10.0\n\
-    \    - stgregistry.suse.com/ai/containers/notebook-servers/jupyter-pytorch-full:v1.10.0\n\
-    \    - stgregistry.suse.com/ai/containers/notebook-servers/jupyter-pytorch-cuda-full:v1.10.0\n\
+    \ Notebook\n    value: registry.suse.com/ai/containers/notebook-servers/jupyter-scipy:v1.10.0\n\
+    \    # The list of available standard container Images\n    options:\n    - registry.suse.com/ai/containers/notebook-servers/jupyter-scipy:v1.10.0\n\
+    \    - registry.suse.com/ai/containers/notebook-servers/jupyter-tensorflow-full:v1.10.0\n\
+    \    - registry.suse.com/ai/containers/notebook-servers/jupyter-tensorflow-cuda-full:v1.10.0\n\
+    \    - registry.suse.com/ai/containers/notebook-servers/jupyter-pytorch-full:v1.10.0\n\
+    \    - registry.suse.com/ai/containers/notebook-servers/jupyter-pytorch-cuda-full:v1.10.0\n\
     \  imageGroupOne:\n    # The container Image for the user's Group One Server\n\
     \    # The annotation `notebooks.kubeflow.org/http-rewrite-uri: /`\n    # is applied\
     \ to notebook in this group, configuring\n    # the Istio rewrite for containers\
-    \ that host their web UI at `/`\n    value: stgregistry.suse.com/ai/containers/notebook-servers/codeserver-python:v1.10.0\n\
-    \    # The list of available standard container Images\n    options:\n    - stgregistry.suse.com/ai/containers/notebook-servers/codeserver-python:v1.10.0\n\
+    \ that host their web UI at `/`\n    value: registry.suse.com/ai/containers/notebook-servers/codeserver-python:v1.10.0\n\
+    \    # The list of available standard container Images\n    options:\n    - registry.suse.com/ai/containers/notebook-servers/codeserver-python:v1.10.0\n\
     \  imageGroupTwo:\n    # The container Image for the user's Group Two Server\n\
     \    # The annotation `notebooks.kubeflow.org/http-rewrite-uri: /`\n    # is applied\
     \ to notebook in this group, configuring\n    # the Istio rewrite for containers\
     \ that host their web UI at `/`\n    # The annotation `notebooks.kubeflow.org/http-headers-request-set`\n\
     \    # is applied to notebook in this group, configuring Istio\n    # to add the\
-    \ `X-RStudio-Root-Path` header to requests\n    value: stgregistry.suse.com/ai/containers/notebook-servers/rstudio-tidyverse:v1.10.0\n\
-    \    # The list of available standard container Images\n    options:\n    - stgregistry.suse.com/ai/containers/notebook-servers/rstudio-tidyverse:v1.10.0\n\
+    \ `X-RStudio-Root-Path` header to requests\n    value: registry.suse.com/ai/containers/notebook-servers/rstudio-tidyverse:v1.10.0\n\
+    \    # The list of available standard container Images\n    options:\n    - registry.suse.com/ai/containers/notebook-servers/rstudio-tidyverse:v1.10.0\n\
     \  # If true, hide registry and/or tag name in the image selection dropdown\n\
     \  hideRegistry: true\n  hideTag: false\n  allowCustomImage: true\n  # If true,\
     \ users can input custom images\n  # If false, users can only select from the\

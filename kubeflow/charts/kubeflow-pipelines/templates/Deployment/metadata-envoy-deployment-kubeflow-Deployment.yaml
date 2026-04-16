@@ -20,6 +20,7 @@ spec:
         application-crd-id: kubeflow-pipelines
         component: metadata-envoy
     spec:
+      {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
       containers:
       - args:
         - /etc/envoy/envoy-config.yaml

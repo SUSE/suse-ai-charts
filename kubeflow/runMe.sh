@@ -74,7 +74,7 @@ while [ $# -gt 0 ] ; do
   esac
 done
 
-NAMESPACES_TO_CREATE=("istio-system" "kubeflow" "kubeflow-user-example-com")
+NAMESPACES_TO_CREATE=("istio-system" "kubeflow" "kubeflow-user-example-com" "knative-serving")
 if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
   NAMESPACES_TO_CREATE+=("cert-manager")
 fi
@@ -118,7 +118,7 @@ if [ -n "$CLOUDFLARE_API_KEY" ]; then
 fi
 
 echo "=== Step 4: Label kubeflow namespaces for Helm ==="
-for ns in kubeflow kubeflow-user-example-com; do
+for ns in kubeflow kubeflow-user-example-com knative-serving; do
   kubectl label namespace "$ns" app.kubernetes.io/managed-by=Helm --overwrite
   kubectl annotate namespace "$ns" \
     meta.helm.sh/release-name=kubeflow \
@@ -142,6 +142,7 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --version 1.1.3 \
   --namespace istio-system \
   --set global.imagePullSecrets[0].name=application-collection \
+  --set global.imagePullSecrets[1].name=suse-ai-registry \
   --set gateway.enabled=true \
   --force-conflicts \
   --server-side=true \

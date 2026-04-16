@@ -19,6 +19,7 @@ spec:
       labels:
         katib.kubeflow.org/component: controller
     spec:
+      {{- include "katib.imagePullSecrets" . | nindent 6 }}
       containers:
       - args: []
         command:

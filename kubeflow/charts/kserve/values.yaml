@@ -8,7 +8,7 @@ controllerManager:
   # Increase to 2+ via ha-overrides.yaml for HA deployments.
   replicaCount: 1
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve-controller
     tag: v0.16.0
     pullPolicy: IfNotPresent
@@ -38,7 +38,7 @@ kubeRbacProxy:
 
 storageInitializer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/storage-initializer
     tag: v0.16.0
     pullPolicy: IfNotPresent
@@ -46,49 +46,49 @@ storageInitializer:
 # Serving runtime images - these are used by ClusterServingRuntime resources
 tensorflowServing:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/serving
     tag: "2.6.2"
     pullPolicy: IfNotPresent
 
 huggingfaceServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/huggingfaceserver
     tag: v0.16.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/xgbserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/lgbserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/sklearnserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/paddleserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/pmmlserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
@@ -102,14 +102,14 @@ tritonServer:
 
 mlServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/mlserver
     tag: "1.5.0"
     pullPolicy: IfNotPresent
 
 torchServe:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/torchserve-kfs
     tag: "0.9.0"
     pullPolicy: IfNotPresent
@@ -122,7 +122,7 @@ ingressDomain: "example.com"
 inferenceServiceConfig:
   agent: |
     {
-        "image" : "stgregistry.suse.com/ai/containers/agent:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -130,7 +130,7 @@ inferenceServiceConfig:
     }
   batcher: |
     {
-        "image" : "stgregistry.suse.com/ai/containers/agent:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
         "memoryRequest": "1Gi",
         "memoryLimit": "1Gi",
         "cpuRequest": "1",
@@ -160,11 +160,11 @@ inferenceServiceConfig:
   explainers: |
     {
         "alibi": {
-            "image" : "stgregistry.suse.com/ai/containers/alibi-explainer",
+            "image" : "registry.suse.com/ai/containers/alibi-explainer",
             "defaultImageVersion": "v0.16.0"
         },
         "aix": {
-            "image" : "stgregistry.suse.com/ai/containers/aix-explainer",
+            "image" : "registry.suse.com/ai/containers/aix-explainer",
             "defaultImageVersion": "v0.16.0"
         },
         "art": {
@@ -186,7 +186,7 @@ inferenceServiceConfig:
     }
   logger: |
     {
-        "image" : "stgregistry.suse.com/ai/containers/agent:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -200,7 +200,7 @@ inferenceServiceConfig:
     }
   router: |
     {
-        "image" : "stgregistry.suse.com/ai/containers/router:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/router:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -208,7 +208,7 @@ inferenceServiceConfig:
     }
   storageInitializer: |
     {
-        "image" : "stgregistry.suse.com/ai/containers/storage-initializer:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/storage-initializer:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",

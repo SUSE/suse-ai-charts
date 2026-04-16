@@ -17,6 +17,7 @@ spec:
       labels:
         control-plane: kubeflow-training-operator
     spec:
+      {{- include "training-operator.imagePullSecrets" . | nindent 6 }}
       containers:
       - command:
         - /manager

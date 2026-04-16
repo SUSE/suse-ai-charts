@@ -54,7 +54,7 @@ T_PYTORCH=300
 T_KSERVE_BUILD=300        # model builder pod
 T_KSERVE_READY=600        # IS ready
 T_TFJOB=300
-T_KATIB=300               # 1-trial busybox experiment
+T_KATIB=600               # 1-trial busybox experiment
 T_PVCVIEWER=300
 T_GPU_NOTEBOOK=300
 T_GPU_PYTORCH=600
@@ -296,11 +296,11 @@ fi
 header "4. KServe — build sklearn model → deploy IS → Ready → predict"
 
 # 4a: Build model + upload to SeaweedFS via a setup pod.
-#     Uses stgregistry.suse.com/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
+#     Uses registry.suse.com/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
 #     sklearn version avoids pickle compatibility issues).
 info "Launching model builder pod..."
 kubectl run e2e-model-builder \
-  --image=stgregistry.suse.com/ai/containers/sklearnserver:v0.15.2 \
+  --image=registry.suse.com/ai/containers/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}}}' \
@@ -367,6 +367,8 @@ kind: ServiceAccount
 metadata:
   name: e2e-kserve-sa
   namespace: ${USER_NS}
+imagePullSecrets:
+- name: suse-ai-registry
 secrets:
 - name: e2e-s3-secret
 EOF
@@ -667,6 +669,7 @@ spec:
             shareProcessNamespace: true
             imagePullSecrets:
             - name: application-collection
+            - name: suse-ai-registry
             containers:
             - name: training-container
               image: dp.apps.rancher.io/containers/bci-busybox:15.7
@@ -959,7 +962,7 @@ spec:
         spec:
           containers:
           - name: pytorch
-            image: stgregistry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             command:
             - python3
             - -c
