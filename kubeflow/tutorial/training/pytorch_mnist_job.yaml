@@ -39,6 +39,8 @@ spec:
       restartPolicy: OnFailure
       template:
         spec:
+          imagePullSecrets:
+          - name: suse-ai-registry
           containers:
           - name: pytorch
             image: registry.suse.com/ai/containers/python:3.11-slim
@@ -110,6 +112,8 @@ spec:
       restartPolicy: OnFailure
       template:
         spec:
+          imagePullSecrets:
+          - name: suse-ai-registry
           containers:
           - name: pytorch
             image: registry.suse.com/ai/containers/python:3.11-slim

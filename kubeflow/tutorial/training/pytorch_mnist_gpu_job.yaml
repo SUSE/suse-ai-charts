@@ -41,6 +41,8 @@ spec:
       restartPolicy: OnFailure
       template:
         spec:
+          imagePullSecrets:
+          - name: suse-ai-registry
           containers:
           - name: pytorch
             image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
@@ -102,6 +104,8 @@ spec:
       restartPolicy: OnFailure
       template:
         spec:
+          imagePullSecrets:
+          - name: suse-ai-registry
           containers:
           - name: pytorch
             image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime

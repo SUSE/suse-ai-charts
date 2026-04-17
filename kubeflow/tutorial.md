@@ -452,7 +452,7 @@ Each worker trains on its own shard of synthetic MNIST-shaped data; gradients
 are synchronised across workers via all-reduce after every batch.  No GPU is
 required — the job uses CPU-only TensorFlow.
 
-> **Note:** The first run pulls `tensorflow/tensorflow:2.13.0` (~1.3 GB).
+> **Note:** The first run pulls `registry.suse.com/ai/containers/tensorflow:2.15.0` (~1.3 GB).
 > Allow 3–5 minutes before logs appear.  Subsequent runs are faster because
 > the image is cached on the node.
 
@@ -555,7 +555,7 @@ spec:
     name: torch-distributed
   trainer:
     numNodes: 2
-    image: pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+    image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
     command: ["python", "train.py", "--epochs=10"]
     resourcesPerNode:
       requests: { cpu: "2", memory: "4Gi" }
@@ -1534,7 +1534,7 @@ Upload and run as usual via the KFP UI (Pipelines → Upload Pipeline).
 **Key SDK calls** (from `03_gpu_pipeline.py`):
 
 ```python
-@dsl.component(base_image="pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime")
+@dsl.component(base_image="registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime")
 def train_on_gpu(...):
     import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1631,7 +1631,7 @@ spec:
         spec:
           containers:
           - name: tensorflow
-            image: tensorflow/tensorflow:2.15.0-gpu
+            image: registry.suse.com/ai/containers/tensorflow:2.15.0
             resources:
               limits:
                 nvidia.com/gpu: "1"
@@ -1659,7 +1659,7 @@ schedules each trial pod on a node that satisfies the resource request.
 # Excerpt from a Katib Experiment — trialSpec container section
 containers:
 - name: training-container
-  image: pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+  image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
   resources:
     requests:
       cpu: "2"
@@ -1734,8 +1734,8 @@ kubectl describe pod <pod-name> -n kubeflow-user-example-com | grep -A5 "Events:
 **`nvidia-smi` not found inside the container**
 
 The base image does not include the CUDA toolkit.  Use an image from
-`nvidia/cuda`, `pytorch/pytorch:*-cuda*`, or
-`tensorflow/tensorflow:*-gpu` which include `nvidia-smi`.
+`registry.suse.com/ai/containers/pytorch:*-cuda*` or
+`registry.suse.com/ai/containers/tensorflow:*` which include `nvidia-smi`.
 
 **GPU visible but CUDA ops fail**
 

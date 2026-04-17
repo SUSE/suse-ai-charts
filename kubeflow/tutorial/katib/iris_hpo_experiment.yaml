@@ -89,6 +89,8 @@ spec:
       spec:
         template:
           spec:
+            imagePullSecrets:
+            - name: suse-ai-registry
             containers:
             - name: training-container
               image: registry.suse.com/ai/containers/python:3.11-slim
