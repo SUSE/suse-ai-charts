@@ -960,6 +960,8 @@ spec:
       restartPolicy: Never
       template:
         spec:
+          imagePullSecrets:
+          - name: suse-ai-registry
           containers:
           - name: pytorch
             image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
@@ -1147,6 +1149,8 @@ kind: ServiceAccount
 metadata:
   name: e2e-kserve-sa
   namespace: ${USER_NS}
+imagePullSecrets
+- name: suse-ai-registry
 secrets:
 - name: e2e-s3-secret
 EOF

@@ -40,29 +40,40 @@ katibConfig:
       suggestions:
         - algorithmName: random
           image: "registry.suse.com/ai/containers/suggestion-hyperopt:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: tpe
           image: "registry.suse.com/ai/containers/suggestion-hyperopt:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: grid
           image: "registry.suse.com/ai/containers/suggestion-optuna:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: hyperband
           image: "registry.suse.com/ai/containers/suggestion-hyperband:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: bayesianoptimization
           image: "registry.suse.com/ai/containers/suggestion-skopt:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: cmaes
           image: "registry.suse.com/ai/containers/suggestion-goptuna:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: sobol
           image: "registry.suse.com/ai/containers/suggestion-goptuna:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: multivariate-tpe
           image: "registry.suse.com/ai/containers/suggestion-optuna:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: enas
           image: "registry.suse.com/ai/containers/suggestion-enas:v0.19.0"
+          serviceAccountName: katib-suggestion
           resources:
             limits:
               memory: "200Mi"
         - algorithmName: darts
           image: "registry.suse.com/ai/containers/suggestion-darts:v0.19.0"
+          serviceAccountName: katib-suggestion
         - algorithmName: pbt
           image: "registry.suse.com/ai/containers/suggestion-pbt:v0.19.0"
+          serviceAccountName: katib-suggestion
           persistentVolumeClaimSpec:
             accessModes:
               - ReadWriteMany
@@ -82,3 +93,4 @@ katibConfig:
       earlyStoppings:
         - algorithmName: medianstop
           image: "registry.suse.com/ai/containers/earlystopping-medianstop:v0.19.0"
+          serviceAccountName: katib-suggestion
