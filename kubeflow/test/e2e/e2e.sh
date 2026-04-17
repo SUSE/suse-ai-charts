@@ -303,7 +303,7 @@ kubectl run e2e-model-builder \
   --image=registry.suse.com/ai/containers/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
-  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}}}' \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}},"spec":{"imagePullSecrets":[{"name":"suse-ai-registry"}]}}' \
   --command -- python3 -c "
 import pickle, boto3
 from sklearn.linear_model import LinearRegression

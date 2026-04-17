@@ -142,7 +142,6 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --version 1.1.3 \
   --namespace istio-system \
   --set global.imagePullSecrets[0].name=application-collection \
-  --set global.imagePullSecrets[1].name=suse-ai-registry \
   --set gateway.enabled=true \
   --force-conflicts \
   --server-side=true \
