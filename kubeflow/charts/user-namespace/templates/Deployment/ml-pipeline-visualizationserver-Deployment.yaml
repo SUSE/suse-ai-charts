@@ -14,7 +14,6 @@ spec:
       labels:
         app: ml-pipeline-visualizationserver
     spec:
-      {{- include "user-namespace.imagePullSecrets" . | nindent 6 }}
       containers:
       - image: "{{ with (coalesce .Values.global.imageRegistry .Values.pipelines.visualizationServer.registry) }}{{ . }}/{{ end }}{{ .Values.pipelines.visualizationServer.repository }}{{- if .Values.pipelines.visualizationServer.digest }}@{{ .Values.pipelines.visualizationServer.digest }}{{- else }}:{{ .Values.pipelines.visualizationServer.tag }}{{- end }}"
         imagePullPolicy: IfNotPresent

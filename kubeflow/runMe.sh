@@ -74,7 +74,8 @@ while [ $# -gt 0 ] ; do
   esac
 done
 
-NAMESPACES_TO_CREATE=("istio-system" "kubeflow" "kubeflow-user-example-com" "knative-serving")
+# kubeflow-user-example-com is intentionally excluded — ESO propagates registry secrets to user namespaces automatically.
+NAMESPACES_TO_CREATE=("istio-system" "kubeflow" "knative-serving")
 if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
   NAMESPACES_TO_CREATE+=("cert-manager")
 fi
@@ -118,7 +119,7 @@ if [ -n "$CLOUDFLARE_API_KEY" ]; then
 fi
 
 echo "=== Step 4: Label kubeflow namespaces for Helm ==="
-for ns in kubeflow kubeflow-user-example-com knative-serving; do
+for ns in kubeflow knative-serving; do
   kubectl label namespace "$ns" app.kubernetes.io/managed-by=Helm --overwrite
   kubectl annotate namespace "$ns" \
     meta.helm.sh/release-name=kubeflow \
@@ -147,7 +148,23 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --server-side=true \
   --wait --timeout 5m
 
-echo "=== Step 7: Package Kubeflow sub-charts ==="
+echo "=== Step 7: Install External Secrets Operator ==="
+helm upgrade --install external-secrets-operator oci://dp.apps.rancher.io/charts/external-secrets-operator \
+  --version 2.3.0 \
+  --namespace kubeflow \
+  --set installCRDs=true \
+  --set global.imagePullSecrets[0].name=application-collection \
+  --wait --timeout 5m
+
+# Wait for ESO CRDs to be fully established in the API server discovery cache
+# before the Kubeflow chart validates ClusterSecretStore / ClusterExternalSecret.
+kubectl wait --for=condition=Established \
+  crd/clustersecretstores.external-secrets.io \
+  crd/clusterexternalsecrets.external-secrets.io \
+  crd/externalsecrets.external-secrets.io \
+  --timeout=60s
+
+echo "=== Step 8: Package Kubeflow sub-charts ==="
 # Remove stale tarballs for local (file://) sub-charts so helm dependency update
 # always repackages them from source. External OCI/repo charts are left in place
 # and redownloaded only when their version changes.
@@ -161,7 +178,7 @@ grep -B2 'repository:.*file://' "$SCRIPT_DIR/Chart.yaml" \
 
 helm dependency update "$SCRIPT_DIR"
 
-echo "=== Step 8: Install Kubeflow ==="
+echo "=== Step 9: Install Kubeflow ==="
 # --force-conflicts: cert-manager-cainjector and the clusterrole-aggregation-controller
 # modify fields (caBundle, aggregated .rules) that Helm's server-side apply tracks.
 # --force-conflicts lets Helm reclaim ownership of those fields on each upgrade.

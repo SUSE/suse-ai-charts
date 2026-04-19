@@ -113,13 +113,14 @@ steps before it.
 Prerequisite: A RKE2 cluster with a default storageClass configured.
 
 1. Performs Helm registry logins for `dp.apps.rancher.io` and `registry.suse.com`
-2. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `kubeflow-user-example-com`
-3. Creates `application-collection` (for dp.apps.rancher.io) and `suse-ai-registry` (for registry.suse.com) image pull secrets in each namespace
-4. Labels the `kubeflow` and `kubeflow-user-example-com` namespaces for Helm ownership
+2. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `knative-serving`
+3. Creates `application-collection` and `suse-ai-registry` image pull secrets in `istio-system`, `kubeflow`, `knative-serving`, and `cert-manager`. User namespaces (`kubeflow-user-example-com`, profile namespaces) receive these secrets automatically via the External Secrets Operator (ESO), which is installed as part of the chart.
+4. Labels the `kubeflow` and `knative-serving` namespaces for Helm ownership
 5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
-6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled. 
-7. Packages sub-charts via `helm dependency update`
-8. Installs the Kubeflow umbrella chart
+6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled
+7. Installs External Secrets Operator and waits for CRDs to be established
+8. Packages sub-charts via `helm dependency update`
+9. Installs the Kubeflow umbrella chart
 
 #### Basic usage (NodePort / port-forward access)
 
@@ -200,16 +201,20 @@ helm registry login registry.suse.com \
 #### Step 2 — Create namespaces
 
 ```bash
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-serving; do
+for ns in cert-manager istio-system kubeflow knative-serving; do
   kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
 done
 ```
 
+> **Note:** `kubeflow-user-example-com` and all other user namespaces are created by the Kubeflow chart and receive registry pull secrets automatically via ESO — no manual creation needed.
+
 #### Step 3 — Create image pull secrets
+
+Create secrets only in the static system namespaces. ESO propagates them to user namespaces automatically.
 
 ```bash
 # Create application-collection pull secret (SUSE Application Collection — dp.apps.rancher.io)
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-serving; do
+for ns in cert-manager istio-system kubeflow knative-serving; do
   kubectl create secret docker-registry application-collection \
     --docker-server=dp.apps.rancher.io \
     --docker-username=<appco-registry-username> \
@@ -219,7 +224,7 @@ for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-s
 done
 
 # Create suse-ai-registry pull secret (SUSE Registry — registry.suse.com)
-for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-serving; do
+for ns in cert-manager istio-system kubeflow knative-serving; do
   kubectl create secret docker-registry suse-ai-registry \
     --docker-server=registry.suse.com \
     --docker-username=regcode \
@@ -228,6 +233,8 @@ for ns in cert-manager istio-system kubeflow kubeflow-user-example-com knative-s
     --dry-run=client -o yaml | kubectl apply -f -
 done
 ```
+
+> ESO (installed as part of the Kubeflow chart) automatically copies `suse-ai-registry` and `application-collection` from the `kubeflow` namespace into every user namespace labelled `app.kubernetes.io/part-of: kubeflow-profile`, including namespaces created dynamically by the profiles controller at runtime.
 
 #### Step 4 — Label namespaces for Helm
 
@@ -266,7 +273,20 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --wait --timeout 5m
 ```
 
-#### Step 7 — Install Kubeflow
+#### Step 7 — Install External Secrets Operator
+
+ESO must be installed before the Kubeflow chart so its CRDs are present when Helm applies the `ClusterSecretStore` and `ClusterExternalSecret` resources.
+
+```bash
+helm upgrade --install external-secrets-operator oci://dp.apps.rancher.io/charts/external-secrets-operator \
+  --version 2.3.0 \
+  --namespace kubeflow \
+  --set installCRDs=true \
+  --set global.imagePullSecrets[0].name=application-collection \
+  --wait --timeout 5m
+```
+
+#### Step 8 — Install Kubeflow
 
 Install directly from the OCI registry (no source checkout required):
 

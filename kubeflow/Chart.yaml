@@ -186,6 +186,14 @@ dependencies:
     repository: "file://./charts/monitoring"
     condition: monitoring.enabled
 
+  # External Secrets Operator — propagates registry pull secrets into user namespaces automatically.
+  # Set externalSecretsOperator.enabled=false if ESO is already installed cluster-wide.
+  - name: external-secrets-operator
+    version: "2.3.0"
+    repository: "oci://dp.apps.rancher.io/charts"
+    alias: externalSecretsOperator
+    condition: externalSecretsOperator.enabled
+
   # External-DNS — automatically manages DNS records for kubeflow-istio-resources.hostname
   - name: external-dns
     version: "1.20.0"

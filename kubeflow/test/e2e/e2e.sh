@@ -119,6 +119,14 @@ for cmd in kubectl curl; do
   fi
 done
 
+# Wait for ESO to propagate registry pull secrets into the user namespace before
+# any test that schedules pods there. Secrets may take a few seconds after install.
+if kubectl get externalsecret -n "$USER_NS" &>/dev/null; then
+  info "Waiting for ESO to propagate registry secrets into $USER_NS..."
+  kubectl wait --for=condition=Ready externalsecret \
+    --all -n "$USER_NS" --timeout=120s &>/dev/null || true
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 header "━━━ Tier 3 E2E Tests ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 header "$(date '+%Y-%m-%d %H:%M:%S')"

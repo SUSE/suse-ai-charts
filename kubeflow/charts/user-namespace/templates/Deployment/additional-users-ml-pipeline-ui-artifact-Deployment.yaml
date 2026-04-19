@@ -19,7 +19,6 @@ spec:
       labels:
         app: ml-pipeline-ui-artifact
     spec:
-      {{- include "user-namespace.imagePullSecrets" $root | nindent 6 }}
       containers:
       - name: ml-pipeline-ui-artifact
         image: "{{ with (coalesce $root.Values.global.imageRegistry $root.Values.pipelines.frontend.registry) }}{{ . }}/{{ end }}{{ $root.Values.pipelines.frontend.repository }}{{- if $root.Values.pipelines.frontend.digest }}@{{ $root.Values.pipelines.frontend.digest }}{{- else }}:{{ $root.Values.pipelines.frontend.tag }}{{- end }}"

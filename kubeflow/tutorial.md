@@ -1341,7 +1341,9 @@ kubectl apply -f new-user-profile.yaml
 ```
 
 The Profiles controller creates the namespace, RoleBindings, and per-namespace
-KFP artifacts automatically.
+KFP artifacts automatically. The External Secrets Operator propagates the
+`suse-ai-registry` and `application-collection` pull secrets into the new
+namespace within seconds — no manual secret creation required.
 
 ---
 

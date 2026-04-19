@@ -8,7 +8,7 @@
 #      kubectl create namespace kubeflow
 #
 #   2. Create image pull secret in each namespace (for Rancher registry):
-#      for ns in cert-manager istio-system kubeflow; do
+#      for ns in cert-manager istio-system kubeflow knative-serving; do
 #        kubectl create secret docker-registry application-collection \
 #          --docker-server=dp.apps.rancher.io \
 #          --docker-username=<username> \
@@ -35,7 +35,17 @@
 #        --set global.imagePullSecrets[0].name=application-collection \
 #        --set gateway.enabled=true
 #
-#   6. Ensure storage provisioner (K3s/RKE2 clusters):
+#   6. Create suse.com registry pull secret in static namespaces only:
+#      for ns in cert-manager istio-system kubeflow knative-serving; do
+#        kubectl create secret docker-registry suse-ai-registry \
+#          --docker-server=registry.suse.com \
+#          --docker-username=<username> \
+#          --docker-password=<token> \
+#          -n $ns
+#      done
+#      NOTE: User namespaces are handled automatically by ESO (externalSecrets.enabled=true).
+#
+#   7. Ensure storage provisioner (K3s/RKE2 clusters):
 #      # Option A: Local Path Provisioner (development/testing)
 #      kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
 #      kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
@@ -463,6 +473,29 @@ preflightChecks:
 # Requires Rancher Monitoring (kube-prometheus-stack) to be installed first.
 monitoring:
   enabled: false  # set true after Rancher Monitoring is installed
+
+# External Secrets Operator — set enabled=true only if ESO is NOT already installed
+# cluster-wide. runMe.sh pre-installs ESO before the main chart (same pattern as
+# cert-manager / Istio) so this defaults to false. If you manage ESO yourself,
+# keep false and ensure ESO CRDs are present before helm install.
+externalSecretsOperator:
+  enabled: false
+  installCRDs: true
+
+# Secret propagation to user namespaces — requires ESO (via externalSecretsOperator or pre-existing install).
+# Propagates registry pull secrets from sourceNamespace to all namespaces labelled
+# app.kubernetes.io/part-of: kubeflow-profile (user namespaces created by the profiles controller).
+externalSecrets:
+  enabled: true
+  imagePullSecrets:
+    sourceNamespace: kubeflow
+    secrets:
+      - name: suse-ai-registry
+      - name: application-collection
+  namespaceSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: kubeflow-profile
+  refreshInterval: "1h"
 
 # ============================================================================
 # Subchart Overrides
