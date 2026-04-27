@@ -39,6 +39,9 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
+        env:
+        - name: VOLUME_VIEWER_IMAGE
+          value: {{ .Values.viewerImage | default "registry.suse.com/ai/containers/filebrowser:v2.25.0" | quote }}
         ports:
         - containerPort: 9443
           name: webhook-server

@@ -24,6 +24,7 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
+      {{- include "tensorboards-web-app.imagePullSecrets" . | nindent 6 }}
       containers:
       - env:
         - name: APP_PREFIX

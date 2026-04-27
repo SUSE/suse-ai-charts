@@ -8,7 +8,7 @@ data:
   autoUpdatePipelineDefaultVersion: 'true'
   bucketName: mlpipeline
   cacheDb: cachedb
-  cacheImage: gcr.io/google-containers/busybox
+  cacheImage: dp.apps.rancher.io/containers/bci-busybox:15.7
   cacheNodeRestrictions: 'false'
   cronScheduleTimezone: UTC
   dbHost: mysql

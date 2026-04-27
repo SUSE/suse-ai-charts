@@ -80,8 +80,11 @@ dependencies:
 - name: monitoring
   repository: file://./charts/monitoring
   version: 0.1.0
+- name: external-secrets-operator
+  repository: oci://dp.apps.rancher.io/charts
+  version: 2.3.0
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.20.0
-digest: sha256:27c15e3b42c5060d71d4a6f5be2a4730cc3ea26d8e1dc864879b99d67a59c087
-generated: "2026-03-24T07:30:29.720177483-07:00"
+digest: sha256:509281c2af54d313e7f12c73a3c208550ef9be06a6be857bef8f53de11ec195c
+generated: "2026-04-17T14:46:55.6563965-07:00"

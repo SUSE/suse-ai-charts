@@ -2,6 +2,7 @@ apiVersion: v1
 data:
   progressDeadline: 600s
   queue-sidecar-image: "{{ with (coalesce .Values.global.imageRegistry .Values.queueSidecarImage.image.registry) }}{{ . }}/{{ end }}{{ .Values.queueSidecarImage.image.repository }}{{- if .Values.queueSidecarImage.image.digest }}@{{ .Values.queueSidecarImage.image.digest }}{{- else }}:{{ .Values.queueSidecarImage.image.tag }}{{- end }}"
+  registries-skipping-tag-resolving: "{{ .Values.registriesSkippingTagResolving }}"
 kind: ConfigMap
 metadata:
   annotations:

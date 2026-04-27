@@ -8,10 +8,9 @@ global:
 
 controller:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/eventing/cmd/controller
-    tag: ""  # unused when digest is set
-    digest: sha256:202f2c203154f30b642ddbd3843fad12637389a84bf097c22c216039469f704b
+    registry: registry.suse.com
+    repository: ai/containers/eventing/cmd/controller
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -19,18 +18,16 @@ controller:
       memory: 100Mi
   env:
     APISERVER_RA_IMAGE:
-      registry: gcr.io
-      repository: knative-releases/knative.dev/eventing/cmd/apiserver_receive_adapter
-      tag: ""  # unused when digest is set
-      digest: sha256:9cf675814667090fdb72be469c0854b3480c13b3338a461cb6e11977777840b3
+      registry: registry.suse.com
+      repository: ai/containers/eventing/cmd/apiserver_receive_adapter
+      tag: "v1.20.0"  # unused when digest is set
       pullPolicy: IfNotPresent
 
 webhook:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/eventing/cmd/webhook
-    tag: ""  # unused when digest is set
-    digest: sha256:b857ca0d0467c27b25b6efd555dee45281ca639eba06333c20e6adc9146002d8
+    registry: registry.suse.com
+    repository: ai/containers/eventing/cmd/webhook
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -42,10 +39,9 @@ webhook:
 
 pingsource:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/eventing/cmd/mtping
-    tag: ""  # unused when digest is set
-    digest: sha256:8624b33e7a4126a562b410baa807ebf9f83fd057b2118e5e55b3a069111856ef
+    registry: registry.suse.com
+    repository: ai/containers/eventing/cmd/mtping
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:

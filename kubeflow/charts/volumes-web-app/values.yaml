@@ -5,15 +5,15 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: ghcr.io
-  repository: kubeflow/kubeflow/volumes-web-app
+  registry: registry.suse.com
+  repository: ai/containers/volumes-web-app
   tag: v1.10.0
   pullPolicy: IfNotPresent
 
 replicaCount: 1
 
 # Image used by the PVCViewer pod (filebrowser) when a user clicks "Open PVCViewer"
-viewerImage: "filebrowser/filebrowser:v2.25.0"
+viewerImage: "registry.suse.com/ai/containers/filebrowser:v2.25.0"
 
 service:
   type: ClusterIP

@@ -29,6 +29,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         fsGroup: 2000
+      {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
       containers:
       - name: ml-pipeline-persistenceagent
         securityContext:

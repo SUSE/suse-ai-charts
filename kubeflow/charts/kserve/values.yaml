@@ -8,8 +8,8 @@ controllerManager:
   # Increase to 2+ via ha-overrides.yaml for HA deployments.
   replicaCount: 1
   image:
-    registry: docker.io
-    repository: kserve/kserve-controller
+    registry: registry.suse.com
+    repository: ai/containers/kserve-controller
     tag: v0.16.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -38,58 +38,58 @@ kubeRbacProxy:
 
 storageInitializer:
   image:
-    registry: docker.io
-    repository: kserve/storage-initializer
+    registry: registry.suse.com
+    repository: ai/containers/storage-initializer
     tag: v0.16.0
     pullPolicy: IfNotPresent
 
 # Serving runtime images - these are used by ClusterServingRuntime resources
 tensorflowServing:
   image:
-    registry: docker.io
-    repository: tensorflow/serving
+    registry: registry.suse.com
+    repository: ai/containers/serving
     tag: "2.6.2"
     pullPolicy: IfNotPresent
 
 huggingfaceServer:
   image:
-    registry: docker.io
-    repository: kserve/huggingfaceserver
+    registry: registry.suse.com
+    repository: ai/containers/huggingfaceserver
     tag: v0.16.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
-    registry: docker.io
-    repository: kserve/xgbserver
+    registry: registry.suse.com
+    repository: ai/containers/xgbserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
-    registry: docker.io
-    repository: kserve/lgbserver
+    registry: registry.suse.com
+    repository: ai/containers/lgbserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
-    registry: docker.io
-    repository: kserve/sklearnserver
+    registry: registry.suse.com
+    repository: ai/containers/sklearnserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
-    registry: docker.io
-    repository: kserve/paddleserver
+    registry: registry.suse.com
+    repository: ai/containers/paddleserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
-    registry: docker.io
-    repository: kserve/pmmlserver
+    registry: registry.suse.com
+    repository: ai/containers/pmmlserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
@@ -102,15 +102,15 @@ tritonServer:
 
 mlServer:
   image:
-    registry: docker.io
-    repository: seldonio/mlserver
+    registry: registry.suse.com
+    repository: ai/containers/mlserver
     tag: "1.5.0"
     pullPolicy: IfNotPresent
 
 torchServe:
   image:
-    registry: docker.io
-    repository: pytorch/torchserve-kfs
+    registry: registry.suse.com
+    repository: ai/containers/torchserve-kfs
     tag: "0.9.0"
     pullPolicy: IfNotPresent
 
@@ -122,7 +122,7 @@ ingressDomain: "example.com"
 inferenceServiceConfig:
   agent: |
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -130,7 +130,7 @@ inferenceServiceConfig:
     }
   batcher: |
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
         "memoryRequest": "1Gi",
         "memoryLimit": "1Gi",
         "cpuRequest": "1",
@@ -160,11 +160,11 @@ inferenceServiceConfig:
   explainers: |
     {
         "alibi": {
-            "image" : "kserve/alibi-explainer",
+            "image" : "registry.suse.com/ai/containers/alibi-explainer",
             "defaultImageVersion": "v0.16.0"
         },
         "aix": {
-            "image" : "kserve/aix-explainer",
+            "image" : "registry.suse.com/ai/containers/aix-explainer",
             "defaultImageVersion": "v0.16.0"
         },
         "art": {
@@ -186,7 +186,7 @@ inferenceServiceConfig:
     }
   logger: |
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -200,7 +200,7 @@ inferenceServiceConfig:
     }
   router: |
     {
-        "image" : "kserve/router:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/router:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -208,7 +208,7 @@ inferenceServiceConfig:
     }
   storageInitializer: |
     {
-        "image" : "kserve/storage-initializer:v0.16.0",
+        "image" : "registry.suse.com/ai/containers/storage-initializer:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",

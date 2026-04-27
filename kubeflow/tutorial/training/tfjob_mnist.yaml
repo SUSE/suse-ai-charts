@@ -43,9 +43,11 @@ spec:
       restartPolicy: OnFailure
       template:
         spec:
+          imagePullSecrets:
+          - name: suse-ai-registry
           containers:
           - name: tensorflow
-            image: tensorflow/tensorflow:2.13.0
+            image: registry.suse.com/ai/containers/tensorflow:2.15.0
             imagePullPolicy: IfNotPresent
             resources:
               requests:

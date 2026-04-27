@@ -11,10 +11,9 @@ global:
 
 controller:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/serving/cmd/controller
-    tag: ""  # unused when digest is set
-    digest: sha256:3718bf2e2f135ac70699db930145b22e52fb49bdd47a613b58cd0732853576da
+    registry: registry.suse.com
+    repository: ai/containers/serving/cmd/controller
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -26,10 +25,9 @@ controller:
 
 activator:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/serving/cmd/activator
-    tag: ""  # unused when digest is set
-    digest: sha256:701507d9c480ff87dcfa4755ca7d3d6b727438cc78c21a32164750654aa08e67
+    registry: registry.suse.com
+    repository: ai/containers/activator
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -41,10 +39,9 @@ activator:
 
 autoscaler:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/serving/cmd/autoscaler
-    tag: ""  # unused when digest is set
-    digest: sha256:485c0a009cede9138a7ec1e5ab5a5ef22ff9ddbbc7f278571211f33c505ca596
+    registry: registry.suse.com
+    repository: ai/containers/autoscaler
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -56,10 +53,9 @@ autoscaler:
 
 webhook:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/serving/cmd/webhook
-    tag: ""  # unused when digest is set
-    digest: sha256:0d9c4d4971d9b67eaf5ce1359f6ff334145d32b3c0cb9e650ab9fab687396696
+    registry: registry.suse.com
+    repository: ai/containers/serving/cmd/webhook
+    tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -71,10 +67,9 @@ webhook:
 
 netIstioController:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/net-istio/cmd/controller
-    tag: ""  # unused when digest is set
-    digest: sha256:52453d71844b8b0f9d23139bde9080c39e123d109f6f9aacdbf8d49321e87cfa
+    registry: registry.suse.com
+    repository: ai/containers/net-istio/cmd/controller
+    tag: "v1.20.1"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -86,10 +81,9 @@ netIstioController:
 
 netIstioWebhook:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/net-istio/cmd/webhook
-    tag: ""  # unused when digest is set
-    digest: sha256:dfc23229b2a377c593063cabdc0fdd6906bd0955c3a6dbd8462031b18b55e67c
+    registry: registry.suse.com
+    repository: ai/containers/net-istio/cmd/webhook
+    tag: "v1.20.1"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -102,21 +96,20 @@ netIstioWebhook:
 # Queue sidecar image used in config-deployment ConfigMap
 queueSidecarImage:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/serving/cmd/queue
-    tag: ""
-    digest: sha256:b78cfa015872b12cf64f01fc21f29190c6f2fa69aadbb90162fa98e843781777
+    registry: registry.suse.com
+    repository: ai/containers/serving/cmd/queue
+    tag: "v1.20.0"
     pullPolicy: IfNotPresent
 
 # Queue proxy image used in the queue-proxy Image resource
 queueProxy:
   image:
-    registry: gcr.io
-    repository: knative-releases/knative.dev/serving/cmd/queue
-    tag: ""
-    digest: sha256:179c0c4892ea4a70e78bc52ac21b03cd7f1a763d2ecc78e7bbaa1ae59c86c
+    registry: registry.suse.com
+    repository: ai/containers/serving/cmd/queue
+    tag: "v1.20.0"
     pullPolicy: IfNotPresent
 
 # Domain for InferenceService external URLs.
 # Override with <node-ip>.nip.io or your real domain.
 domain: "example.com"
+registriesSkippingTagResolving: "registry.suse.com"

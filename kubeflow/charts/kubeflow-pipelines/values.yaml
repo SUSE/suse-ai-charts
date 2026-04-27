@@ -70,8 +70,8 @@ mariadb:
 # SeaweedFS reads those credentials via envFrom and registers them as its IAM user.
 seaweedfs:
   image:
-    registry: docker.io
-    repository: chrislusf/seaweedfs
+    registry: registry.suse.com
+    repository: ai/containers/seaweedfs
     tag: "4.00"
     pullPolicy: IfNotPresent
   enabled: true
@@ -104,15 +104,15 @@ seaweedfs:
 # to seaweedfs.kubeflow:9000 (upstream migration) which does not exist here.
 launcher:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-launcher
+    registry: registry.suse.com
+    repository: ai/containers/kfp-launcher
     tag: "2.16.0"
 
 # KFP API server
 apiServer:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-api-server
+    registry: registry.suse.com
+    repository: ai/containers/kfp-api-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -124,8 +124,8 @@ apiServer:
 # KFP frontend / UI
 frontend:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-frontend
+    registry: registry.suse.com
+    repository: ai/containers/kfp-frontend
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -137,8 +137,8 @@ frontend:
 # Persistence agent
 persistenceAgent:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-persistence-agent
+    registry: registry.suse.com
+    repository: ai/containers/kfp-persistence-agent
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -150,8 +150,8 @@ persistenceAgent:
 # Scheduled workflow controller
 scheduledWorkflow:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-scheduled-workflow-controller
+    registry: registry.suse.com
+    repository: ai/containers/kfp-scheduled-workflow-controller
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -166,8 +166,8 @@ scheduledWorkflow:
 # Viewer CRD controller
 viewerCrdController:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-viewer-crd-controller
+    registry: registry.suse.com
+    repository: ai/containers/kfp-viewer-crd-controller
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -182,8 +182,8 @@ viewerCrdController:
 # Visualization server
 visualizationServer:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-visualization-server
+    registry: registry.suse.com
+    repository: ai/containers/kfp-visualization-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -195,8 +195,8 @@ visualizationServer:
 # Cache server
 cacheServer:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-cache-server
+    registry: registry.suse.com
+    repository: ai/containers/kfp-cache-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -228,8 +228,8 @@ workflowController:
 # ML Metadata gRPC server
 metadataGrpc:
   image:
-    registry: gcr.io
-    repository: tfx-oss-public/ml_metadata_store_server
+    registry: registry.suse.com
+    repository: ai/containers/ml_metadata_store_server
     tag: "1.14.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -244,8 +244,8 @@ metadataGrpc:
 # Metadata envoy proxy
 metadataEnvoy:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-metadata-envoy
+    registry: registry.suse.com
+    repository: ai/containers/kfp-metadata-envoy
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -260,8 +260,8 @@ metadataEnvoy:
 # Metadata writer
 metadataWriter:
   image:
-    registry: ghcr.io
-    repository: kubeflow/kfp-metadata-writer
+    registry: registry.suse.com
+    repository: ai/containers/kfp-metadata-writer
     tag: "2.16.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -292,8 +292,8 @@ metacontroller:
 # Profile controller
 profileController:
   image:
-    registry: docker.io
-    repository: python
+    registry: registry.suse.com
+    repository: ai/containers/python
     tag: "3.11"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
