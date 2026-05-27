@@ -2,7 +2,7 @@ apiVersion: v0
 kind: ImagesLock
 metadata:
   generatedAt: "2026-05-26T14:24:18.88460558Z"
-  generatedBy: Distribution Tooling for Helm
+  generatedBy: SUSE LLC
 chart:
   name: pytorch
   version: 0.3.3
