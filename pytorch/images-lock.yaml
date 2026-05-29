@@ -1,18 +1,18 @@
 apiVersion: v0
 kind: ImagesLock
 metadata:
-  generatedAt: "2026-02-10T19:18:55.319531557Z"
+  generatedAt: "2026-05-29T14:03:57.929138158Z"
   generatedBy: SUSE LLC
 chart:
   name: pytorch
-  version: 0.3.2
-  appVersion: 2.9.1
+  version: 0.3.3
+  appVersion: 2.10.0
 images:
   - name: pytorch-nvidia
-    image: dp.apps.rancher.io/containers/pytorch:2.9.1-nvidia-1.18
+    image: dp.apps.rancher.io/containers/pytorch:2.10.0-nvidia-2.2
     chart: pytorch
     digests:
-      - digest: sha256:3390216f6cdbf887b0f149b8a8f7bfb43e310e76fd8fcc6b941431a24a7e5602
+      - digest: sha256:9e209a98ddef3230d8a851429f441fb5fdfaeb7755c288053e29b7b20ad25c6c
         arch: linux/amd64
-      - digest: sha256:4e19ce14aad17cca0d8bd347decdc54713ab11b08330793044798eff0bd23858
+      - digest: sha256:eccf2fe60f50e7d56e4af2b869f9fa8aa9f65fef18bd79842b95be6bc698256f
         arch: linux/arm64

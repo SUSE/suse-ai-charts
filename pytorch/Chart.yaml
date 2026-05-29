@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: APACHE-2.0
-#!BuildTag: charts/pytorch:0.3.2-%RELEASE%
-#!BuildTag: charts/pytorch:0.3.2
+#!BuildTag: charts/pytorch:0.3.3-%RELEASE%
+#!BuildTag: charts/pytorch:0.3.3
 annotations:
   helm.sh/images: |
-    - image: dp.apps.rancher.io/containers/pytorch:2.9.1-nvidia-1.18
+    - image: dp.apps.rancher.io/containers/pytorch:2.10.0-nvidia-2.2
       name: pytorch-nvidia
   license: Apache-2.0
 apiVersion: v2
-appVersion: 2.9.1
+appVersion: 2.10.0
 description: PyTorch is a machine learning library based on the Torch library, used for applications such as computer vision and natural language processing
 home: https://apps.rancher.io/applications/pytorch
 icon: https://apps.rancher.io/logos/pytorch.png
@@ -25,4 +25,4 @@ name: pytorch
 sources:
   - https://github.com/pytorch/pytorch
 type: application
-version: 0.3.2
+version: 0.3.3
