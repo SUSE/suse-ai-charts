@@ -3,7 +3,7 @@
 #!BuildTag: charts/pytorch:0.3.3
 annotations:
   helm.sh/images: |
-    - image: dp.apps.rancher.io/containers/pytorch:2.10.0-nvidia-1.55
+    - image: dp.apps.rancher.io/containers/pytorch:2.10.0-nvidia-2.2
       name: pytorch-nvidia
   license: Apache-2.0
 apiVersion: v2
