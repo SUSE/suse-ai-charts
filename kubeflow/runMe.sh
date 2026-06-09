@@ -91,7 +91,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Helm registry logins
 echo "=== Step 1: Helm registry login ==="
 echo "$APPCO_REGISTRY_TOKEN" | helm registry login dp.apps.rancher.io --username "$APPCO_REGISTRY_USER" --password-stdin
-echo "$SUSE_AI_REGISTRY_TOKEN" | helm registry login registry.suse.com --username "$SUSE_AI_REGISTRY_USER" --password-stdin
+echo "$SUSE_AI_REGISTRY_TOKEN" | helm registry login stgregistry.suse.com --username "$SUSE_AI_REGISTRY_USER" --password-stdin
 
 echo "=== Step 2 & 3: Create namespaces and all the required secrets ==="
 for ns in "${NAMESPACES_TO_CREATE[@]}"; do
@@ -103,7 +103,7 @@ for ns in "${NAMESPACES_TO_CREATE[@]}"; do
     -n "$ns" \
     --dry-run=client -o yaml | kubectl apply -f -
   kubectl create secret docker-registry suse-ai-registry \
-    --docker-server=registry.suse.com \
+    --docker-server=stgregistry.suse.com \
     --docker-username="$SUSE_AI_REGISTRY_USER" \
     --docker-password="$SUSE_AI_REGISTRY_TOKEN" \
     -n "$ns" \

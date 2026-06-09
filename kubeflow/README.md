@@ -75,7 +75,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | Load Balancer (i.e. metallb) | - | It is required when used in conjunction with external-dns and cert-manager. Tested with MetalLB v0.15.3 |
 | Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
 | SUSE Application Collection credentials | — | Username + token for `dp.apps.rancher.io` (application-collection secret) |
-| SUSE Registry credentials | — | Username + token for `registry.suse.com` (suse-ai-registry secret) |
+| SUSE Registry credentials | — | Username + token for `stgregistry.suse.com` (suse-ai-registry secret) |
 
 **Storage class:** All PVCs use the cluster default StorageClass unless `global.storageClass` is set.
 For single-node clusters the Local Path Provisioner is sufficient for development.
@@ -112,7 +112,7 @@ steps before it.
 
 Prerequisite: A RKE2 cluster with a default storageClass configured.
 
-1. Performs Helm registry logins for `dp.apps.rancher.io` and `registry.suse.com`
+1. Performs Helm registry logins for `dp.apps.rancher.io` and `stgregistry.suse.com`
 2. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `knative-serving`
 3. Creates `application-collection` and `suse-ai-registry` image pull secrets in `istio-system`, `kubeflow`, `knative-serving`, and `cert-manager`. User namespaces (`kubeflow-user-example-com`, profile namespaces) receive these secrets automatically via the External Secrets Operator (ESO), which is installed as part of the chart.
 4. Labels the `kubeflow` and `knative-serving` namespaces for Helm ownership
@@ -151,7 +151,7 @@ Password: 12341234
 | `<appco-registry-username>` | `APPCO_REGISTRY_USER` | SUSE Application Collection username (for `dp.apps.rancher.io`) |
 | `<appco-registry-token>` | `APPCO_REGISTRY_TOKEN` | SUSE Application Collection token / password (for `dp.apps.rancher.io`) |
 | `<suse-ai-registry-username>` | `SUSE_REGISTRY_USER` | SUSE Registry username (default: `regcode`) |
-| `<suse-ai-registry-token>` | `SUSE_REGISTRY_TOKEN` | SUSE Registry token / password (for `registry.suse.com`) SCC_REG_CODE for AI|
+| `<suse-ai-registry-token>` | `SUSE_REGISTRY_TOKEN` | SUSE Registry token / password (for `stgregistry.suse.com`) SCC_REG_CODE for AI|
 | `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
 | `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
@@ -193,7 +193,7 @@ helm registry login dp.apps.rancher.io \
   --password=<appco-registry-token>
 
 # Login to SUSE Registry
-helm registry login registry.suse.com \
+helm registry login stgregistry.suse.com \
   --username=regcode \
   --password=<suse-ai-registry-token>
 ```
@@ -223,10 +223,10 @@ for ns in cert-manager istio-system kubeflow knative-serving; do
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
-# Create suse-ai-registry pull secret (SUSE Registry — registry.suse.com)
+# Create suse-ai-registry pull secret (SUSE Registry — stgregistry.suse.com)
 for ns in cert-manager istio-system kubeflow knative-serving; do
   kubectl create secret docker-registry suse-ai-registry \
-    --docker-server=registry.suse.com \
+    --docker-server=stgregistry.suse.com \
     --docker-username=regcode \
     --docker-password=<suse-ai-registry-token> \
     -n "$ns" \
@@ -292,7 +292,7 @@ Install directly from the OCI registry (no source checkout required):
 
 ```bash
 helm upgrade --install kubeflow \
-  oci://registry.suse.com/ai/charts/kubeflow \
+  oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
@@ -304,7 +304,7 @@ To apply a values override file, for example the `demo-overrides.yaml` provided 
 
 ```bash
 helm upgrade --install kubeflow \
-  oci://registry.suse.com/ai/charts/kubeflow \
+  oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
@@ -555,7 +555,7 @@ Or manually:
 
 ```bash
 helm upgrade --install kubeflow \
-  oci://registry.suse.com/ai/charts/kubeflow \
+  oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
@@ -960,7 +960,7 @@ user-namespace:
 Add the user to your values file and run `helm upgrade`:
 
 ```bash
-helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+helm upgrade kubeflow oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version <version> \
   -n kubeflow --reuse-values \
   --set "user-namespace.additionalUsers[0].email=alice@example.com" \
@@ -979,7 +979,7 @@ user-namespace:
 
 **OCI (production):**
 ```bash
-helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+helm upgrade kubeflow oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version <version> \
   -n kubeflow -f my-values.yaml
 ```
@@ -1008,7 +1008,7 @@ in a single step.
 
 ```bash
 helm upgrade kubeflow \
-  oci://registry.suse.com/ai/charts/kubeflow \
+  oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow --force-conflicts --wait --timeout 15m
 ```
@@ -1208,7 +1208,7 @@ helm upgrade kubeflow . -n kubeflow \
 **From OCI registry (production):**
 
 ```bash
-helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+helm upgrade kubeflow oci://stgregistry.suse.com/ai/charts/kubeflow \
   --version <version> -n kubeflow \
   --reuse-values --force-conflicts \
   --set tensorboard-controller.configMapData.ISTIO_HOST="*" \

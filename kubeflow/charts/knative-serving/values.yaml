@@ -11,8 +11,8 @@ global:
 
 controller:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/serving/cmd/controller
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/controller
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
@@ -25,8 +25,8 @@ controller:
 
 activator:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/activator
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/activator
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
@@ -39,8 +39,8 @@ activator:
 
 autoscaler:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/autoscaler
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/autoscaler
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
@@ -53,8 +53,8 @@ autoscaler:
 
 webhook:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/serving/cmd/webhook
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
@@ -67,8 +67,8 @@ webhook:
 
 netIstioController:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/net-istio/cmd/controller
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/webhook
     tag: "v1.20.1"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
@@ -81,8 +81,8 @@ netIstioController:
 
 netIstioWebhook:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/net-istio/cmd/webhook
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
     tag: "v1.20.1"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
@@ -96,20 +96,20 @@ netIstioWebhook:
 # Queue sidecar image used in config-deployment ConfigMap
 queueSidecarImage:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/serving/cmd/queue
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.20.0"
     pullPolicy: IfNotPresent
 
 # Queue proxy image used in the queue-proxy Image resource
 queueProxy:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/serving/cmd/queue
+    registry: stgstgregistry.suse.com
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.20.0"
     pullPolicy: IfNotPresent
 
 # Domain for InferenceService external URLs.
 # Override with <node-ip>.nip.io or your real domain.
 domain: "example.com"
-registriesSkippingTagResolving: "registry.suse.com"
+registriesSkippingTagResolving: "stgstgregistry.suse.com"

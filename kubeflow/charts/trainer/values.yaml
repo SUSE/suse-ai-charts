@@ -10,8 +10,8 @@ global:
 # To update CRDs on upgrade: kubectl apply -f charts/apps/trainer/crds/
 
 image:
-  registry: registry.suse.com
-  repository: ai/containers/trainer-controller-manager
+  registry: stgregistry.suse.com
+  repository: ai/containers/kubeflow/trainer/trainer-controller-manager
   tag: v2.1.0
   pullPolicy: IfNotPresent
 
@@ -51,8 +51,8 @@ jobset:
   controller:
     enabled: true
   image:
-    registry: registry.suse.com
-    repository: ai/containers/jobset
+    registry: stgregistry.suse.com
+    repository: ai/containers/jobset/jobset
     tag: v0.10.1
     pullPolicy: IfNotPresent
 
@@ -61,21 +61,21 @@ runtimes:
   enabled: true
   deepspeed:
     image:
-      registry: registry.suse.com
-      repository: ai/containers/trainer/deepspeed-runtime
+      registry: stgregistry.suse.com
+      repository: ai/containers/kubeflow/trainer/deepspeed-runtime
       tag: v2.1.0
       pullPolicy: IfNotPresent
   mlx:
     image:
-      registry: registry.suse.com
-      repository: ai/containers/trainer/mlx-runtime
+      registry: stgregistry.suse.com
+      repository: ai/containers/kubeflow/trainer/mlx-runtime
       tag: v2.1.0
       pullPolicy: IfNotPresent
   torch:
     distributed:
       image:
-        registry: registry.suse.com
-        repository: ai/containers/pytorch
+        registry: stgregistry.suse.com
+        repository: ai/containers/pytorch/pytorch
         tag: 2.11.0-cuda12.8-cudnn9-runtime
         pullPolicy: IfNotPresent
   # TorchTune fine-tuning runtimes (Llama3, Qwen2.5) — requires GPU + HuggingFace token
@@ -84,17 +84,17 @@ runtimes:
     enabled: false
     images:
       trainer:
-        registry: registry.suse.com
-        repository: ai/containers/trainer/torchtune-trainer
+        registry: stgregistry.suse.com
+        repository: ai/containers/kubeflow/trainer/torchtune-trainer
         tag: v2.1.0
         pullPolicy: IfNotPresent
       datasetInitializer:
-        registry: registry.suse.com
-        repository: ai/containers/trainer/dataset-initializer
+        registry: stgregistry.suse.com
+        repository: ai/containers/kubeflow/trainer/dataset-initializer
         tag: v2.1.0
         pullPolicy: IfNotPresent
       modelInitializer:
-        registry: registry.suse.com
-        repository: ai/containers/trainer/model-initializer
+        registry: stgregistry.suse.com
+        repository: ai/containers/kubeflow/trainer/model-initializer
         tag: v2.1.0
         pullPolicy: IfNotPresent
