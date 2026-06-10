@@ -13,7 +13,7 @@ image:
 replicaCount: 1
 
 # Image injected into PVCViewer pods as the default viewer (filebrowser)
-viewerImage: "stgstgregistry.suse.com/ai/containers/filebrowser/filebrowser:v2.25.0"
+viewerImage: "stgregistry.suse.com/ai/containers/filebrowser/filebrowser:v2.25.0"
 
 resources:
   limits:

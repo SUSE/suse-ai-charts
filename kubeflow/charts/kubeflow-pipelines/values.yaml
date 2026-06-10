@@ -104,14 +104,14 @@ seaweedfs:
 # to seaweedfs.kubeflow:9000 (upstream migration) which does not exist here.
 launcher:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-launcher
     tag: "2.16.0"
 
 # KFP API server
 apiServer:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-api-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent

@@ -11,7 +11,7 @@ global:
 
 controller:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/controller
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -25,7 +25,7 @@ controller:
 
 activator:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/activator
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -39,7 +39,7 @@ activator:
 
 autoscaler:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/autoscaler
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -53,7 +53,7 @@ autoscaler:
 
 webhook:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -67,7 +67,7 @@ webhook:
 
 netIstioController:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/webhook
     tag: "v1.20.1"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -81,7 +81,7 @@ netIstioController:
 
 netIstioWebhook:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
     tag: "v1.20.1"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -96,7 +96,7 @@ netIstioWebhook:
 # Queue sidecar image used in config-deployment ConfigMap
 queueSidecarImage:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.20.0"
     pullPolicy: IfNotPresent
@@ -104,7 +104,7 @@ queueSidecarImage:
 # Queue proxy image used in the queue-proxy Image resource
 queueProxy:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.20.0"
     pullPolicy: IfNotPresent
@@ -112,4 +112,4 @@ queueProxy:
 # Domain for InferenceService external URLs.
 # Override with <node-ip>.nip.io or your real domain.
 domain: "example.com"
-registriesSkippingTagResolving: "stgstgregistry.suse.com"
+registriesSkippingTagResolving: "stgregistry.suse.com"

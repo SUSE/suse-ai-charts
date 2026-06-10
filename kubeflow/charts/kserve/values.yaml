@@ -38,7 +38,7 @@ kubeRbacProxy:
 
 storageInitializer:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/model-registry/storage-initializer
     tag: v0.16.0
     pullPolicy: IfNotPresent
@@ -46,7 +46,7 @@ storageInitializer:
 # Serving runtime images - these are used by ClusterServingRuntime resources
 tensorflowServing:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/tensorflow/serving
     tag: "2.6.2"
     pullPolicy: IfNotPresent
@@ -122,7 +122,7 @@ ingressDomain: "example.com"
 inferenceServiceConfig:
   agent: |
     {
-        "image" : "stgstgregistry.suse.com/ai/containers/kserve/agent:v0.16.0",
+        "image" : "stgregistry.suse.com/ai/containers/kserve/agent:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -130,7 +130,7 @@ inferenceServiceConfig:
     }
   batcher: |
     {
-        "image" : "stgstgregistry.suse.com/ai/containers/kserve/agent:v0.16.0",
+        "image" : "stgregistry.suse.com/ai/containers/kserve/agent:v0.16.0",
         "memoryRequest": "1Gi",
         "memoryLimit": "1Gi",
         "cpuRequest": "1",
@@ -160,15 +160,15 @@ inferenceServiceConfig:
   explainers: |
     {
         "alibi": {
-            "image" : "stgstgregistry.suse.com/ai/containers/kserve/alibi-explainer",
+            "image" : "stgregistry.suse.com/ai/containers/kserve/alibi-explainer",
             "defaultImageVersion": "v0.16.0"
         },
         "aix": {
-            "image" : "stgstgregistry.suse.com/ai/containers/kserve/aix-explainer",
+            "image" : "stgregistry.suse.com/ai/containers/kserve/aix-explainer",
             "defaultImageVersion": "v0.16.0"
         },
         "art": {
-            "image" : "stgstgregistry.suse.com/ai/containers/kserve/art-explainer",
+            "image" : "stgregistry.suse.com/ai/containers/kserve/art-explainer",
             "defaultImageVersion": "v0.16.0"
         }
     }
@@ -186,7 +186,7 @@ inferenceServiceConfig:
     }
   logger: |
     {
-        "image" : "stgstgregistry.suse.com/ai/containers/kserve/agent:v0.16.0",
+        "image" : "stgregistry.suse.com/ai/containers/kserve/agent:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -200,7 +200,7 @@ inferenceServiceConfig:
     }
   router: |
     {
-        "image" : "stgstgregistry.suse.com/ai/containers/kserve/router:v0.16.0",
+        "image" : "stgregistry.suse.com/ai/containers/kserve/router:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -208,7 +208,7 @@ inferenceServiceConfig:
     }
   storageInitializer: |
     {
-        "image" : "stgstgregistry.suse.com/ai/containers/kserve/storage-initializer:v0.16.0",
+        "image" : "stgregistry.suse.com/ai/containers/kserve/storage-initializer:v0.16.0",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",

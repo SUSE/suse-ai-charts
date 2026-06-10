@@ -8,7 +8,7 @@ global:
 
 controller:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/controller
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -18,14 +18,14 @@ controller:
       memory: 100Mi
   env:
     APISERVER_RA_IMAGE:
-      registry: stgstgregistry.suse.com
+      registry: stgregistry.suse.com
       repository: ai/containers/knative-releases/knative.dev/eventing/cmd/apiserver_receive_adapter
       tag: "v1.20.0"  # unused when digest is set
       pullPolicy: IfNotPresent
 
 webhook:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/webhook
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent
@@ -39,7 +39,7 @@ webhook:
 
 pingsource:
   image:
-    registry: stgstgregistry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/mtping
     tag: "v1.20.0"  # unused when digest is set
     pullPolicy: IfNotPresent

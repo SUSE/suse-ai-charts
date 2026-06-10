@@ -50,4 +50,4 @@ configMapData:
   ISTIO_GATEWAY: kubeflow/kubeflow-gateway
   ISTIO_HOST: "*"
   RWO_PVC_SCHEDULING: "True"
-  TENSORBOARD_IMAGE: stgstgregistry.suse.com/ai/containers/tensorflow/tensorflow:2.13.0
+  TENSORBOARD_IMAGE: stgregistry.suse.com/ai/containers/tensorflow/tensorflow:2.13.0

@@ -13,7 +13,7 @@ image:
 replicaCount: 1
 
 # Image used by the PVCViewer pod (filebrowser) when a user clicks "Open PVCViewer"
-viewerImage: "stgstgregistry.suse.com/ai/containers/filebrowser/filebrowser:v2.25.0"
+viewerImage: "stgregistry.suse.com/ai/containers/filebrowser/filebrowser:v2.25.0"
 
 service:
   type: ClusterIP

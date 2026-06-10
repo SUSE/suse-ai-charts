@@ -102,40 +102,40 @@ katibConfig:
     runtime:
       suggestions:
         - algorithmName: random
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-hyperopt:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-hyperopt:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: tpe
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-hyperopt:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-hyperopt:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: grid
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-optuna:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-optuna:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: hyperband
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-hyperband:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-hyperband:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: bayesianoptimization
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-skopt:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-skopt:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: cmaes
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-goptuna:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-goptuna:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: sobol
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-goptuna:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-goptuna:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: multivariate-tpe
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-optuna:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-optuna:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: enas
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-enas:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-enas:v0.19.0"
           serviceAccountName: katib-suggestion
           resources:
             limits:
               memory: "200Mi"
         - algorithmName: darts
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-darts:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-darts:v0.19.0"
           serviceAccountName: katib-suggestion
         - algorithmName: pbt
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-pbt:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/suggestion-pbt:v0.19.0"
           serviceAccountName: katib-suggestion
           persistentVolumeClaimSpec:
             accessModes:
@@ -145,17 +145,17 @@ katibConfig:
                 storage: "5Gi"
       metricsCollectors:
         - kind: StdOut
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/file-metrics-collector:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/file-metrics-collector:v0.19.0"
         - kind: File
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/file-metrics-collector:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/file-metrics-collector:v0.19.0"
         - kind: TensorFlowEvent
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/tfevent-metrics-collector:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/tfevent-metrics-collector:v0.19.0"
           resources:
             limits:
               memory: "1Gi"
       earlyStoppings:
         - algorithmName: medianstop
-          image: "stgstgregistry.suse.com/ai/containers/kubeflow/katib/earlystopping-medianstop:v0.19.0"
+          image: "stgregistry.suse.com/ai/containers/kubeflow/katib/earlystopping-medianstop:v0.19.0"
           serviceAccountName: katib-suggestion
 
 # Trial templates images for the trial-templates ConfigMap
