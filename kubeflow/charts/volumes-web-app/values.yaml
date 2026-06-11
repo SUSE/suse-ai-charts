@@ -6,7 +6,7 @@ global:
 
 image:
   registry: stgregistry.suse.com
-  repository: ai/containers/volumes-web-app
+  repository: ai/containers/kubeflow/kubeflow/volumes-web-app
   tag: v1.10.0
   pullPolicy: IfNotPresent
 
