@@ -3,7 +3,7 @@
 # Searches for the best (C, max_iter) pair for a Logistic Regression
 # classifier on the Iris dataset using the random search algorithm.
 #
-# Each trial runs a short Python script inside a stgregistry.suse.com/ai/containers/python:3.11-slim container.
+# Each trial runs a short Python script inside a registry.suse.com/ai/containers/python:3.11-slim container.
 # Katib injects the sampled hyperparameter values via environment variables,
 # and the StdOut metrics collector parses the "accuracy=X.XXXX" output line.
 #
@@ -93,7 +93,7 @@ spec:
             - name: suse-ai-registry
             containers:
             - name: training-container
-              image: stgregistry.suse.com/ai/containers/python:3.11-slim
+              image: registry.suse.com/ai/containers/python:3.11-slim
               imagePullPolicy: IfNotPresent
 
               # Install scikit-learn, write the training script to a temp file,

@@ -304,11 +304,11 @@ fi
 header "4. KServe — build sklearn model → deploy IS → Ready → predict"
 
 # 4a: Build model + upload to SeaweedFS via a setup pod.
-#     Uses stgregistry.suse.com/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
+#     Uses registry.suse.com/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
 #     sklearn version avoids pickle compatibility issues).
 info "Launching model builder pod..."
 kubectl run e2e-model-builder \
-  --image=stgregistry.suse.com/ai/containers/sklearnserver:v0.15.2 \
+  --image=registry.suse.com/ai/containers/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}},"spec":{"imagePullSecrets":[{"name":"suse-ai-registry"}]}}' \
@@ -972,7 +972,7 @@ spec:
           - name: suse-ai-registry
           containers:
           - name: pytorch
-            image: stgregistry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             command:
             - python3
             - -c

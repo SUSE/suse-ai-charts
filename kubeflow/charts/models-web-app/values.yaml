@@ -5,7 +5,7 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
   repository: ai/containers/kserve/models-web-app
   tag: v0.13.0
   pullPolicy: IfNotPresent

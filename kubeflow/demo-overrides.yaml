@@ -3,6 +3,22 @@
 # ============================================================================
 global:
   demoMode: true  # disables credential validation; for local development only
+  podAnnotations:
+    proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+
+dex:
+  # ... keep your existing dex settings here ...
+  podAnnotations:
+    proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+
+otebooks:
+  controller:
+    podAnnotations:
+      proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+
+profiles:
+  podAnnotations:
+    proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
 
 # Repeat the demo defaults here so the chart renders without errors in demo mode.
 # Replace all values below with real secrets before any production deployment.

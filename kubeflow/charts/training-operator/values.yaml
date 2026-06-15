@@ -5,7 +5,7 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
   repository: ai/containers/kubeflow/training-v1/training-operator
   tag: v1-3f15cb8
   pullPolicy: IfNotPresent
