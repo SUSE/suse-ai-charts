@@ -35,7 +35,7 @@ spec:
             configMapKeyRef:
               key: cronScheduleTimezone
               name: pipeline-install-config
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.scheduledWorkflow.image.registry) }}{{ . }}/{{ end }}{{ .Values.scheduledWorkflow.image.repository }}{{- if .Values.scheduledWorkflow.image.digest }}@{{ .Values.scheduledWorkflow.image.digest }}{{- else }}:{{ .Values.scheduledWorkflow.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.scheduledWorkflow.image.repository }}{{- if .Values.scheduledWorkflow.image.digest }}@{{ .Values.scheduledWorkflow.image.digest }}{{- else }}:{{ .Values.scheduledWorkflow.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.scheduledWorkflow.image.pullPolicy }}
         name: ml-pipeline-scheduledworkflow
         {{- with .Values.scheduledWorkflow.resources }}

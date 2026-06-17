@@ -14,10 +14,14 @@ set -uo pipefail
 
 NS=kubeflow
 USER_NS=kubeflow-user-example-com
+SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=
+SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=
 
 for arg in "$@"; do
   case "$arg" in
-    --user-namespace=*) USER_NS="${arg#*=}" ;;
+    --user-namespace=*)       USER_NS="${arg#*=}" ;;
+    --suse-registry=*)        SUSE_REGISTRY="${arg#*=}" ;;
+    --suse-app-collection=*)  SUSE_APP_COLLECTION="${arg#*=}" ;;
   esac
 done
 
@@ -91,7 +95,7 @@ check_http() {
   local result
 
   if result=$(kubectl run "smoke-http-$$" \
-        --image=dp.apps.rancher.io/containers/bci-busybox:15.7 \
+        --image=${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7 \
         --restart=Never \
         --rm \
         --attach \
@@ -121,7 +125,7 @@ check_http() {
 check_tcp() {
   local label="$1" host="$2" port="$3"
   if kubectl run "smoke-tcp-$$" \
-      --image=dp.apps.rancher.io/containers/bci-busybox:15.7 \
+      --image=${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7 \
       --restart=Never \
       --rm \
       --attach \

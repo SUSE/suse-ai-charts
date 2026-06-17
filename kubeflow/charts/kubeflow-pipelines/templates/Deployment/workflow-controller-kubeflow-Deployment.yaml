@@ -22,7 +22,7 @@ spec:
         - --configmap
         - workflow-controller-configmap
         - --executor-image
-        - "{{ with (coalesce .Values.global.imageRegistry .Values.workflowController.executorImage.registry) }}{{ . }}/{{ end }}{{ .Values.workflowController.executorImage.repository }}{{- if .Values.workflowController.executorImage.digest }}@{{ .Values.workflowController.executorImage.digest }}{{- else }}:{{ .Values.workflowController.executorImage.tag }}{{- end }}"
+        - "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" . }}/{{ .Values.workflowController.executorImage.repository }}{{- if .Values.workflowController.executorImage.digest }}@{{ .Values.workflowController.executorImage.digest }}{{- else }}:{{ .Values.workflowController.executorImage.tag }}{{- end }}"
         command:
         - workflow-controller
         env:
@@ -31,7 +31,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.name
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.workflowController.image.registry) }}{{ . }}/{{ end }}{{ .Values.workflowController.image.repository }}{{- if .Values.workflowController.image.digest }}@{{ .Values.workflowController.image.digest }}{{- else }}:{{ .Values.workflowController.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" . }}/{{ .Values.workflowController.image.repository }}{{- if .Values.workflowController.image.digest }}@{{ .Values.workflowController.image.digest }}{{- else }}:{{ .Values.workflowController.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.workflowController.image.pullPolicy }}
         livenessProbe:
           failureThreshold: 3

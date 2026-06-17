@@ -84,3 +84,17 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > image.registry
+*/}}
+{{- define "admission-webhook.suseImageRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}
+  {{- .Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .Values.image.registry -}}
+{{- end -}}
+{{- end -}}

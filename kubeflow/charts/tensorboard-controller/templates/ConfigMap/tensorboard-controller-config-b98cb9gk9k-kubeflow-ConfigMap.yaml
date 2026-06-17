@@ -3,7 +3,7 @@ data:
   ISTIO_GATEWAY: {{ .Values.configMapData.ISTIO_GATEWAY | quote }}
   ISTIO_HOST: {{ .Values.configMapData.ISTIO_HOST | quote }}
   RWO_PVC_SCHEDULING: {{ .Values.configMapData.RWO_PVC_SCHEDULING | quote }}
-  TENSORBOARD_IMAGE: {{ .Values.configMapData.TENSORBOARD_IMAGE | quote }}
+  TENSORBOARD_IMAGE: "{{ include "tensorboard-controller.suseImageRegistry" . }}/{{ .Values.configMapData.tensorboardImage.repository }}:{{ .Values.configMapData.tensorboardImage.tag }}"
 kind: ConfigMap
 metadata:
   name: tensorboard-controller-config-b98cb9gk9k

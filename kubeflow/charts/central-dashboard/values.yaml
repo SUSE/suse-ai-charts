@@ -7,6 +7,8 @@ image:
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI image registry
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 replicaCount: 1

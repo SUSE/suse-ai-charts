@@ -6,7 +6,7 @@
 #
 # Usage:
 #   chmod +x test/e2e/e2e.sh
-#   ./test/e2e/e2e.sh
+#   ./test/e2e/e2e.sh [--suse-registry=stgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests]
 #
 # What it tests:
 #   1.  KFP pipeline      — inline spec → submit run → wait for SUCCEEDED
@@ -34,6 +34,8 @@ set -uo pipefail
 NS=kubeflow
 USER_NS=kubeflow-user-example-com
 KFP_USER=user@example.com
+SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=stgregistry.suse.com
+SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=mirror.example.com
 PASS=0
 FAIL=0
 
@@ -44,6 +46,8 @@ for arg in "$@"; do
     --include-gpu-tests) INCLUDE_GPU=true ;;
     --user-namespace=*)  USER_NS="${arg#*=}" ;;
     --user-email=*)      KFP_USER="${arg#*=}" ;;
+    --suse-registry=*)        SUSE_REGISTRY="${arg#*=}" ;;
+    --suse-app-collection=*)  SUSE_APP_COLLECTION="${arg#*=}" ;;
   esac
 done
 
@@ -141,7 +145,7 @@ header "1. KFP Pipeline — submit inline run → wait for SUCCEEDED"
 # no mesh identity needed, and this avoids sidecar initialisation races.
 kubectl delete pod kfp-e2e-helper -n "$NS" --ignore-not-found >/dev/null 2>&1 || true
 kubectl run kfp-e2e-helper -n "$NS" \
-  --image=dp.apps.rancher.io/containers/curl:8.14.1 \
+  --image=${SUSE_APP_COLLECTION}/containers/curl:8.14.1 \
   --restart=Never \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}},"spec":{"imagePullSecrets":[{"name":"application-collection"}]}}' \
   --wait \
@@ -180,7 +184,7 @@ else
     info "Experiment ID: $EXP_ID"
 
     # Inline KFP v2 pipeline spec — single busybox echo step, no caching
-    PIPELINE_SPEC='{"components":{"comp-echo":{"executorLabel":"exec-echo"}},"deploymentSpec":{"executors":{"exec-echo":{"container":{"command":["sh","-c","echo Kubeflow E2E test OK; date"],"image":"dp.apps.rancher.io/containers/bci-busybox:15.7"}}}},"pipelineInfo":{"name":"e2e-test"},"root":{"dag":{"tasks":{"echo":{"cachingOptions":{"enableCache":false},"componentRef":{"name":"comp-echo"},"taskInfo":{"name":"echo"}}}}},"schemaVersion":"2.1.0","sdkVersion":"kfp-2.0.0"}'
+    PIPELINE_SPEC="{\"components\":{\"comp-echo\":{\"executorLabel\":\"exec-echo\"}},\"deploymentSpec\":{\"executors\":{\"exec-echo\":{\"container\":{\"command\":[\"sh\",\"-c\",\"echo Kubeflow E2E test OK; date\"],\"image\":\"${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7\"}}}},\"pipelineInfo\":{\"name\":\"e2e-test\"},\"root\":{\"dag\":{\"tasks\":{\"echo\":{\"cachingOptions\":{\"enableCache\":false},\"componentRef\":{\"name\":\"comp-echo\"},\"taskInfo\":{\"name\":\"echo\"}}}}},\"schemaVersion\":\"2.1.0\",\"sdkVersion\":\"kfp-2.0.0\"}"
 
     RUN_RESP=$($KFP_EXEC curl -s -X POST "${KFP_BASE}/apis/v2beta1/runs" \
       -H "Content-Type: application/json" \
@@ -231,7 +235,7 @@ spec:
       - name: application-collection
       containers:
       - name: e2e-test-notebook
-        image: dp.apps.rancher.io/containers/bci-busybox:15.7
+        image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
         command: ["tail", "-f", "/dev/null"]
         resources:
           requests:
@@ -268,7 +272,7 @@ spec:
           - name: application-collection
           containers:
           - name: pytorch
-            image: dp.apps.rancher.io/containers/bci-busybox:15.7
+            image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
             command: ["sh", "-c", "echo PyTorchJob E2E test OK; date; sleep 2"]
             resources:
               requests:
@@ -304,11 +308,11 @@ fi
 header "4. KServe — build sklearn model → deploy IS → Ready → predict"
 
 # 4a: Build model + upload to SeaweedFS via a setup pod.
-#     Uses registry.suse.com/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
+#     Uses ${SUSE_REGISTRY}/ai/containers/sklearnserver:v0.15.2 (same image as the server — identical
 #     sklearn version avoids pickle compatibility issues).
 info "Launching model builder pod..."
 kubectl run e2e-model-builder \
-  --image=registry.suse.com/ai/containers/sklearnserver:v0.15.2 \
+  --image=${SUSE_REGISTRY}/ai/containers/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}},"spec":{"imagePullSecrets":[{"name":"suse-ai-registry"}]}}' \
@@ -544,7 +548,7 @@ if ! kubectl get deploy kubeflow-trainer-controller-manager -n "$NS" &>/dev/null
 else
   # Delete any leftover TrainJob from a previous run to avoid stale conditions
   kubectl delete trainjob test-trainjob -n "$USER_NS" --ignore-not-found &>/dev/null
-  kubectl apply -n "$USER_NS" -f - <<'EOF'
+  kubectl apply -n "$USER_NS" -f - <<EOF
 apiVersion: trainer.kubeflow.org/v1alpha1
 kind: TrainJob
 metadata:
@@ -554,7 +558,7 @@ spec:
     name: torch-distributed
   trainer:
     numNodes: 1
-    image: dp.apps.rancher.io/containers/bci-busybox:15.7
+    image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
     command: ["sh", "-c", "echo Trainer V2 OK; date"]
   podTemplateOverrides:
   - targetJobs:
@@ -595,7 +599,7 @@ spec:
           - name: application-collection
           containers:
           - name: tensorflow
-            image: dp.apps.rancher.io/containers/bci-busybox:15.7
+            image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
             command: ["sh", "-c", "echo TFJob E2E test OK; date; sleep 2"]
             resources:
               requests:
@@ -680,7 +684,7 @@ spec:
             - name: suse-ai-registry
             containers:
             - name: training-container
-              image: dp.apps.rancher.io/containers/bci-busybox:15.7
+              image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
               command:
               - sh
               - -c
@@ -769,7 +773,7 @@ spec:
   - name: application-collection
   containers:
   - name: binder
-    image: dp.apps.rancher.io/containers/bci-busybox:15.7
+    image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
     command: ["tail", "-f", "/dev/null"]
     volumeMounts:
     - name: data
@@ -933,7 +937,7 @@ spec:
       - name: application-collection
       containers:
       - name: e2e-gpu-notebook
-        image: dp.apps.rancher.io/containers/bci-busybox:15.7
+        image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
         command: ["tail", "-f", "/dev/null"]
         resources:
           requests:
@@ -972,7 +976,7 @@ spec:
           - name: suse-ai-registry
           containers:
           - name: pytorch
-            image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: ${SUSE_REGISTRY}/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             command:
             - python3
             - -c

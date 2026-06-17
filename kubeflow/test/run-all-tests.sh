@@ -14,6 +14,8 @@
 #   --include-gpu-tests                Pass --include-gpu-tests to e2e.sh (opt-in GPU tests)
 #   --additional-user-namespace=<ns>   Also run Tier 2+3 against this extra profile namespace
 #   --additional-user-email=<email>    Email for the extra profile (used by e2e KFP tests)
+#   --suse-registry=<mirror>           SUSE AI registry mirror (default: registry.suse.com)
+#   --suse-app-collection=<mirror>     Application Collection registry mirror (default: dp.apps.rancher.io)
 
 set -uo pipefail
 
@@ -26,6 +28,8 @@ SKIP_TIER3=false
 INCLUDE_GPU=false
 ADDITIONAL_USER_NS=""
 ADDITIONAL_USER_EMAIL=""
+SUSE_REGISTRY=registry.suse.com
+SUSE_APP_COLLECTION=dp.apps.rancher.io
 
 # ── Parse args ─────────────────────────────────────────────────────────────────
 for arg in "$@"; do
@@ -39,6 +43,8 @@ for arg in "$@"; do
     --include-gpu-tests)               INCLUDE_GPU=true ;;
     --additional-user-namespace=*)     ADDITIONAL_USER_NS="${arg#*=}" ;;
     --additional-user-email=*)         ADDITIONAL_USER_EMAIL="${arg#*=}" ;;
+    --suse-registry=*)                 SUSE_REGISTRY="${arg#*=}" ;;
+    --suse-app-collection=*)           SUSE_APP_COLLECTION="${arg#*=}" ;;
     *) echo "Unknown option: $arg"; exit 1 ;;
   esac
 done
@@ -77,7 +83,9 @@ header "━━━ Tier 2 — smoke tests (default profile) ━━━━━━━
 if $SKIP_TIER2; then
   info "Skipped (--skip-tier2)"
 else
-  if bash "$SCRIPT_DIR/smoke/smoke.sh"; then
+  if bash "$SCRIPT_DIR/smoke/smoke.sh" \
+      "--suse-registry=${SUSE_REGISTRY}" \
+      "--suse-app-collection=${SUSE_APP_COLLECTION}"; then
     T2_STATUS="PASSED"
   else
     T2_STATUS="FAILED"
@@ -90,7 +98,7 @@ header "━━━ Tier 3 — e2e tests (default profile) ━━━━━━━�
 if $SKIP_TIER3; then
   info "Skipped (--skip-tier3)"
 else
-  E2E_ARGS=()
+  E2E_ARGS=("--suse-registry=${SUSE_REGISTRY}" "--suse-app-collection=${SUSE_APP_COLLECTION}")
   $INCLUDE_GPU && E2E_ARGS+=(--include-gpu-tests)
   if bash "$SCRIPT_DIR/e2e/e2e.sh" "${E2E_ARGS[@]}"; then
     T3_STATUS="PASSED"
@@ -108,6 +116,8 @@ if [[ -n "$ADDITIONAL_USER_NS" ]]; then
     info "Skipped (--skip-tier2)"
   else
     if bash "$SCRIPT_DIR/smoke/smoke.sh" \
+        "--suse-registry=${SUSE_REGISTRY}" \
+        "--suse-app-collection=${SUSE_APP_COLLECTION}" \
         "--user-namespace=${ADDITIONAL_USER_NS}"; then
       T2_ADD_STATUS="PASSED"
     else
@@ -120,7 +130,7 @@ if [[ -n "$ADDITIONAL_USER_NS" ]]; then
   if $SKIP_TIER3; then
     info "Skipped (--skip-tier3)"
   else
-    E2E_ARGS=()
+    E2E_ARGS=("--suse-registry=${SUSE_REGISTRY}" "--suse-app-collection=${SUSE_APP_COLLECTION}")
     $INCLUDE_GPU && E2E_ARGS+=(--include-gpu-tests)
     E2E_ARGS+=("--user-namespace=${ADDITIONAL_USER_NS}")
     [[ -n "$ADDITIONAL_USER_EMAIL" ]] && E2E_ARGS+=("--user-email=${ADDITIONAL_USER_EMAIL}")

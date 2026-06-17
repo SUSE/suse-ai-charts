@@ -1,8 +1,20 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (staging vs production)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   # -- Global override for container image registry pull secrets
   imagePullSecrets: []
+
+# Top-level registry fallback for SUSE AI images
+image:
+  registry: registry.suse.com
+
+# Top-level fallback registry for Application Collection images
+appCollection:
+  registry: dp.apps.rancher.io
 
 controllerManager:
   # Increase to 2+ via ha-overrides.yaml for HA deployments.
@@ -120,22 +132,24 @@ torchServe:
 ingressDomain: "example.com"
 
 inferenceServiceConfig:
-  agent: |
-    {
-        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1"
-    }
-  batcher: |
-    {
-        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
-        "memoryRequest": "1Gi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "1",
-        "cpuLimit": "1"
-    }
+  agentConfig:
+    image:
+      repository: ai/containers/agent
+      tag: v0.16.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+
+  batcherConfig:
+    image:
+      repository: ai/containers/agent
+      tag: v0.16.0
+    memoryRequest: "1Gi"
+    memoryLimit: "1Gi"
+    cpuRequest: "1"
+    cpuLimit: "1"
+
   credentials: |
     {
        "gcs": {
@@ -157,21 +171,22 @@ inferenceServiceConfig:
     {
       "defaultDeploymentMode": "Serverless"
     }
-  explainers: |
-    {
-        "alibi": {
-            "image" : "registry.suse.com/ai/containers/alibi-explainer",
-            "defaultImageVersion": "v0.16.0"
-        },
-        "aix": {
-            "image" : "registry.suse.com/ai/containers/aix-explainer",
-            "defaultImageVersion": "v0.16.0"
-        },
-        "art": {
-            "image" : "kserve/art-explainer",
-            "defaultImageVersion": "v0.16.0"
-        }
-    }
+
+  explainersConfig:
+    alibi:
+      image:
+        repository: ai/containers/alibi-explainer
+        tag: v0.16.0
+    aix:
+      image:
+        repository: ai/containers/aix-explainer
+        tag: v0.16.0
+    art:
+      image:
+        registry: kserve
+        repository: art-explainer
+        tag: v0.16.0
+
   ingress: |
     {
       "ingressGateway": "kubeflow/kubeflow-gateway",
@@ -184,40 +199,44 @@ inferenceServiceConfig:
       "urlScheme": "http",
       "disableIstioVirtualHost": false
     }
-  logger: |
-    {
-        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1",
-        "defaultUrl": "http://default-broker"
-    }
+
+  loggerConfig:
+    image:
+      repository: ai/containers/agent
+      tag: v0.16.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+    defaultUrl: "http://default-broker"
+
   metricsAggregator: |
     {
       "enableMetricAggregation": "false",
       "enablePrometheusScraping" : "false"
     }
-  router: |
-    {
-        "image" : "registry.suse.com/ai/containers/router:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1"
-    }
-  storageInitializer: |
-    {
-        "image" : "registry.suse.com/ai/containers/storage-initializer:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1",
-        "storageSpecSecretName": "storage-config",
-        "caBundleConfigMapName": "",
-        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
-        "enableModelcar": false,
-        "cpuModelcar": "10m",
-        "memoryModelcar": "15Mi",
-        "uidModelcar": 10
-    }
+
+  routerConfig:
+    image:
+      repository: ai/containers/router
+      tag: v0.16.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+
+  storageInitializerConfig:
+    image:
+      repository: ai/containers/storage-initializer
+      tag: v0.16.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+    storageSpecSecretName: "storage-config"
+    caBundleConfigMapName: ""
+    caBundleVolumeMountPath: "/etc/ssl/custom-certs"
+    enableModelcar: false
+    cpuModelcar: "10m"
+    memoryModelcar: "15Mi"
+    uidModelcar: 10

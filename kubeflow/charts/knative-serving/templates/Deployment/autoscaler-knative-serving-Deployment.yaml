@@ -56,7 +56,7 @@ spec:
           value: config-observability
         - name: METRICS_DOMAIN
           value: knative.dev/serving
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.autoscaler.image.registry) }}{{ . }}/{{ end }}{{ .Values.autoscaler.image.repository }}{{- if .Values.autoscaler.image.digest }}@{{ .Values.autoscaler.image.digest }}{{- else }}:{{ .Values.autoscaler.image.tag }}{{- end }}"
+        image: "{{ include "knative-serving.suseImageRegistry" . }}/{{ .Values.autoscaler.image.repository }}{{- if .Values.autoscaler.image.digest }}@{{ .Values.autoscaler.image.digest }}{{- else }}:{{ .Values.autoscaler.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-serving.imagePullPolicy" (dict "image" .Values.autoscaler.image "context" .) }}
         livenessProbe:
           failureThreshold: 6

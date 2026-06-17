@@ -24,7 +24,7 @@ spec:
       containers:
       - args:
         - /etc/envoy/envoy-config.yaml
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.metadataEnvoy.image.registry) }}{{ . }}/{{ end }}{{ .Values.metadataEnvoy.image.repository }}{{- if .Values.metadataEnvoy.image.digest }}@{{ .Values.metadataEnvoy.image.digest }}{{- else }}:{{ .Values.metadataEnvoy.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.metadataEnvoy.image.repository }}{{- if .Values.metadataEnvoy.image.digest }}@{{ .Values.metadataEnvoy.image.digest }}{{- else }}:{{ .Values.metadataEnvoy.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataEnvoy.image.pullPolicy }}
         name: container
         ports:

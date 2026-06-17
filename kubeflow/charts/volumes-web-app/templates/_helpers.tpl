@@ -83,3 +83,31 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > image.registry
+*/}}
+{{- define "volumes-web-app.suseImageRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}
+  {{- .Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .Values.image.registry -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the proper registry for the viewer sidecar image.
+Precedence: global.imageRegistry > global.suseRegistry > viewerImage.registry
+*/}}
+{{- define "volumes-web-app.viewerImageRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}
+  {{- .Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .Values.viewerImage.registry -}}
+{{- end -}}
+{{- end -}}

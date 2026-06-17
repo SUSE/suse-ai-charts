@@ -1,6 +1,8 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
@@ -13,7 +15,11 @@ image:
 replicaCount: 1
 
 # Image used by the PVCViewer pod (filebrowser) when a user clicks "Open PVCViewer"
-viewerImage: "registry.suse.com/ai/containers/filebrowser:v2.25.0"
+viewerImage:
+  registry: registry.suse.com
+  repository: ai/containers/filebrowser
+  tag: "v2.25.0"
+  digest: ""  # optional: sha256:... pins this image for supply-chain security
 
 service:
   type: ClusterIP

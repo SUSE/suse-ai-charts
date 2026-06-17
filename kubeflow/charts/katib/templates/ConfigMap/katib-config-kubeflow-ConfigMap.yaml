@@ -1,8 +1,48 @@
+{{- $reg := include "katib.suseImageRegistry" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: katib-config
   namespace: kubeflow
 data:
-  katib-config.yaml: |-
-{{ .Values.katibConfig.content | indent 4 }}
+  katib-config.yaml: |
+    apiVersion: config.kubeflow.org/v1beta1
+    kind: KatibConfig
+    runtime:
+      suggestions:
+      {{- range .Values.katibConfig.suggestions }}
+        - algorithmName: {{ .algorithmName }}
+          image: "{{ $reg }}/{{ .image.repository }}:{{ .image.tag }}"
+          {{- if .serviceAccountName }}
+          serviceAccountName: {{ .serviceAccountName }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+          {{- if .persistentVolumeClaimSpec }}
+          persistentVolumeClaimSpec:
+            {{- toYaml .persistentVolumeClaimSpec | nindent 12 }}
+          {{- end }}
+      {{- end }}
+      metricsCollectors:
+      {{- range .Values.katibConfig.metricsCollectors }}
+        - kind: {{ .kind }}
+          image: "{{ $reg }}/{{ .image.repository }}:{{ .image.tag }}"
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+      {{- end }}
+      earlyStoppings:
+      {{- range .Values.katibConfig.earlyStoppings }}
+        - algorithmName: {{ .algorithmName }}
+          image: "{{ $reg }}/{{ .image.repository }}:{{ .image.tag }}"
+          {{- if .serviceAccountName }}
+          serviceAccountName: {{ .serviceAccountName }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+      {{- end }}

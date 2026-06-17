@@ -1,25 +1,77 @@
+{{- $registry := include "kserve.suseImageRegistry" . -}}
 apiVersion: v1
 data:
   agent: |-
-    {{- .Values.inferenceServiceConfig.agent | nindent 4 }}
+    {
+        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.agentConfig.image.repository }}:{{ .Values.inferenceServiceConfig.agentConfig.image.tag }}",
+        "memoryRequest": "{{ .Values.inferenceServiceConfig.agentConfig.memoryRequest }}",
+        "memoryLimit": "{{ .Values.inferenceServiceConfig.agentConfig.memoryLimit }}",
+        "cpuRequest": "{{ .Values.inferenceServiceConfig.agentConfig.cpuRequest }}",
+        "cpuLimit": "{{ .Values.inferenceServiceConfig.agentConfig.cpuLimit }}"
+    }
   batcher: |-
-    {{- .Values.inferenceServiceConfig.batcher | nindent 4 }}
+    {
+        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.batcherConfig.image.repository }}:{{ .Values.inferenceServiceConfig.batcherConfig.image.tag }}",
+        "memoryRequest": "{{ .Values.inferenceServiceConfig.batcherConfig.memoryRequest }}",
+        "memoryLimit": "{{ .Values.inferenceServiceConfig.batcherConfig.memoryLimit }}",
+        "cpuRequest": "{{ .Values.inferenceServiceConfig.batcherConfig.cpuRequest }}",
+        "cpuLimit": "{{ .Values.inferenceServiceConfig.batcherConfig.cpuLimit }}"
+    }
   credentials: |-
     {{- .Values.inferenceServiceConfig.credentials | nindent 4 }}
   deploy: |-
     {{- .Values.inferenceServiceConfig.deploy | nindent 4 }}
   explainers: |-
-    {{- .Values.inferenceServiceConfig.explainers | nindent 4 }}
+    {
+        "alibi": {
+            "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.repository }}",
+            "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.tag }}"
+        },
+        "aix": {
+            "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.repository }}",
+            "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.tag }}"
+        },
+        "art": {
+            "image" : "{{ .Values.inferenceServiceConfig.explainersConfig.art.image.registry }}/{{ .Values.inferenceServiceConfig.explainersConfig.art.image.repository }}",
+            "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.art.image.tag }}"
+        }
+    }
   ingress: |-
     {{- mergeOverwrite (.Values.inferenceServiceConfig.ingress | fromJson) (dict "ingressDomain" .Values.ingressDomain) | toJson | nindent 4 }}
   logger: |-
-    {{- .Values.inferenceServiceConfig.logger | nindent 4 }}
+    {
+        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.loggerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.loggerConfig.image.tag }}",
+        "memoryRequest": "{{ .Values.inferenceServiceConfig.loggerConfig.memoryRequest }}",
+        "memoryLimit": "{{ .Values.inferenceServiceConfig.loggerConfig.memoryLimit }}",
+        "cpuRequest": "{{ .Values.inferenceServiceConfig.loggerConfig.cpuRequest }}",
+        "cpuLimit": "{{ .Values.inferenceServiceConfig.loggerConfig.cpuLimit }}",
+        "defaultUrl": "{{ .Values.inferenceServiceConfig.loggerConfig.defaultUrl }}"
+    }
   metricsAggregator: |-
     {{- .Values.inferenceServiceConfig.metricsAggregator | nindent 4 }}
   router: |-
-    {{- .Values.inferenceServiceConfig.router | nindent 4 }}
+    {
+        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.routerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.routerConfig.image.tag }}",
+        "memoryRequest": "{{ .Values.inferenceServiceConfig.routerConfig.memoryRequest }}",
+        "memoryLimit": "{{ .Values.inferenceServiceConfig.routerConfig.memoryLimit }}",
+        "cpuRequest": "{{ .Values.inferenceServiceConfig.routerConfig.cpuRequest }}",
+        "cpuLimit": "{{ .Values.inferenceServiceConfig.routerConfig.cpuLimit }}"
+    }
   storageInitializer: |-
-    {{- .Values.inferenceServiceConfig.storageInitializer | nindent 4 }}
+    {
+        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.storageInitializerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.storageInitializerConfig.image.tag }}",
+        "memoryRequest": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.memoryRequest }}",
+        "memoryLimit": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.memoryLimit }}",
+        "cpuRequest": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.cpuRequest }}",
+        "cpuLimit": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.cpuLimit }}",
+        "storageSpecSecretName": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.storageSpecSecretName }}",
+        "caBundleConfigMapName": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.caBundleConfigMapName }}",
+        "caBundleVolumeMountPath": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.caBundleVolumeMountPath }}",
+        "enableModelcar": {{ .Values.inferenceServiceConfig.storageInitializerConfig.enableModelcar }},
+        "cpuModelcar": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.cpuModelcar }}",
+        "memoryModelcar": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.memoryModelcar }}",
+        "uidModelcar": {{ .Values.inferenceServiceConfig.storageInitializerConfig.uidModelcar }}
+    }
 kind: ConfigMap
 metadata:
   labels:

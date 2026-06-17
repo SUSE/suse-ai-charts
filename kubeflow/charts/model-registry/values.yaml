@@ -1,5 +1,10 @@
 global:
+  # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   imagePullSecrets: []
 
 server:
@@ -88,6 +93,14 @@ ui:
 db:
   secretName: mysql-secret
   configMapName: pipeline-install-config
+
+# -- Default registry for SUSE AI container images
+image:
+  registry: registry.suse.com
+
+# Top-level fallback registry for Application Collection images
+appCollection:
+  registry: dp.apps.rancher.io
 
 # initContainer image: waits for MariaDB and creates the DB before the server starts
 dbInit:

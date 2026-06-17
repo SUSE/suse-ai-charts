@@ -55,7 +55,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: V2_LAUNCHER_IMAGE
-          value: "{{ with (coalesce .Values.global.imageRegistry .Values.launcher.image.registry) }}{{ . }}/{{ end }}{{ .Values.launcher.image.repository }}{{- if .Values.launcher.image.digest }}@{{ .Values.launcher.image.digest }}{{- else }}:{{ .Values.launcher.image.tag }}{{- end }}"
+          value: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.launcher.image.repository }}{{- if .Values.launcher.image.digest }}@{{ .Values.launcher.image.digest }}{{- else }}:{{ .Values.launcher.image.tag }}{{- end }}"
         - name: OBJECTSTORECONFIG_HOST
           value: seaweedfs
         - name: OBJECTSTORECONFIG_PORT
@@ -110,7 +110,7 @@ spec:
         envFrom:
         - configMapRef:
             name: pipeline-api-server-config-dc9hkg52h6
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.apiServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.apiServer.image.repository }}{{- if .Values.apiServer.image.digest }}@{{ .Values.apiServer.image.digest }}{{- else }}:{{ .Values.apiServer.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.apiServer.image.repository }}{{- if .Values.apiServer.image.digest }}@{{ .Values.apiServer.image.digest }}{{- else }}:{{ .Values.apiServer.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.apiServer.image.pullPolicy }}
         livenessProbe:
           exec:

@@ -5,8 +5,20 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (staging vs production)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
+
+# Top-level registry fallback for SUSE AI images when global overrides are not set
+image:
+  registry: registry.suse.com
+
+# Top-level fallback registry for Application Collection images
+appCollection:
+  registry: dp.apps.rancher.io
 
 # PodDisruptionBudgets for KFP critical path components.
 # With maxUnavailable: 1 and single replicas this is a no-op; meaningful protection
@@ -107,6 +119,8 @@ launcher:
     registry: registry.suse.com
     repository: ai/containers/kfp-launcher
     tag: "2.16.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
 
 # KFP API server
 apiServer:
@@ -192,6 +206,15 @@ visualizationServer:
       cpu: 30m
       memory: 500Mi
 
+# BCI BusyBox image used as the Argo cache sidecar for pipeline steps.
+# Referenced by the cacheImage key in pipeline-install-config ConfigMap.
+pipelineCacheImage:
+  registry: dp.apps.rancher.io
+  repository: containers/bci-busybox
+  tag: "15.7"
+  pullPolicy: IfNotPresent
+  digest: ""  # optional: sha256:... pins this image for supply-chain security
+
 # Cache server
 cacheServer:
   image:
@@ -220,6 +243,7 @@ workflowController:
     registry: dp.apps.rancher.io
     repository: containers/argoexec
     tag: "3.7.10"
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
     requests:
       cpu: 100m

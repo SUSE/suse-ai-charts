@@ -1,6 +1,8 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
@@ -78,6 +80,8 @@ parametersConfigMap:
   JWA_USERID_HEADER: kubeflow-userid
   JWA_USERID_PREFIX: ""
 
+# DO NOT EDIT this block — it is informational only and is not read by the ConfigMap template.
+# To change notebook server images, edit the notebookImages section below.
 spawnerUiConfig: |
   # Configuration file for the Jupyter UI.
   #
@@ -260,3 +264,38 @@ spawnerUiConfig: |
       #   - default-editor
       value: []
       readOnly: false
+
+# Structured notebook server image definitions.
+# The registry prefix is resolved at render time via suseImageRegistry helper.
+# The spawnerUiConfig string above is for documentation only; the ConfigMap
+# template builds image refs from this section.
+notebookImages:
+  image:
+    value:
+      repository: ai/containers/notebook-servers/jupyter-scipy
+      tag: v1.10.0
+    options:
+    - repository: ai/containers/notebook-servers/jupyter-scipy
+      tag: v1.10.0
+    - repository: ai/containers/notebook-servers/jupyter-tensorflow-full
+      tag: v1.10.0
+    - repository: ai/containers/notebook-servers/jupyter-tensorflow-cuda-full
+      tag: v1.10.0
+    - repository: ai/containers/notebook-servers/jupyter-pytorch-full
+      tag: v1.10.0
+    - repository: ai/containers/notebook-servers/jupyter-pytorch-cuda-full
+      tag: v1.10.0
+  imageGroupOne:
+    value:
+      repository: ai/containers/notebook-servers/codeserver-python
+      tag: v1.10.0
+    options:
+    - repository: ai/containers/notebook-servers/codeserver-python
+      tag: v1.10.0
+  imageGroupTwo:
+    value:
+      repository: ai/containers/notebook-servers/rstudio-tidyverse
+      tag: v1.10.0
+    options:
+    - repository: ai/containers/notebook-servers/rstudio-tidyverse
+      tag: v1.10.0

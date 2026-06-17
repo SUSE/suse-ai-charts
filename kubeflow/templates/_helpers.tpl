@@ -21,3 +21,17 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper Application Collection Image Registry.
+Precedence: global.imageRegistry > global.suseApplicationCollection > appCollection.registry
+*/}}
+{{- define "kubeflow.suseApplicationCollectionRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseApplicationCollection -}}
+  {{- .Values.global.suseApplicationCollection -}}
+{{- else -}}
+  {{- .Values.appCollection.registry -}}
+{{- end -}}
+{{- end -}}

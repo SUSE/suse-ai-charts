@@ -109,3 +109,17 @@ Uses the chart-level image.pullPolicy as primary, falling back to global.imagePu
 {{- end }}
 {{- $policy -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > image.registry
+*/}}
+{{- define "knative-eventing.suseImageRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}
+  {{- .Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .Values.image.registry -}}
+{{- end -}}
+{{- end -}}

@@ -73,7 +73,7 @@ spec:
               name: mlpipeline-minio-artifact
         - name: ALLOW_CUSTOM_VISUALIZATIONS
           value: 'true'
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.frontend.image.registry) }}{{ . }}/{{ end }}{{ .Values.frontend.image.repository }}{{- if .Values.frontend.image.digest }}@{{ .Values.frontend.image.digest }}{{- else }}:{{ .Values.frontend.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.frontend.image.repository }}{{- if .Values.frontend.image.digest }}@{{ .Values.frontend.image.digest }}{{- else }}:{{ .Values.frontend.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
         livenessProbe:
           exec:

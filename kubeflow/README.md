@@ -155,8 +155,23 @@ Password: 12341234
 | `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
 | `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
-| `--disable-cert-manager` | - | Do not upgrade/install cert-manager, use an existing one instead |
+| `--disable-cert-manager` | — | Do not upgrade/install cert-manager, use an existing one instead |
+| `--suse-registry=<mirror>` | `SUSE_REGISTRY` | SUSE AI registry mirror (default: `registry.suse.com`); redirects all `registry.suse.com/*` image pulls and the registry login |
+| `--suse-app-collection=<mirror>` | `SUSE_APP_COLLECTION` | Application Collection mirror (default: `dp.apps.rancher.io`); redirects all `dp.apps.rancher.io/*` image pulls, the registry login, and the cert-manager / Istio / ESO OCI chart URLs |
 
+
+#### Mirror / air-gapped registry usage
+
+To redirect images through an internal mirror registry, pass both flags:
+
+```bash
+./runMe.sh <appco-username> <appco-token> regcode <suse-ai-token> \
+  --suse-registry=<mirror> \
+  --suse-app-collection=<mirror>
+```
+
+`--suse-app-collection` redirects: the `dp.apps.rancher.io` registry login, the `application-collection` pull secret, the cert-manager / Istio / ESO OCI chart installs, and sets `global.suseApplicationCollection` on the Kubeflow helm install so all pod images resolve from the mirror.
+`--suse-registry` redirects: the `registry.suse.com` registry login, the `suse-ai-registry` pull secret, and sets `global.suseRegistry` on the Kubeflow helm install.
 
 #### Using a values override file with `runMe.sh`
 
@@ -316,6 +331,36 @@ helm upgrade --install kubeflow \
 > `--force-conflicts` is required because cert-manager-cainjector, istiod (pilot-discovery), and
 > the clusterrole-aggregation-controller modify fields (caBundle, webhook failurePolicy, aggregated
 > RBAC rules) that Helm tracks. This flag lets Helm reclaim ownership of those fields on each upgrade.
+
+#### Using a mirror / air-gapped registry (Mode 2)
+
+Substitute the mirror hostname in each `oci://` URL, update the `--docker-server` in the pull
+secrets, and pass the `global.suseApplicationCollection` / `global.suseRegistry` values to the
+Kubeflow chart:
+
+```bash
+MIRROR=mirror.corp.example.com
+
+helm registry login "${MIRROR}" --username=<username> --password=<token>
+
+# cert-manager, Istio, ESO from mirror
+helm upgrade --install cert-manager oci://${MIRROR}/charts/cert-manager ...
+helm upgrade --install istio oci://${MIRROR}/charts/istio ...
+helm upgrade --install external-secrets-operator oci://${MIRROR}/charts/external-secrets-operator ...
+
+# Pull secrets pointing at mirror
+kubectl create secret docker-registry application-collection \
+  --docker-server="${MIRROR}" ...
+kubectl create secret docker-registry suse-ai-registry \
+  --docker-server="${MIRROR}" ...
+
+# Kubeflow chart + images from mirror
+helm upgrade --install kubeflow oci://${MIRROR}/ai/charts/kubeflow \
+  --version 0.3.2 -n kubeflow \
+  --set global.suseApplicationCollection="${MIRROR}" \
+  --set global.suseRegistry="${MIRROR}" \
+  --force-conflicts --server-side=true --wait --timeout 15m
+```
 
 > **Installing from source (development / contributing only)**
 >
@@ -672,7 +717,9 @@ Full JSON schema: [`charts/kubeflow/values.schema.json`](charts/kubeflow/values.
 | `global.storageClass` | `""` | StorageClass for all PVCs; empty = cluster default |
 | `global.imagePullPolicy` | `IfNotPresent` | Image pull policy for all components |
 | `global.imagePullSecrets` | `[{name: application-collection}]` | Registry pull secrets — defined once, used everywhere |
-| `global.imageRegistry` | `""` | Optional private registry prefix for air-gapped deployments |
+| `global.imageRegistry` | `""` | Nuclear override — redirects **all** images (SUSE AI + Application Collection) to this registry |
+| `global.suseRegistry` | `"registry.suse.com"` | Override for SUSE AI images only (`registry.suse.com/*`); use for staging or mirror registries |
+| `global.suseApplicationCollection` | `"dp.apps.rancher.io"` | Override for SUSE Application Collection images only (`dp.apps.rancher.io/*`); use for mirror registries |
 | `global.labels` | `{}` | Common labels applied to all managed resources |
 | `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
 | `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer |
@@ -782,6 +829,45 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 | `dex.resources` | `{requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}` | CPU/memory for the Dex container |
 | `user-namespace.pipelines.seaweedfs.accessKey` | (wired from `pipelines.seaweedfs.accessKey`) | SeaweedFS S3 access key injected into every user namespace |
 | `user-namespace.pipelines.seaweedfs.secretKey` | (wired from `pipelines.seaweedfs.secretKey`) | SeaweedFS S3 secret key injected into every user namespace |
+
+### Registry Overrides
+
+Three values control where images are pulled from, with a clear precedence:
+
+| Value | Default | Scope |
+|-------|---------|-------|
+| `global.imageRegistry` | `""` | **All images** — SUSE AI and Application Collection. Overrides everything. |
+| `global.suseRegistry` | `"registry.suse.com"` | SUSE AI images only (`registry.suse.com/*` — kubeflow components, kfp, kserve, etc.) |
+| `global.suseApplicationCollection` | `"dp.apps.rancher.io"` | Application Collection images only (`dp.apps.rancher.io/*` — mariadb, bci-busybox, kubectl, kube-rbac-proxy, workflow-controller, argoexec, metacontroller) |
+
+Precedence (highest to lowest) for each image type:
+- **SUSE AI images:** `global.imageRegistry` → `global.suseRegistry` → chart-level `image.registry`
+- **App Collection images:** `global.imageRegistry` → `global.suseApplicationCollection` → chart-level `appCollection.registry`
+
+Setting `global.suseApplicationCollection` to empty (`""`) falls through to the chart-level
+`appCollection.registry: dp.apps.rancher.io` fallback — the chart works correctly either way.
+
+**Example — mirror only Application Collection images:**
+
+```yaml
+global:
+  suseApplicationCollection: mirror.corp.example.com
+```
+
+**Example — mirror both registries:**
+
+```yaml
+global:
+  suseRegistry: mirror.corp.example.com
+  suseApplicationCollection: mirror.corp.example.com
+```
+
+**Example — single nuclear override for all images:**
+
+```yaml
+global:
+  imageRegistry: mirror.corp.example.com  # overrides ALL images
+```
 
 ---
 
@@ -1103,7 +1189,7 @@ TCP service connectivity, SeaweedFS bucket presence, and HTTP health endpoints.
 
 ```bash
 chmod +x test/smoke/smoke.sh
-./test/smoke/smoke.sh
+./test/smoke/smoke.sh [--user-namespace=<ns>] [--suse-registry=<mirror>] [--suse-app-collection=<mirror>]
 ```
 
 ### End-to-end tests
@@ -1113,7 +1199,7 @@ prediction. Requires `kubectl` and `curl`.
 
 ```bash
 chmod +x test/e2e/e2e.sh
-./test/e2e/e2e.sh
+./test/e2e/e2e.sh [--suse-registry=<mirror>] [--suse-app-collection=<mirror>] [--include-gpu-tests]
 ```
 
 ### Helm chart tests

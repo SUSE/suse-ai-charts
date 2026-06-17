@@ -101,6 +101,19 @@ global:
   # Leave empty to use the default registry specified in each sub-chart's values.
   imageRegistry: ""
 
+  # SUSE AI registry override (production/staging).
+  # Controls only SUSE AI images (registry.suse.com/ai/containers/*).
+  # SUSE Application Collection images (Rancher, MariaDB, etc.) are unaffected.
+  # Set to "stgregistry.suse.com" for QA testing against staging registry.
+  # Precedence: global.imageRegistry (if set) overrides this value.
+  # Default: "registry.suse.com" (production)
+  suseRegistry: "registry.suse.com"
+
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror).
+  # Precedence: global.imageRegistry (if set) overrides this value.
+  # Default: "dp.apps.rancher.io" (production Application Collection)
+  suseApplicationCollection: "dp.apps.rancher.io"
+
   # Demo mode: set true ONLY for local development/tutorial.
   # When false (default), Helm fails at render time if any credential is a known demo default.
   # NEVER set true in production.
@@ -458,6 +471,11 @@ tensorboard:
 # Disable if your CNI does not enforce NetworkPolicy.
 networkPolicies:
   enabled: false
+
+# Top-level fallback registry for Application Collection images when neither
+# global.imageRegistry nor global.suseApplicationCollection is set.
+appCollection:
+  registry: dp.apps.rancher.io
 
 # Pre-install preflight checks (Helm hook Job).
 # Validates: default StorageClass exists, cert-manager CRDs present.

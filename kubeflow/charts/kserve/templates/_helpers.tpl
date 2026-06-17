@@ -62,6 +62,20 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > image.registry
+*/}}
+{{- define "kserve.suseImageRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}
+  {{- .Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .Values.image.registry -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "kserve.imagePullSecrets" -}}
@@ -86,5 +100,19 @@ imagePullSecrets:
 imagePullSecrets:
     {{ toYaml .Values.imagePullSecrets }}
 {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the proper Application Collection Image Registry.
+Precedence: global.imageRegistry > global.suseApplicationCollection > appCollection.registry
+*/}}
+{{- define "kserve.suseApplicationCollectionRegistry" -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseApplicationCollection -}}
+  {{- .Values.global.suseApplicationCollection -}}
+{{- else -}}
+  {{- .Values.appCollection.registry -}}
 {{- end -}}
 {{- end -}}

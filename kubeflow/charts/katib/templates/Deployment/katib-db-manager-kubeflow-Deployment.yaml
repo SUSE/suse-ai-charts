@@ -29,7 +29,7 @@ spec:
             secretKeyRef:
               key: MYSQL_ROOT_PASSWORD
               name: katib-mysql-secrets
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.dbManager.image.registry) }}{{ . }}/{{ end }}{{ .Values.dbManager.image.repository }}{{- if .Values.dbManager.image.digest }}@{{ .Values.dbManager.image.digest }}{{- else }}:{{ .Values.dbManager.image.tag }}{{- end }}"
+        image: "{{ include "katib.suseImageRegistry" . }}/{{ .Values.dbManager.image.repository }}{{- if .Values.dbManager.image.digest }}@{{ .Values.dbManager.image.digest }}{{- else }}:{{ .Values.dbManager.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.dbManager.image.pullPolicy }}
         livenessProbe:
           tcpSocket:

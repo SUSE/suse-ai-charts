@@ -63,7 +63,7 @@ spec:
               name: model-catalog-hf-secret
               key: HF_API_KEY
               optional: true
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.server.image.registry) }}{{ . }}/{{ end }}{{ .Values.server.image.repository }}{{- if .Values.server.image.digest }}@{{ .Values.server.image.digest }}{{- else }}:{{ .Values.server.image.tag }}{{- end }}"
+        image: "{{ include "model-registry.suseImageRegistry" . }}/{{ .Values.server.image.repository }}{{- if .Values.server.image.digest }}@{{ .Values.server.image.digest }}{{- else }}:{{ .Values.server.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.server.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false
