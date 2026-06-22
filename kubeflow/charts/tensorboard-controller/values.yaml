@@ -21,7 +21,7 @@ replicaCount: 1
 manager:
   image:
     registry: registry.suse.com
-    repository: ai/containers/tensorboard-controller
+    repository: ai/containers/kubeflow/kubeflow/tensorboard-controller
     tag: v1.10.0
     pullPolicy: IfNotPresent
   resources:
@@ -64,5 +64,5 @@ configMapData:
   RWO_PVC_SCHEDULING: "True"
   tensorboardImage:
     registry: registry.suse.com
-    repository: ai/containers/tensorflow
+    repository: ai/containers/tensorflow/tensorflow
     tag: "2.15.0"

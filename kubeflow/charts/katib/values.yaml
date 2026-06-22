@@ -19,7 +19,7 @@ appCollection:
 controller:
   image:
     registry: registry.suse.com
-    repository: ai/containers/katib-controller
+    repository: ai/containers/kubeflow/katib/katib-controller
     tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -35,7 +35,7 @@ controller:
 ui:
   image:
     registry: registry.suse.com
-    repository: ai/containers/katib-ui
+    repository: ai/containers/kubeflow/katib/katib-ui
     tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -68,7 +68,7 @@ ui:
 dbManager:
   image:
     registry: registry.suse.com
-    repository: ai/containers/katib-db-manager
+    repository: ai/containers/kubeflow/katib/katib-db-manager
     tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -110,47 +110,47 @@ katibConfig:
   suggestions:
     - algorithmName: random
       image:
-        repository: ai/containers/suggestion-hyperopt
+        repository: ai/containers/kubeflow/katib/suggestion-hyperopt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: tpe
       image:
-        repository: ai/containers/suggestion-hyperopt
+        repository: ai/containers/kubeflow/katib/suggestion-hyperopt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: grid
       image:
-        repository: ai/containers/suggestion-optuna
+        repository: ai/containers/kubeflow/katib/suggestion-optuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: hyperband
       image:
-        repository: ai/containers/suggestion-hyperband
+        repository: ai/containers/kubeflow/katib/suggestion-hyperband
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: bayesianoptimization
       image:
-        repository: ai/containers/suggestion-skopt
+        repository: ai/containers/kubeflow/katib/suggestion-skopt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: cmaes
       image:
-        repository: ai/containers/suggestion-goptuna
+        repository: ai/containers/kubeflow/katib/suggestion-goptuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: sobol
       image:
-        repository: ai/containers/suggestion-goptuna
+        repository: ai/containers/kubeflow/katib/suggestion-goptuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: multivariate-tpe
       image:
-        repository: ai/containers/suggestion-optuna
+        repository: ai/containers/kubeflow/katib/suggestion-optuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: enas
       image:
-        repository: ai/containers/suggestion-enas
+        repository: ai/containers/kubeflow/katib/suggestion-enas
         tag: v0.19.0
       serviceAccountName: katib-suggestion
       resources:
@@ -158,12 +158,12 @@ katibConfig:
           memory: "200Mi"
     - algorithmName: darts
       image:
-        repository: ai/containers/suggestion-darts
+        repository: ai/containers/kubeflow/katib/suggestion-darts
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: pbt
       image:
-        repository: ai/containers/suggestion-pbt
+        repository: ai/containers/kubeflow/katib/suggestion-pbt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
       persistentVolumeClaimSpec:
@@ -175,15 +175,15 @@ katibConfig:
   metricsCollectors:
     - kind: StdOut
       image:
-        repository: ai/containers/file-metrics-collector
+        repository: ai/containers/kubeflow/katib/file-metrics-collector
         tag: v0.19.0
     - kind: File
       image:
-        repository: ai/containers/file-metrics-collector
+        repository: ai/containers/kubeflow/katib/file-metrics-collector
         tag: v0.19.0
     - kind: TensorFlowEvent
       image:
-        repository: ai/containers/tfevent-metrics-collector
+        repository: ai/containers/kubeflow/katib/tfevent-metrics-collector
         tag: v0.19.0
       resources:
         limits:
@@ -191,7 +191,7 @@ katibConfig:
   earlyStoppings:
     - algorithmName: medianstop
       image:
-        repository: ai/containers/earlystopping-medianstop
+        repository: ai/containers/kubeflow/katib/earlystopping-medianstop
         tag: v0.19.0
       serviceAccountName: katib-suggestion
 
@@ -199,16 +199,16 @@ katibConfig:
 trialImages:
   mxnetMNIST:
     registry: registry.suse.com
-    repository: ai/containers/mxnet-mnist
+    repository: ai/containers/kubeflowkatib/mxnet-mnist
     tag: v0.15.0
     pullPolicy: IfNotPresent
   enasCNNCIFAR10CPU:
     registry: registry.suse.com
-    repository: ai/containers/enas-cnn-cifar10-cpu
+    repository: ai/containers/kubeflowkatib/enas-cnn-cifar10-cpu
     tag: v0.15.0
     pullPolicy: IfNotPresent
   pyTorchMNISTCPU:
     registry: registry.suse.com
-    repository: ai/containers/pytorch-mnist-cpu
+    repository: ai/containers/kubeflowkatib/pytorch-mnist-cpu
     tag: v0.15.0
     pullPolicy: IfNotPresent

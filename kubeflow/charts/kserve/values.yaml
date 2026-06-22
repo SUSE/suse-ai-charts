@@ -21,7 +21,7 @@ controllerManager:
   replicaCount: 1
   image:
     registry: registry.suse.com
-    repository: ai/containers/kserve-controller
+    repository: ai/containers/kserve/kserve-controller
     tag: v0.16.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -51,7 +51,7 @@ kubeRbacProxy:
 storageInitializer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/storage-initializer
+    repository: ai/containers/kserve/storage-initializer
     tag: v0.16.0
     pullPolicy: IfNotPresent
 
@@ -59,49 +59,49 @@ storageInitializer:
 tensorflowServing:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving
+    repository: ai/containers/tensorflow/serving
     tag: "2.6.2"
     pullPolicy: IfNotPresent
 
 huggingfaceServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/huggingfaceserver
+    repository: ai/containers/kserve/huggingfaceserver
     tag: v0.16.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/xgbserver
+    repository: ai/containers/kserve/xgbserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/lgbserver
+    repository: ai/containers/kserve/lgbserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/sklearnserver
+    repository: ai/containers/kserve/sklearnserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/paddleserver
+    repository: ai/containers/kserve/paddleserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/pmmlserver
+    repository: ai/containers/kserve/pmmlserver
     tag: v0.15.2
     pullPolicy: IfNotPresent
 
@@ -115,14 +115,14 @@ tritonServer:
 mlServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/mlserver
+    repository: ai/containers/seldonio/mlserver
     tag: "1.5.0"
     pullPolicy: IfNotPresent
 
 torchServe:
   image:
     registry: registry.suse.com
-    repository: ai/containers/torchserve-kfs
+    repository: ai/containers/pytorch/torchserve-kfs
     tag: "0.9.0"
     pullPolicy: IfNotPresent
 
@@ -134,7 +134,7 @@ ingressDomain: "example.com"
 inferenceServiceConfig:
   agentConfig:
     image:
-      repository: ai/containers/agent
+      repository: ai/containers/kserve/agent
       tag: v0.16.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
@@ -143,7 +143,7 @@ inferenceServiceConfig:
 
   batcherConfig:
     image:
-      repository: ai/containers/agent
+      repository: ai/containers/kserve/agent
       tag: v0.16.0
     memoryRequest: "1Gi"
     memoryLimit: "1Gi"
@@ -175,16 +175,15 @@ inferenceServiceConfig:
   explainersConfig:
     alibi:
       image:
-        repository: ai/containers/alibi-explainer
+        repository: ai/containers/kserve/alibi-explainer
         tag: v0.16.0
     aix:
       image:
-        repository: ai/containers/aix-explainer
+        repository: ai/containers/kserve/aix-explainer
         tag: v0.16.0
     art:
       image:
-        registry: kserve
-        repository: art-explainer
+        repository: ai/containers/kserve/art-explainer
         tag: v0.16.0
 
   ingress: |
@@ -202,7 +201,7 @@ inferenceServiceConfig:
 
   loggerConfig:
     image:
-      repository: ai/containers/agent
+      repository: ai/containers/kserve/agent
       tag: v0.16.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
@@ -218,7 +217,7 @@ inferenceServiceConfig:
 
   routerConfig:
     image:
-      repository: ai/containers/router
+      repository: ai/containers/kserve/router
       tag: v0.16.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
@@ -227,7 +226,7 @@ inferenceServiceConfig:
 
   storageInitializerConfig:
     image:
-      repository: ai/containers/storage-initializer
+      repository: ai/containers/kserve/storage-initializer
       tag: v0.16.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"

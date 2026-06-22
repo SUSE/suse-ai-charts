@@ -8,7 +8,7 @@ global:
 
 image:
   registry: registry.suse.com
-  repository: ai/containers/jupyter-web-app
+  repository: ai/containers/kubeflow/kubeflow/jupyter-web-app
   tag: v1.10.0
   pullPolicy: IfNotPresent
 
@@ -102,23 +102,23 @@ spawnerUiConfig: |
   spawnerFormDefaults:
     image:
       # The container Image for the user's Jupyter Notebook
-      value: registry.suse.com/ai/containers/notebook-servers/jupyter-scipy:v1.10.0
+      value: registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
       # The list of available standard container Images
       options:
-      - registry.suse.com/ai/containers/notebook-servers/jupyter-scipy:v1.10.0
-      - registry.suse.com/ai/containers/notebook-servers/jupyter-tensorflow-full:v1.10.0
-      - registry.suse.com/ai/containers/notebook-servers/jupyter-tensorflow-cuda-full:v1.10.0
-      - registry.suse.com/ai/containers/notebook-servers/jupyter-pytorch-full:v1.10.0
-      - registry.suse.com/ai/containers/notebook-servers/jupyter-pytorch-cuda-full:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-tensorflow-full:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-tensorflow-cuda-full:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-full:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-cuda-full:v1.10.0
     imageGroupOne:
       # The container Image for the user's Group One Server
       # The annotation `notebooks.kubeflow.org/http-rewrite-uri: /`
       # is applied to notebook in this group, configuring
       # the Istio rewrite for containers that host their web UI at `/`
-      value: registry.suse.com/ai/containers/notebook-servers/codeserver-python:v1.10.0
+      value: registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/codeserver-python:v1.10.0
       # The list of available standard container Images
       options:
-      - registry.suse.com/ai/containers/notebook-servers/codeserver-python:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/codeserver-python:v1.10.0
     imageGroupTwo:
       # The container Image for the user's Group Two Server
       # The annotation `notebooks.kubeflow.org/http-rewrite-uri: /`
@@ -127,10 +127,10 @@ spawnerUiConfig: |
       # The annotation `notebooks.kubeflow.org/http-headers-request-set`
       # is applied to notebook in this group, configuring Istio
       # to add the `X-RStudio-Root-Path` header to requests
-      value: registry.suse.com/ai/containers/notebook-servers/rstudio-tidyverse:v1.10.0
+      value: registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/rstudio-tidyverse:v1.10.0
       # The list of available standard container Images
       options:
-      - registry.suse.com/ai/containers/notebook-servers/rstudio-tidyverse:v1.10.0
+      - registry.suse.com/ai/containers/kubeflow/kubeflow/notebook-servers/rstudio-tidyverse:v1.10.0
     # If true, hide registry and/or tag name in the image selection dropdown
     hideRegistry: true
     hideTag: false
@@ -272,30 +272,30 @@ spawnerUiConfig: |
 notebookImages:
   image:
     value:
-      repository: ai/containers/notebook-servers/jupyter-scipy
+      repository: ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-scipy
       tag: v1.10.0
     options:
-    - repository: ai/containers/notebook-servers/jupyter-scipy
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-scipy
       tag: v1.10.0
-    - repository: ai/containers/notebook-servers/jupyter-tensorflow-full
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-tensorflow-full
       tag: v1.10.0
-    - repository: ai/containers/notebook-servers/jupyter-tensorflow-cuda-full
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-tensorflow-cuda-full
       tag: v1.10.0
-    - repository: ai/containers/notebook-servers/jupyter-pytorch-full
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-full
       tag: v1.10.0
-    - repository: ai/containers/notebook-servers/jupyter-pytorch-cuda-full
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-cuda-full
       tag: v1.10.0
   imageGroupOne:
     value:
-      repository: ai/containers/notebook-servers/codeserver-python
+      repository: ai/containers/kubeflow/kubeflow/notebook-servers/codeserver-python
       tag: v1.10.0
     options:
-    - repository: ai/containers/notebook-servers/codeserver-python
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/codeserver-python
       tag: v1.10.0
   imageGroupTwo:
     value:
-      repository: ai/containers/notebook-servers/rstudio-tidyverse
+      repository: ai/containers/kubeflow/kubeflow/notebook-servers/rstudio-tidyverse
       tag: v1.10.0
     options:
-    - repository: ai/containers/notebook-servers/rstudio-tidyverse
+    - repository: ai/containers/kubeflow/kubeflow/notebook-servers/rstudio-tidyverse
       tag: v1.10.0

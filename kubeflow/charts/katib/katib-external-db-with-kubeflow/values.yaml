@@ -7,7 +7,7 @@ global:
 controller:
   image:
     registry: registry.suse.com
-    repository: ai/containers/katib-controller
+    repository: ai/containers/kubeflow/katib/katib-controller
     tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:...
@@ -15,7 +15,7 @@ controller:
 ui:
   image:
     registry: registry.suse.com
-    repository: ai/containers/katib-ui
+    repository: ai/containers/kubeflow/katib/katib-ui
     tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:...
@@ -23,7 +23,7 @@ ui:
 dbManager:
   image:
     registry: registry.suse.com
-    repository: ai/containers/katib-db-manager
+    repository: ai/containers/kubeflow/katib/katib-db-manager
     tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:...

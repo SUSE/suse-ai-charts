@@ -8,7 +8,7 @@ global:
 
 image:
   registry: registry.suse.com
-  repository: ai/containers/volumes-web-app
+  repository: ai/containers/kubeflow/kubeflow/volumes-web-app
   tag: v1.10.0
   pullPolicy: IfNotPresent
 
@@ -17,7 +17,7 @@ replicaCount: 1
 # Image used by the PVCViewer pod (filebrowser) when a user clicks "Open PVCViewer"
 viewerImage:
   registry: registry.suse.com
-  repository: ai/containers/filebrowser
+  repository: ai/containers/filebrowser/filebrowser
   tag: "v2.25.0"
   digest: ""  # optional: sha256:... pins this image for supply-chain security
 

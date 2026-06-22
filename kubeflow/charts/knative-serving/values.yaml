@@ -18,7 +18,7 @@ image:
 controller:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/controller
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/controller
     tag: "v1.20.0"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -33,7 +33,7 @@ controller:
 activator:
   image:
     registry: registry.suse.com
-    repository: ai/containers/activator
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/activator
     tag: "v1.20.0"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -48,7 +48,7 @@ activator:
 autoscaler:
   image:
     registry: registry.suse.com
-    repository: ai/containers/autoscaler
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/autoscaler
     tag: "v1.20.0"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -63,7 +63,7 @@ autoscaler:
 webhook:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/webhook
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/webhook
     tag: "v1.20.0"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -78,7 +78,7 @@ webhook:
 netIstioController:
   image:
     registry: registry.suse.com
-    repository: ai/containers/net-istio/cmd/controller
+    repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/controller
     tag: "v1.20.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -93,7 +93,7 @@ netIstioController:
 netIstioWebhook:
   image:
     registry: registry.suse.com
-    repository: ai/containers/net-istio/cmd/webhook
+    repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
     tag: "v1.20.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -109,7 +109,7 @@ netIstioWebhook:
 queueSidecarImage:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/queue
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.20.0"
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
@@ -118,7 +118,7 @@ queueSidecarImage:
 queueProxy:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/queue
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.20.0"
     digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent

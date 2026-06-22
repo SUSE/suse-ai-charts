@@ -1,6 +1,6 @@
 image:
   registry: registry.suse.com
-  repository: ai/containers/central-dashboard
+  repository: ai/containers/kubeflow/kubeflow/central-dashboard
   tag: v1.10.0
   pullPolicy: IfNotPresent
 
