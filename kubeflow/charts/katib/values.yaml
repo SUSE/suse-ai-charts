@@ -86,7 +86,7 @@ mariadb:
   image:
     registry: dp.apps.rancher.io
     repository: containers/mariadb
-    tag: "11.8.6-5.1"
+    tag: "11.8.8-10.1"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   replicaCount: 1
@@ -204,11 +204,11 @@ trialImages:
     pullPolicy: IfNotPresent
   enasCNNCIFAR10CPU:
     registry: registry.suse.com
-    repository: ai/containers/kubeflowkatib/enas-cnn-cifar10-cpu
-    tag: v0.15.0
+    repository: ai/containers/kubeflow/katib/enas-cnn-cifar10-cpu
+    tag: v0.19.0
     pullPolicy: IfNotPresent
   pyTorchMNISTCPU:
     registry: registry.suse.com
-    repository: ai/containers/kubeflowkatib/pytorch-mnist-cpu
-    tag: v0.15.0
+    repository: ai/containers/kubeflow/katib/pytorch-mnist-cpu
+    tag: v0.19.0
     pullPolicy: IfNotPresent

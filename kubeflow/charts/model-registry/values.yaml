@@ -107,7 +107,7 @@ dbInit:
   image:
     registry: dp.apps.rancher.io
     repository: containers/mariadb
-    tag: "11.8.6-5.1"
+    tag: "11.8.8-10.1"
     pullPolicy: IfNotPresent
     digest: ""
 

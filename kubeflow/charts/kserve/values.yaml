@@ -74,35 +74,35 @@ xgbServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/xgbserver
-    tag: v0.15.2
+    tag: v0.16.0
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/lgbserver
-    tag: v0.15.2
+    tag: v0.16.0
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/sklearnserver
-    tag: v0.15.2
+    tag: v0.16.0
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/paddleserver
-    tag: v0.15.2
+    tag: v0.16.0
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/pmmlserver
-    tag: v0.15.2
+    tag: v0.16.0
     pullPolicy: IfNotPresent
 
 tritonServer:

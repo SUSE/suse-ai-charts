@@ -1,5 +1,5 @@
 apiVersion: v2
-appVersion: 2.0.0-alpha.7
+appVersion: 2.16.0
 description: A Helm chart for Kubernetes
 name: kubeflow-pipelines
 type: application
@@ -7,6 +7,6 @@ version: 0.2.3
 
 dependencies:
   - name: mariadb
-    version: "0.1.7"
+    version: "0.2.0"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: mariadb.enabled

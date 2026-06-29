@@ -2,8 +2,8 @@ apiVersion: v2
 name: kubeflow
 description: Kubeflow ML Platform - End-to-end Machine Learning on Kubernetes
 type: application
-version: 0.4.0-alpha.1
-appVersion: "0.4.0-alpha.1"
+version: "26.03"
+appVersion: "26.03"
 kubeVersion: ">=1.25.0-0"
 
 keywords:
@@ -40,7 +40,7 @@ dependencies:
   # Infrastructure - conditionally installed
   # Rancher cert-manager (set certManager.install=true to deploy)
   - name: cert-manager
-    version: "1.13.1"
+    version: "1.19.4"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: certManager.install
 
@@ -70,13 +70,13 @@ dependencies:
   # v0.24.0 (dex 2.44.0 / Go 1.25.3) crashes on Kubernetes storage due to Go's
   # stricter IPv4-in-brackets URL validation. v0.23.0 (dex 2.42.0) is stable.
   - name: dex-idp
-    version: "0.23.0"
+    version: "0.24.1"
     repository: "oci://dp.apps.rancher.io/charts"
     alias: dex
     condition: dex.enabled
 
   - name: oauth2-proxy
-    version: "10.1.4"
+    version: "10.7.0"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: global.oauth2Proxy.enabled
 
@@ -189,14 +189,14 @@ dependencies:
   # External Secrets Operator — propagates registry pull secrets into user namespaces automatically.
   # Set externalSecretsOperator.enabled=false if ESO is already installed cluster-wide.
   - name: external-secrets-operator
-    version: "2.3.0"
+    version: "2.6.0"
     repository: "oci://dp.apps.rancher.io/charts"
     alias: externalSecretsOperator
     condition: externalSecretsOperator.enabled
 
   # External-DNS — automatically manages DNS records for kubeflow-istio-resources.hostname
   - name: external-dns
-    version: "1.20.0"
+    version: "1.21.1"
     repository: "oci://dp.apps.rancher.io/charts"
     alias: externaldns
     condition: externaldns.enabled
