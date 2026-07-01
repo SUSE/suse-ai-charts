@@ -10,7 +10,7 @@ global:
 
 # -- Fallback registry for suseImageRegistry helper when global overrides are not set
 image:
-  registry: registry.suse.com
+  registry: stgregistry.suse.com
 
 # Top-level fallback registry for Application Collection images
 appCollection:
@@ -20,7 +20,7 @@ replicaCount: 1
 
 manager:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kubeflow/tensorboard-controller
     tag: v1.10.0
     pullPolicy: IfNotPresent
@@ -48,7 +48,7 @@ kubeRbacProxy:
   image:
     registry: dp.apps.rancher.io
     repository: containers/kube-rbac-proxy
-    tag: "0.20.2"
+    tag: "0.22.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -63,6 +63,6 @@ configMapData:
   ISTIO_HOST: "*"
   RWO_PVC_SCHEDULING: "True"
   tensorboardImage:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/tensorflow/tensorflow
     tag: "2.21.0"

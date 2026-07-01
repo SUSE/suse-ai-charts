@@ -6,7 +6,7 @@
 #
 # Usage:
 #   chmod +x test/e2e/e2e.sh
-#   ./test/e2e/e2e.sh [--suse-registry=stgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests]
+#   ./test/e2e/e2e.sh [--suse-registry=stgstgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests]
 #
 # What it tests:
 #   1.  KFP pipeline      — inline spec → submit run → wait for SUCCEEDED
@@ -34,7 +34,7 @@ set -uo pipefail
 NS=kubeflow
 USER_NS=kubeflow-user-example-com
 KFP_USER=user@example.com
-SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=stgregistry.suse.com
+SUSE_REGISTRY=stgregistry.suse.com        # override with --suse-registry=stgstgregistry.suse.com
 SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=mirror.example.com
 PASS=0
 FAIL=0
@@ -312,7 +312,7 @@ header "4. KServe — build sklearn model → deploy IS → Ready → predict"
 #     sklearn version avoids pickle compatibility issues).
 info "Launching model builder pod..."
 kubectl run e2e-model-builder \
-  --image=${SUSE_REGISTRY}/ai/containers/sklearnserver:v0.15.2 \
+  --image=${SUSE_REGISTRY}/ai/containers/kserve/sklearnserver:v0.15.2 \
   --restart=Never \
   -n "$NS" \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}},"spec":{"imagePullSecrets":[{"name":"suse-ai-registry"}]}}' \
@@ -976,7 +976,7 @@ spec:
           - name: suse-ai-registry
           containers:
           - name: pytorch
-            image: ${SUSE_REGISTRY}/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: ${SUSE_REGISTRY}/ai/containers/pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             command:
             - python3
             - -c

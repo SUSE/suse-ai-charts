@@ -13,11 +13,11 @@ global:
 
 # Top-level image registry for fallback when global overrides are not set
 image:
-  registry: registry.suse.com
+  registry: stgregistry.suse.com
 
 controller:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/controller
     tag: "v1.21.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -32,7 +32,7 @@ controller:
 
 activator:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/activator
     tag: "v1.21.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -47,7 +47,7 @@ activator:
 
 autoscaler:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/autoscaler
     tag: "v1.21.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -62,7 +62,7 @@ autoscaler:
 
 webhook:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/webhook
     tag: "v1.21.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -77,7 +77,7 @@ webhook:
 
 netIstioController:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/controller
     tag: "v1.21.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -92,7 +92,7 @@ netIstioController:
 
 netIstioWebhook:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
     tag: "v1.21.1"  # unused when digest is set
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -108,7 +108,7 @@ netIstioWebhook:
 # Queue sidecar image used in config-deployment ConfigMap
 queueSidecarImage:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.21.1"
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -117,7 +117,7 @@ queueSidecarImage:
 # Queue proxy image used in the queue-proxy Image resource
 queueProxy:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
     tag: "v1.21.1"
     digest: ""  # optional: sha256:... pins this image for supply-chain security

@@ -14,7 +14,7 @@ global:
 
 # Top-level registry fallback for SUSE AI images when global overrides are not set
 image:
-  registry: registry.suse.com
+  registry: stgregistry.suse.com
 
 # Top-level fallback registry for Application Collection images
 appCollection:
@@ -82,7 +82,7 @@ mariadb:
 # SeaweedFS reads those credentials via envFrom and registers them as its IAM user.
 seaweedfs:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/chrislusf/seaweedfs
     tag: "4.00"
     pullPolicy: IfNotPresent
@@ -116,7 +116,7 @@ seaweedfs:
 # to seaweedfs.kubeflow:9000 (upstream migration) which does not exist here.
 launcher:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-launcher
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -125,7 +125,7 @@ launcher:
 # KFP API server
 apiServer:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-api-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -138,7 +138,7 @@ apiServer:
 # KFP frontend / UI
 frontend:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-frontend
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -151,7 +151,7 @@ frontend:
 # Persistence agent
 persistenceAgent:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-persistence-agent
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -164,7 +164,7 @@ persistenceAgent:
 # Scheduled workflow controller
 scheduledWorkflow:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-scheduled-workflow-controller
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -180,7 +180,7 @@ scheduledWorkflow:
 # Viewer CRD controller
 viewerCrdController:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-viewer-crd-controller
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -196,7 +196,7 @@ viewerCrdController:
 # Visualization server
 visualizationServer:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-visualization-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -218,7 +218,7 @@ pipelineCacheImage:
 # Cache server
 cacheServer:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-cache-server
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -236,13 +236,13 @@ workflowController:
   image:
     registry: dp.apps.rancher.io
     repository: containers/workflow-controller
-    tag: "3.7.10"
+    tag: "4.0.5"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   executorImage:
     registry: dp.apps.rancher.io
     repository: containers/argoexec
-    tag: "3.7.10"
+    tag: "4.0.5"
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
     requests:
@@ -252,7 +252,7 @@ workflowController:
 # ML Metadata gRPC server
 metadataGrpc:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/tfx-oss-public/ml_metadata_store_server
     tag: "1.14.0"
     pullPolicy: IfNotPresent
@@ -268,7 +268,7 @@ metadataGrpc:
 # Metadata envoy proxy
 metadataEnvoy:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-metadata-envoy
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -284,7 +284,7 @@ metadataEnvoy:
 # Metadata writer
 metadataWriter:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/kfp-metadata-writer
     tag: "2.16.0"
     pullPolicy: IfNotPresent
@@ -302,7 +302,7 @@ metacontroller:
   image:
     registry: dp.apps.rancher.io
     repository: containers/metacontroller
-    tag: "4.12.5"
+    tag: "4.11.22"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -316,7 +316,7 @@ metacontroller:
 # Profile controller
 profileController:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/python
     tag: "3.11"
     pullPolicy: IfNotPresent

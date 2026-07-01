@@ -40,7 +40,7 @@ dependencies:
   # Infrastructure - conditionally installed
   # Rancher cert-manager (set certManager.install=true to deploy)
   - name: cert-manager
-    version: "1.19.4"
+    version: "1.20.2"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: certManager.install
 

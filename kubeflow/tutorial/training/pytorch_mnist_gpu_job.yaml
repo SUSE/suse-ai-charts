@@ -45,7 +45,7 @@ spec:
           - name: suse-ai-registry
           containers:
           - name: pytorch
-            image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: stgregistry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             imagePullPolicy: IfNotPresent
             command:
             - python3
@@ -108,7 +108,7 @@ spec:
           - name: suse-ai-registry
           containers:
           - name: pytorch
-            image: registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+            image: stgregistry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime
             imagePullPolicy: IfNotPresent
             command:
             - python3

@@ -7,7 +7,7 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: registry.suse.com
+  registry: stgregistry.suse.com
   repository: ai/containers/kubeflow/kubeflow/pvcviewer-controller
   tag: v1.10.0
   pullPolicy: IfNotPresent
@@ -16,7 +16,7 @@ replicaCount: 1
 
 # Image injected into PVCViewer pods as the default viewer (filebrowser)
 viewerImage:
-  registry: registry.suse.com
+  registry: stgregistry.suse.com
   repository: ai/containers/filebrowser/filebrowser
   tag: v2.25.0
 

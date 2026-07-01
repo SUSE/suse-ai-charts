@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=
+SUSE_REGISTRY=stgregistry.suse.com        # override with --suse-registry=
 SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=
 
 # ── Credentials ──────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ fi
 
 echo "=== Step 6: Install Istio ==="
 helm upgrade --install istio oci://${SUSE_APP_COLLECTION}/charts/istio \
-  --version 1.1.3 \
+  --version 1.3.0 \
   --namespace istio-system \
   --set global.imagePullSecrets[0].name=application-collection \
   --set gateway.enabled=true \
@@ -161,7 +161,7 @@ helm upgrade --install istio oci://${SUSE_APP_COLLECTION}/charts/istio \
 
 echo "=== Step 7: Install External Secrets Operator ==="
 helm upgrade --install external-secrets-operator oci://${SUSE_APP_COLLECTION}/charts/external-secrets-operator \
-  --version 2.3.0 \
+  --version 2.6.0 \
   --namespace kubeflow \
   --set installCRDs=true \
   --set global.imagePullSecrets[0].name=application-collection \

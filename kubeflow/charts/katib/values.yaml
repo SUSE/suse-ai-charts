@@ -10,7 +10,7 @@ global:
 
 # -- Default registry for all container images
 image:
-  registry: registry.suse.com
+  registry: stgregistry.suse.com
 
 # Top-level fallback registry for Application Collection images
 appCollection:
@@ -18,7 +18,7 @@ appCollection:
 
 controller:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/katib/katib-controller
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -34,7 +34,7 @@ controller:
 
 ui:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/katib/katib-ui
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -67,7 +67,7 @@ ui:
 
 dbManager:
   image:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/katib/katib-db-manager
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -198,17 +198,17 @@ katibConfig:
 # Trial templates images for the trial-templates ConfigMap
 trialImages:
   mxnetMNIST:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflowkatib/mxnet-mnist
     tag: v0.15.0
     pullPolicy: IfNotPresent
   enasCNNCIFAR10CPU:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/katib/enas-cnn-cifar10-cpu
     tag: v0.19.0
     pullPolicy: IfNotPresent
   pyTorchMNISTCPU:
-    registry: registry.suse.com
+    registry: stgregistry.suse.com
     repository: ai/containers/kubeflow/katib/pytorch-mnist-cpu
     tag: v0.19.0
     pullPolicy: IfNotPresent
