@@ -302,7 +302,7 @@ metacontroller:
   image:
     registry: dp.apps.rancher.io
     repository: containers/metacontroller
-    tag: "4.11.22"
+    tag: "4.15.1"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:

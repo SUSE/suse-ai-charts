@@ -1,5 +1,5 @@
 apiVersion: metacontroller.k8s.io/v1alpha1
-kind: CompositeController
+kind: DecoratorController
 metadata:
   labels:
     app: kubeflow-pipelines-profile-controller
@@ -7,9 +7,14 @@ metadata:
     app.kubernetes.io/name: kubeflow-pipelines
     application-crd-id: kubeflow-pipelines
   name: kubeflow-pipelines-profile-controller
-  namespace: kubeflow
 spec:
-  childResources:
+  resources:
+  - apiVersion: v1
+    resource: namespaces
+    labelSelector:
+      matchLabels:
+        pipelines.kubeflow.org/enabled: "true"
+  attachments:
   - apiVersion: v1
     resource: secrets
     updateStrategy:
@@ -21,25 +26,21 @@ spec:
   - apiVersion: apps/v1
     resource: deployments
     updateStrategy:
-      method: InPlace
+      method: OnDelete
   - apiVersion: v1
     resource: services
     updateStrategy:
-      method: InPlace
+      method: OnDelete
   - apiVersion: networking.istio.io/v1alpha3
     resource: destinationrules
     updateStrategy:
-      method: InPlace
+      method: OnDelete
   - apiVersion: security.istio.io/v1beta1
     resource: authorizationpolicies
     updateStrategy:
-      method: InPlace
-  generateSelector: true
+      method: OnDelete
   hooks:
     sync:
       webhook:
         url: http://kubeflow-pipelines-profile-controller/sync
-  parentResource:
-    apiVersion: v1
-    resource: namespaces
   resyncPeriodSeconds: 3600

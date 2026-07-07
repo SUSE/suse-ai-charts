@@ -54,7 +54,7 @@ data:
     \            namespace = parent.get(\"metadata\", {}).get(\"name\")\n\n      \
     \      pipeline_enabled = parent.get(\"metadata\", {}).get(\n                \"\
     labels\", {}).get(\"pipelines.kubeflow.org/enabled\")\n\n            if pipeline_enabled\
-    \ != \"true\":\n                return {\"status\": {}, \"children\": []}\n\n\
+    \ != \"true\":\n                return {\"attachments\": []}\n\n\
     \            desired_configmap_count = 1\n            desired_resources = []\n\
     \            if kfp_default_pipeline_root:\n                desired_configmap_count\
     \ = 2\n                desired_resources += [{\n                    \"apiVersion\"\
@@ -62,16 +62,7 @@ data:
     metadata\": {\n                        \"name\": \"kfp-launcher\",\n         \
     \               \"namespace\": namespace,\n                    },\n          \
     \          \"data\": {\n                        \"defaultPipelineRoot\": kfp_default_pipeline_root,\n\
-    \                    },\n                }]\n\n\n            # Compute status\
-    \ based on observed state.\n            desired_status = {\n                \"\
-    kubeflow-pipelines-ready\":\n                    len(children[\"Secret.v1\"])\
-    \ == 1 and\n                    len(children[\"ConfigMap.v1\"]) == desired_configmap_count\
-    \ and\n                    len(children[\"Deployment.apps/v1\"]) == 2 and\n  \
-    \                  len(children[\"Service.v1\"]) == 2 and\n                  \
-    \  len(children[\"DestinationRule.networking.istio.io/v1alpha3\"]) == 1 and\n\
-    \                    len(children[\"AuthorizationPolicy.security.istio.io/v1beta1\"\
-    ]) == 1 and\n                    \"True\" or \"False\"\n            }\n\n    \
-    \        # Generate the desired child object(s).\n            desired_resources\
+    \                    },\n                }]\n\n\n            # Generate the desired child object(s).\n            desired_resources\
     \ += [\n                {\n                    \"apiVersion\": \"v1\",\n     \
     \               \"kind\": \"ConfigMap\",\n                    \"metadata\": {\n\
     \                        \"name\": \"metadata-grpc-configmap\",\n            \
@@ -213,11 +204,11 @@ data:
     ,\n                    \"namespace\": namespace,\n                },\n       \
     \         \"data\": {\n                    \"accesskey\": minio_access_key,\n\
     \                    \"secretkey\": minio_secret_key,\n                },\n  \
-    \          })\n\n            # Add image pull secret if docker_config_json is provided\n            if docker_config_json:\n                desired_resources.append({\n                    \"apiVersion\": \"v1\",\n                    \"kind\": \"Secret\",\n                    \"metadata\": {\n                        \"name\": \"{{ if .Values.global.imagePullSecrets }}{{ (index .Values.global.imagePullSecrets 0).name }}{{ end }}\",\n                        \"namespace\": namespace,\n                    },\n                    \"type\": \"kubernetes.io/dockerconfigjson\",\n                    \"data\": {\n                        \".dockerconfigjson\": base64.b64encode(bytes(docker_config_json, 'utf-8')).decode('utf-8'),\n                    },\n                })\n\n            return {\"status\": desired_status, \"children\"\
+    \          })\n\n            # Add image pull secret if docker_config_json is provided.\n            # Only include it if we already own it (it appears in our attachments).\n            # If Rancher manages it (e.g., 'application-collection'), it won't\n            # appear in our attachments, so skip to avoid 'already exists' conflicts.\n            if docker_config_json:\n                pull_secret_name = \"{{ if .Values.global.imagePullSecrets }}{{ (index .Values.global.imagePullSecrets 0).name }}{{ end }}\"\n                observed_secrets = children.get(\"Secret.v1\", {})\n                if pull_secret_name in observed_secrets:\n                    desired_resources.append(observed_secrets[pull_secret_name])\n\n            return {\"attachments\"\
     : desired_resources}\n\n        def do_POST(self):\n            # Serve the sync()\
     \ function as a JSON webhook.\n            observed = json.loads(\n          \
     \      self.rfile.read(int(self.headers.get(\"content-length\"))))\n         \
-    \   desired = self.sync(observed[\"parent\"], observed[\"children\"])\n\n    \
+    \   desired = self.sync(observed[\"object\"], observed[\"attachments\"])\n\n    \
     \        self.send_response(200)\n            self.send_header(\"Content-type\"\
     , \"application/json\")\n            self.end_headers()\n            self.wfile.write(bytes(json.dumps(desired),\
     \ 'utf-8'))\n\n    return HTTPServer((url, int(controller_port)), Controller)\n\

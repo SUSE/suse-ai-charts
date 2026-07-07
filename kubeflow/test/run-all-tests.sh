@@ -65,6 +65,18 @@ T2_ADD_STATUS="SKIPPED"
 T3_ADD_STATUS="SKIPPED"
 OVERALL=0
 
+# ── Pre-test: wait for all deployments to be available ────────────────────────
+# helm test pods (profiles, seaweedfs, etc.) connect to services that take time
+# to start after install/upgrade. Wait here so that all tiers benefit.
+header "━━━ Pre-test readiness wait ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+info "Waiting for all Deployments in $NAMESPACE to be Available (up to 5 minutes)..."
+if kubectl wait deploy --all -n "$NAMESPACE" \
+    --for=condition=available --timeout=300s 2>/dev/null; then
+  info "All Deployments available."
+else
+  info "WARNING: some Deployments not yet Available after 300s — tests may still pass."
+fi
+
 # ── Tier 1: helm test ──────────────────────────────────────────────────────────
 header "━━━ Tier 1 — helm test ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 if $SKIP_TIER1; then

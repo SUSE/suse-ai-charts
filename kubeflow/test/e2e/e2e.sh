@@ -124,11 +124,14 @@ for cmd in kubectl curl; do
 done
 
 # Wait for ESO to propagate registry pull secrets into the user namespace before
-# any test that schedules pods there. Secrets may take a few seconds after install.
+# any test that schedules pods there. On freshly-created profiles, ESO can take
+# several minutes to sync — 300s gives enough headroom without being infinite.
 if kubectl get externalsecret -n "$USER_NS" &>/dev/null; then
-  info "Waiting for ESO to propagate registry secrets into $USER_NS..."
-  kubectl wait --for=condition=Ready externalsecret \
-    --all -n "$USER_NS" --timeout=120s &>/dev/null || true
+  info "Waiting for ESO to propagate registry secrets into $USER_NS (up to 300s)..."
+  if ! kubectl wait --for=condition=Ready externalsecret \
+      --all -n "$USER_NS" --timeout=300s 2>/dev/null; then
+    info "WARNING: ESO ExternalSecrets not Ready in $USER_NS after 300s — image pull failures may follow"
+  fi
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
