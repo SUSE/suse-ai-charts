@@ -3,4 +3,4 @@ appVersion: 1.21.0
 description: A Helm chart for Kubernetes
 name: knative-eventing
 type: application
-version: 0.2.0
+version: 0.2.1

@@ -3,4 +3,4 @@ appVersion: v1.7.0
 description: A Helm chart for Kubernetes
 name: jupyter-web-app
 type: application
-version: 0.2.0
+version: 0.2.1
