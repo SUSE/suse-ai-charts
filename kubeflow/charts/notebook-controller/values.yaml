@@ -7,7 +7,7 @@ global:
   imagePullSecrets: []
 
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
   repository: ai/containers/kubeflow/notebooks/notebook-controller
   tag: v1.11.0
   pullPolicy: IfNotPresent

@@ -8,13 +8,13 @@ global:
 
 image:
   # -- Fallback registry for suseImageRegistry helper when global overrides are not set
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
 
 replicaCount: 1
 
 kfam:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/dashboard/access-management
     tag: v2.0.0
     pullPolicy: IfNotPresent
@@ -35,7 +35,7 @@ kfam:
 
 profileController:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/dashboard/profile-controller
     tag: v2.0.0
     pullPolicy: IfNotPresent

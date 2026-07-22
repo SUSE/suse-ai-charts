@@ -6,7 +6,7 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
   repository: ai/containers/kubeflow/dashboard/poddefaults-webhook
   tag: v2.0.0
   pullPolicy: IfNotPresent

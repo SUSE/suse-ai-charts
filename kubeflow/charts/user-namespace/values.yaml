@@ -38,10 +38,10 @@ pipelines:
     accessKey: kubeflow      # DEMO DEFAULT
     secretKey: kubeflow123   # DEMO DEFAULT
   visualizationServer:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-visualization-server
     tag: "2.16.1"
   frontend:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-frontend
     tag: "2.16.1"

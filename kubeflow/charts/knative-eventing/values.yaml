@@ -10,11 +10,11 @@ global:
 
 # Fallback image registry when global.imageRegistry and global.suseRegistry are not set
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
 
 controller:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/controller
     tag: "v1.22.0"  # unused when digest is set
     digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
@@ -25,7 +25,7 @@ controller:
       memory: 100Mi
   env:
     APISERVER_RA_IMAGE:
-      registry: stgregistry.suse.com
+      registry: registry.suse.com
       repository: ai/containers/knative-releases/knative.dev/eventing/cmd/apiserver_receive_adapter
       tag: "v1.22.0"  # unused when digest is set
       digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
@@ -33,7 +33,7 @@ controller:
 
 webhook:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/webhook
     tag: "v1.22.0"  # unused when digest is set
     digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
@@ -48,7 +48,7 @@ webhook:
 
 pingsource:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/mtping
     tag: "v1.22.0"  # unused when digest is set
     pullPolicy: IfNotPresent

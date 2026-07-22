@@ -38,7 +38,7 @@
 #   6. Create suse.com registry pull secret in static namespaces only:
 #      for ns in cert-manager istio-system kubeflow knative-serving; do
 #        kubectl create secret docker-registry suse-ai-registry \
-#          --docker-server=stgregistry.suse.com \
+#          --docker-server=registry.suse.com \
 #          --docker-username=<username> \
 #          --docker-password=<token> \
 #          -n $ns
@@ -102,12 +102,12 @@ global:
   imageRegistry: ""
 
   # SUSE AI registry override (production/staging).
-  # Controls only SUSE AI images (stgregistry.suse.com/ai/containers/*).
+  # Controls only SUSE AI images (registry.suse.com/ai/containers/*).
   # SUSE Application Collection images (Rancher, MariaDB, etc.) are unaffected.
-  # Set to "stgstgregistry.suse.com" for QA testing against staging registry.
+  # Set to "stgregistry.suse.com" for QA testing against staging registry.
   # Precedence: global.imageRegistry (if set) overrides this value.
-  # Default: "stgregistry.suse.com" (production)
-  suseRegistry: "stgregistry.suse.com"
+  # Default: "registry.suse.com" (production)
+  suseRegistry: "registry.suse.com"
 
   # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror).
   # Precedence: global.imageRegistry (if set) overrides this value.
@@ -528,7 +528,7 @@ externalSecrets:
 # --- Central Dashboard ---
 # central-dashboard:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/central-dashboard
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -544,7 +544,7 @@ externalSecrets:
 #   nvidiaGPU:
 #     enabled: false
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/jupyter-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -554,7 +554,7 @@ externalSecrets:
 # --- Notebook Controller ---
 # notebook-controller:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/notebook-controller
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -567,7 +567,7 @@ externalSecrets:
 # --- Volumes Web App ---
 # volumes-web-app:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/volumes-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -577,7 +577,7 @@ externalSecrets:
 # --- Tensorboards Web App ---
 # tensorboards-web-app:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/tensorboards-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -587,7 +587,7 @@ externalSecrets:
 # --- Models Web App ---
 # models-web-app:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/models-web-app
 #     tag: v0.13.0
 #     pullPolicy: IfNotPresent
@@ -597,7 +597,7 @@ externalSecrets:
 # --- Admission Webhook ---
 # admission-webhook:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/poddefaults-webhook
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -606,7 +606,7 @@ externalSecrets:
 # --- Training Operator ---
 # training-operator:
 #   image:
-#     registry: stgregistry.suse.com
+#     registry: registry.suse.com
 #     repository: ai/containers/training-operator
 #     tag: v1-d6eb98e
 #     pullPolicy: IfNotPresent
@@ -618,13 +618,13 @@ externalSecrets:
 #   replicaCount: 1
 #   kfam:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/kfam
 #       tag: v1.10.0
 #     resources: {}
 #   profileController:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/profile-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -634,7 +634,7 @@ externalSecrets:
 #   replicaCount: 1
 #   manager:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/tensorboard-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -643,13 +643,13 @@ externalSecrets:
 # katib:
 #   controller:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/katib-controller
 #       tag: v0.19.0
 #     resources: {}
 #   ui:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/katib-ui
 #       tag: v0.19.0
 #     resources: {}
@@ -665,13 +665,13 @@ externalSecrets:
 # pipelines:
 #   apiServer:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/kfp-api-server
 #       tag: "2.15.0"
 #     resources: {}
 #   frontend:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/kfp-frontend
 #       tag: "2.15.0"
 #     resources: {}
@@ -680,7 +680,7 @@ externalSecrets:
 # kserve:
 #   controllerManager:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/kserve-controller
 #       tag: v0.16.0
 #       pullPolicy: Always
@@ -696,7 +696,7 @@ externalSecrets:
 # knative-serving:
 #   controller:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/serving/cmd/controller
 #       tag: "v1.20.0"  # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -712,7 +712,7 @@ externalSecrets:
 # knative-eventing:
 #   controller:
 #     image:
-#       registry: stgregistry.suse.com
+#       registry: registry.suse.com
 #       repository: ai/containers/eventing/cmd/controller
 #       tag: "v1.20.0" # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -835,11 +835,11 @@ user-namespace:
       accessKey: *seaweedfsAccessKey
       secretKey: *seaweedfsSecretKey
     visualizationServer:
-      registry: stgregistry.suse.com
+      registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-visualization-server
       tag: "2.16.0"
     frontend:
-      registry: stgregistry.suse.com
+      registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-frontend
       tag: "2.16.0"
 

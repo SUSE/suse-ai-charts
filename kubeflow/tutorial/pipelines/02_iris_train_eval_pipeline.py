@@ -39,7 +39,7 @@ import os
 # Step 1 — Load and split the Iris dataset
 # ---------------------------------------------------------------------------
 @dsl.component(
-    base_image="stgregistry.suse.com/ai/containers/python:3.11-slim",
+    base_image="registry.suse.com/ai/containers/python:3.11-slim",
     packages_to_install=["scikit-learn>=1.4", "pandas>=2.0"],
 )
 def load_data(
@@ -78,7 +78,7 @@ def load_data(
 # Step 2 — Train a Logistic Regression classifier
 # ---------------------------------------------------------------------------
 @dsl.component(
-    base_image="stgregistry.suse.com/ai/containers/python:3.11-slim",
+    base_image="registry.suse.com/ai/containers/python:3.11-slim",
     packages_to_install=["scikit-learn>=1.4", "pandas>=2.0", "joblib>=1.4"],
 )
 def train_model(
@@ -116,7 +116,7 @@ def train_model(
 # Step 3 — Evaluate on the held-out test set and log metrics
 # ---------------------------------------------------------------------------
 @dsl.component(
-    base_image="stgregistry.suse.com/ai/containers/python:3.11-slim",
+    base_image="registry.suse.com/ai/containers/python:3.11-slim",
     packages_to_install=["scikit-learn>=1.4", "pandas>=2.0", "joblib>=1.4"],
 )
 def evaluate_model(

@@ -10,7 +10,7 @@ global:
 
 # Top-level registry fallback for SUSE AI images
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
 
 # Top-level fallback registry for Application Collection images
 appCollection:
@@ -20,7 +20,7 @@ controllerManager:
   # Increase to 2+ via ha-overrides.yaml for HA deployments.
   replicaCount: 1
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/kserve-controller
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -50,7 +50,7 @@ kubeRbacProxy:
 
 storageInitializer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/storage-initializer
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -58,49 +58,49 @@ storageInitializer:
 # Serving runtime images - these are used by ClusterServingRuntime resources
 tensorflowServing:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/tensorflow/serving
     tag: "2.6.2"
     pullPolicy: IfNotPresent
 
 huggingfaceServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/huggingfaceserver
     tag: v0.19.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/xgbserver
     tag: v0.19.0
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/lgbserver
     tag: v0.19.0
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/sklearnserver
     tag: v0.19.0
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/paddleserver
     tag: v0.19.0
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kserve/pmmlserver
     tag: v0.19.0
     pullPolicy: IfNotPresent
@@ -114,14 +114,14 @@ tritonServer:
 
 mlServer:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/seldonio/mlserver
     tag: "1.5.0"
     pullPolicy: IfNotPresent
 
 torchServe:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/pytorch/torchserve-kfs
     tag: "0.9.0"
     pullPolicy: IfNotPresent

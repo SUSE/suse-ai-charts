@@ -9,7 +9,7 @@ global:
     name: "kubeflow/kubeflow-gateway"
 
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
   repository: ai/containers/kubeflow/hub/server
   tag: v0.3.10
   pullPolicy: IfNotPresent

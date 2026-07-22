@@ -9,7 +9,7 @@ global:
 
 server:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/model-registry/server
     tag: v0.3.7
     pullPolicy: IfNotPresent
@@ -49,7 +49,7 @@ server:
 
 ui:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/model-registry/ui
     tag: v0.3.7
     pullPolicy: IfNotPresent
@@ -96,7 +96,7 @@ db:
 
 # -- Default registry for SUSE AI container images
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
 
 # Top-level fallback registry for Application Collection images
 appCollection:
@@ -114,7 +114,7 @@ dbInit:
 controller:
   enabled: false
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/model-registry/controller
     tag: v0.3.7            # pinned — manifests use latest; same release train as server/ui
     pullPolicy: IfNotPresent
@@ -152,7 +152,7 @@ kserve:
   storageContainer:
     enabled: false
     image:
-      registry: stgregistry.suse.com
+      registry: registry.suse.com
       repository: ai/containers/kubeflow/model-registry/storage-initializer
       tag: v0.3.7          # pinned — manifests use latest; same release train as server/ui
       pullPolicy: IfNotPresent

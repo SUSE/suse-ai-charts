@@ -6,7 +6,7 @@
 #
 # Usage:
 #   chmod +x test/e2e/e2e.sh
-#   ./test/e2e/e2e.sh [--suse-registry=stgstgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests]
+#   ./test/e2e/e2e.sh [--suse-registry=stgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests]
 #
 # What it tests:
 #   1.  KFP pipeline      — inline spec → submit run → wait for SUCCEEDED
@@ -34,7 +34,7 @@ set -uo pipefail
 NS=kubeflow
 USER_NS=kubeflow-user-example-com
 KFP_USER=user@example.com
-SUSE_REGISTRY=stgregistry.suse.com        # override with --suse-registry=stgstgregistry.suse.com
+SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=stgregistry.suse.com
 SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=mirror.example.com
 PASS=0
 FAIL=0

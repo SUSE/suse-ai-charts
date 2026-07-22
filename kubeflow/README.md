@@ -75,7 +75,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | Load Balancer (i.e. metallb) | - | It is required when used in conjunction with external-dns and cert-manager. Tested with MetalLB v0.15.3 |
 | Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
 | SUSE Application Collection credentials | — | Username + token for `dp.apps.rancher.io` (application-collection secret) |
-| SUSE Registry credentials | — | Username + token for `stgregistry.suse.com` (suse-ai-registry secret) |
+| SUSE Registry credentials | — | Username + token for `registry.suse.com` (suse-ai-registry secret) |
 
 **Storage class:** All PVCs use the cluster default StorageClass unless `global.storageClass` is set.
 For single-node clusters the Local Path Provisioner is sufficient for development.
@@ -112,7 +112,7 @@ steps before it.
 
 Prerequisite: A RKE2 cluster with a default storageClass configured.
 
-1. Performs Helm registry logins for `dp.apps.rancher.io` and `stgregistry.suse.com`
+1. Performs Helm registry logins for `dp.apps.rancher.io` and `registry.suse.com`
 2. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `knative-serving`
 3. Creates `application-collection` and `suse-ai-registry` image pull secrets in `istio-system`, `kubeflow`, `knative-serving`, and `cert-manager`. User namespaces (`kubeflow-user-example-com`, profile namespaces) receive these secrets automatically via the External Secrets Operator (ESO), which is installed as part of the chart.
 4. Labels the `kubeflow` and `knative-serving` namespaces for Helm ownership
@@ -151,12 +151,12 @@ Password: 12341234
 | `<appco-registry-username>` | `APPCO_REGISTRY_USER` | SUSE Application Collection username (for `dp.apps.rancher.io`) |
 | `<appco-registry-token>` | `APPCO_REGISTRY_TOKEN` | SUSE Application Collection token / password (for `dp.apps.rancher.io`) |
 | `<suse-ai-registry-username>` | `SUSE_REGISTRY_USER` | SUSE Registry username (default: `regcode`) |
-| `<suse-ai-registry-token>` | `SUSE_REGISTRY_TOKEN` | SUSE Registry token / password (for `stgregistry.suse.com`) SCC_REG_CODE for AI|
+| `<suse-ai-registry-token>` | `SUSE_REGISTRY_TOKEN` | SUSE Registry token / password (for `registry.suse.com`) SCC_REG_CODE for AI|
 | `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
 | `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
 | `--disable-cert-manager` | — | Do not upgrade/install cert-manager, use an existing one instead |
-| `--suse-registry=<mirror>` | `SUSE_REGISTRY` | SUSE AI registry mirror (default: `stgregistry.suse.com`); redirects all `stgregistry.suse.com/*` image pulls and the registry login |
+| `--suse-registry=<mirror>` | `SUSE_REGISTRY` | SUSE AI registry mirror (default: `registry.suse.com`); redirects all `registry.suse.com/*` image pulls and the registry login |
 | `--suse-app-collection=<mirror>` | `SUSE_APP_COLLECTION` | Application Collection mirror (default: `dp.apps.rancher.io`); redirects all `dp.apps.rancher.io/*` image pulls, the registry login, and the cert-manager / Istio / ESO OCI chart URLs |
 
 
@@ -171,7 +171,7 @@ To redirect images through an internal mirror registry, pass both flags:
 ```
 
 `--suse-app-collection` redirects: the `dp.apps.rancher.io` registry login, the `application-collection` pull secret, the cert-manager / Istio / ESO OCI chart installs, and sets `global.suseApplicationCollection` on the Kubeflow helm install so all pod images resolve from the mirror.
-`--suse-registry` redirects: the `stgregistry.suse.com` registry login, the `suse-ai-registry` pull secret, and sets `global.suseRegistry` on the Kubeflow helm install.
+`--suse-registry` redirects: the `registry.suse.com` registry login, the `suse-ai-registry` pull secret, and sets `global.suseRegistry` on the Kubeflow helm install.
 
 #### Using a values override file with `runMe.sh`
 
@@ -208,7 +208,7 @@ helm registry login dp.apps.rancher.io \
   --password=<appco-registry-token>
 
 # Login to SUSE Registry
-helm registry login stgregistry.suse.com \
+helm registry login registry.suse.com \
   --username=regcode \
   --password=<suse-ai-registry-token>
 ```
@@ -238,10 +238,10 @@ for ns in cert-manager istio-system kubeflow knative-serving; do
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
-# Create suse-ai-registry pull secret (SUSE Registry — stgregistry.suse.com)
+# Create suse-ai-registry pull secret (SUSE Registry — registry.suse.com)
 for ns in cert-manager istio-system kubeflow knative-serving; do
   kubectl create secret docker-registry suse-ai-registry \
-    --docker-server=stgregistry.suse.com \
+    --docker-server=registry.suse.com \
     --docker-username=regcode \
     --docker-password=<suse-ai-registry-token> \
     -n "$ns" \
@@ -307,7 +307,7 @@ Install directly from the OCI registry (no source checkout required):
 
 ```bash
 helm upgrade --install kubeflow \
-  oci://stgregistry.suse.com/ai/charts/kubeflow \
+  oci://registry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
@@ -319,7 +319,7 @@ To apply a values override file, for example the `demo-overrides.yaml` provided 
 
 ```bash
 helm upgrade --install kubeflow \
-  oci://stgregistry.suse.com/ai/charts/kubeflow \
+  oci://registry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
@@ -600,7 +600,7 @@ Or manually:
 
 ```bash
 helm upgrade --install kubeflow \
-  oci://stgregistry.suse.com/ai/charts/kubeflow \
+  oci://registry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow \
   --force-conflicts \
@@ -718,7 +718,7 @@ Full JSON schema: [`charts/kubeflow/values.schema.json`](charts/kubeflow/values.
 | `global.imagePullPolicy` | `IfNotPresent` | Image pull policy for all components |
 | `global.imagePullSecrets` | `[{name: application-collection}]` | Registry pull secrets — defined once, used everywhere |
 | `global.imageRegistry` | `""` | Nuclear override — redirects **all** images (SUSE AI + Application Collection) to this registry |
-| `global.suseRegistry` | `"stgregistry.suse.com"` | Override for SUSE AI images only (`stgregistry.suse.com/*`); use for staging or mirror registries |
+| `global.suseRegistry` | `"registry.suse.com"` | Override for SUSE AI images only (`registry.suse.com/*`); use for staging or mirror registries |
 | `global.suseApplicationCollection` | `"dp.apps.rancher.io"` | Override for SUSE Application Collection images only (`dp.apps.rancher.io/*`); use for mirror registries |
 | `global.labels` | `{}` | Common labels applied to all managed resources |
 | `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
@@ -837,7 +837,7 @@ Three values control where images are pulled from, with a clear precedence:
 | Value | Default | Scope |
 |-------|---------|-------|
 | `global.imageRegistry` | `""` | **All images** — SUSE AI and Application Collection. Overrides everything. |
-| `global.suseRegistry` | `"stgregistry.suse.com"` | SUSE AI images only (`stgregistry.suse.com/*` — kubeflow components, kfp, kserve, etc.) |
+| `global.suseRegistry` | `"registry.suse.com"` | SUSE AI images only (`registry.suse.com/*` — kubeflow components, kfp, kserve, etc.) |
 | `global.suseApplicationCollection` | `"dp.apps.rancher.io"` | Application Collection images only (`dp.apps.rancher.io/*` — mariadb, bci-busybox, kubectl, kube-rbac-proxy, workflow-controller, argoexec, metacontroller) |
 
 Precedence (highest to lowest) for each image type:
@@ -1046,7 +1046,7 @@ user-namespace:
 Add the user to your values file and run `helm upgrade`:
 
 ```bash
-helm upgrade kubeflow oci://stgregistry.suse.com/ai/charts/kubeflow \
+helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> \
   -n kubeflow --reuse-values \
   --set "user-namespace.additionalUsers[0].email=alice@example.com" \
@@ -1065,7 +1065,7 @@ user-namespace:
 
 **OCI (production):**
 ```bash
-helm upgrade kubeflow oci://stgregistry.suse.com/ai/charts/kubeflow \
+helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> \
   -n kubeflow -f my-values.yaml
 ```
@@ -1094,7 +1094,7 @@ in a single step.
 
 ```bash
 helm upgrade kubeflow \
-  oci://stgregistry.suse.com/ai/charts/kubeflow \
+  oci://registry.suse.com/ai/charts/kubeflow \
   --version 0.3.2 \
   -n kubeflow --force-conflicts --wait --timeout 15m
 ```
@@ -1294,7 +1294,7 @@ helm upgrade kubeflow . -n kubeflow \
 **From OCI registry (production):**
 
 ```bash
-helm upgrade kubeflow oci://stgregistry.suse.com/ai/charts/kubeflow \
+helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> -n kubeflow \
   --reuse-values --force-conflicts \
   --set tensorboard-controller.configMapData.ISTIO_HOST="*" \

@@ -14,7 +14,7 @@
 #   --include-gpu-tests                Pass --include-gpu-tests to e2e.sh (opt-in GPU tests)
 #   --additional-user-namespace=<ns>   Also run Tier 2+3 against this extra profile namespace
 #   --additional-user-email=<email>    Email for the extra profile (used by e2e KFP tests)
-#   --suse-registry=<mirror>           SUSE AI registry mirror (default: stgregistry.suse.com)
+#   --suse-registry=<mirror>           SUSE AI registry mirror (default: registry.suse.com)
 #   --suse-app-collection=<mirror>     Application Collection registry mirror (default: dp.apps.rancher.io)
 
 set -uo pipefail
@@ -28,7 +28,7 @@ SKIP_TIER3=false
 INCLUDE_GPU=false
 ADDITIONAL_USER_NS=""
 ADDITIONAL_USER_EMAIL=""
-SUSE_REGISTRY=stgregistry.suse.com
+SUSE_REGISTRY=registry.suse.com
 SUSE_APP_COLLECTION=dp.apps.rancher.io
 
 # ── Parse args ─────────────────────────────────────────────────────────────────

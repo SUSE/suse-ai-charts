@@ -10,7 +10,7 @@ global:
 
 # -- Fallback registry for suseImageRegistry helper when global overrides are not set
 image:
-  registry: stgregistry.suse.com
+  registry: registry.suse.com
 
 # Top-level fallback registry for Application Collection images
 appCollection:
@@ -20,7 +20,7 @@ replicaCount: 1
 
 manager:
   image:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/kubeflow/notebooks/tensorboard-controller
     tag: v1.11.0
     pullPolicy: IfNotPresent
@@ -63,6 +63,6 @@ configMapData:
   ISTIO_HOST: "*"
   RWO_PVC_SCHEDULING: "True"
   tensorboardImage:
-    registry: stgregistry.suse.com
+    registry: registry.suse.com
     repository: ai/containers/tensorflow/tensorflow
     tag: "2.21.0"

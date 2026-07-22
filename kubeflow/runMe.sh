@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-SUSE_REGISTRY=stgregistry.suse.com        # override with --suse-registry=
+SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=
 SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=
 
 # ── Credentials ──────────────────────────────────────────────────────────────

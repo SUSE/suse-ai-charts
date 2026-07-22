@@ -26,7 +26,7 @@ from kfp.compiler import Compiler
 import os
 
 
-@dsl.component(base_image="stgregistry.suse.com/ai/containers/python:3.11-slim")
+@dsl.component(base_image="registry.suse.com/ai/containers/python:3.11-slim")
 def say_hello(name: str) -> str:
     """Step 1 — build a greeting string and return it."""
     message = f"Hello, {name}!  Welcome to Kubeflow Pipelines."
@@ -34,7 +34,7 @@ def say_hello(name: str) -> str:
     return message
 
 
-@dsl.component(base_image="stgregistry.suse.com/ai/containers/python:3.11-slim")
+@dsl.component(base_image="registry.suse.com/ai/containers/python:3.11-slim")
 def log_message(message: str) -> None:
     """Step 2 — receive the greeting and log some stats about it."""
     print(f"[Logger] Received : {message}")
