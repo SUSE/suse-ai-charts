@@ -1,0 +1,34 @@
+global:
+  # -- Global override for container image registry
+  imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (staging vs production)
+  suseRegistry: ""
+  # -- Global override for container image pull secrets
+  imagePullSecrets: []
+  gateway:
+    name: "kubeflow/kubeflow-gateway"
+
+image:
+  registry: stgregistry.suse.com
+  repository: ai/containers/kubeflow/hub/server
+  tag: v0.3.10
+  pullPolicy: IfNotPresent
+  digest: ""  # optional: sha256:... pins this image for supply-chain security
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Istio VirtualService path prefix — routes traffic from the Kubeflow gateway
+# to the model-registry-service. Must match the path used by the central dashboard.
+virtualServicePrefix: /api/model_registry/

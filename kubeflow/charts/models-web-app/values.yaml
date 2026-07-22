@@ -9,7 +9,7 @@ global:
 image:
   registry: stgregistry.suse.com
   repository: ai/containers/kserve/models-web-app
-  tag: 0.16.1
+  tag: 1.0.1
   pullPolicy: IfNotPresent
 
 replicaCount: 1

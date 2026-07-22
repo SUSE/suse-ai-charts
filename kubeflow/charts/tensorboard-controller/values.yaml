@@ -21,8 +21,8 @@ replicaCount: 1
 manager:
   image:
     registry: stgregistry.suse.com
-    repository: ai/containers/kubeflow/kubeflow/tensorboard-controller
-    tag: v1.10.0
+    repository: ai/containers/kubeflow/notebooks/tensorboard-controller
+    tag: v1.11.0
     pullPolicy: IfNotPresent
   resources:
     limits:

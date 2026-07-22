@@ -8,8 +8,8 @@ global:
 
 image:
   registry: stgregistry.suse.com
-  repository: ai/containers/kubeflow/kubeflow/volumes-web-app
-  tag: v1.10.0
+  repository: ai/containers/kubeflow/notebooks/volumes-web-app
+  tag: v1.11.0
   pullPolicy: IfNotPresent
 
 replicaCount: 1

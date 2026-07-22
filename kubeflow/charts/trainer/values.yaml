@@ -12,7 +12,7 @@ global:
 image:
   registry: stgregistry.suse.com
   repository: ai/containers/kubeflow/trainer/trainer-controller-manager
-  tag: v2.1.0
+  tag: v2.2.1
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -63,13 +63,13 @@ runtimes:
     image:
       registry: stgregistry.suse.com
       repository: ai/containers/kubeflow/trainer/deepspeed-runtime
-      tag: v2.1.0
+      tag: v2.2.1
       pullPolicy: IfNotPresent
   mlx:
     image:
       registry: stgregistry.suse.com
       repository: ai/containers/kubeflow/trainer/mlx-runtime
-      tag: v2.1.0
+      tag: v2.2.1
       pullPolicy: IfNotPresent
   torch:
     distributed:
@@ -86,15 +86,15 @@ runtimes:
       trainer:
         registry: stgregistry.suse.com
         repository: ai/containers/kubeflow/trainer/torchtune-trainer
-        tag: v2.1.0
+        tag: v2.2.1
         pullPolicy: IfNotPresent
       datasetInitializer:
         registry: stgregistry.suse.com
         repository: ai/containers/kubeflow/trainer/dataset-initializer
-        tag: v2.1.0
+        tag: v2.2.1
         pullPolicy: IfNotPresent
       modelInitializer:
         registry: stgregistry.suse.com
         repository: ai/containers/kubeflow/trainer/model-initializer
-        tag: v2.1.0
+        tag: v2.2.1
         pullPolicy: IfNotPresent

@@ -15,9 +15,7 @@ data:
   dbPort: '3306'
   defaultPipelineRoot: ''
   mlmdDb: metadb
-  {{- if .Values.embedmdDb }}
-  embedmdDb: {{ .Values.embedmdDb | quote }}
-  {{- end }}
+  embedmdDb: {{ .Values.embedmdDb | default "model_registry" | quote }}
   pipelineDb: mlpipeline
   warning: '1. Do not use kubectl to edit this configmap, because some values are
     used

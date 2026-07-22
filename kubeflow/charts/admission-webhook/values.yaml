@@ -7,8 +7,8 @@ global:
   imagePullSecrets: []
 image:
   registry: stgregistry.suse.com
-  repository: ai/containers/kubeflow/kubeflow/poddefaults-webhook
-  tag: v1.10.0
+  repository: ai/containers/kubeflow/dashboard/poddefaults-webhook
+  tag: v2.0.0
   pullPolicy: IfNotPresent
 
 nameOverride: ""

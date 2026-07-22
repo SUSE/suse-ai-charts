@@ -22,7 +22,7 @@ controllerManager:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/kserve-controller
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -52,7 +52,7 @@ storageInitializer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/storage-initializer
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 # Serving runtime images - these are used by ClusterServingRuntime resources
@@ -67,42 +67,42 @@ huggingfaceServer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/huggingfaceserver
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/xgbserver
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/lgbserver
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/sklearnserver
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/paddleserver
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
     registry: stgregistry.suse.com
     repository: ai/containers/kserve/pmmlserver
-    tag: v0.16.0
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 tritonServer:
@@ -135,7 +135,7 @@ inferenceServiceConfig:
   agentConfig:
     image:
       repository: ai/containers/kserve/agent
-      tag: v0.16.0
+      tag: v0.19.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"
@@ -144,7 +144,7 @@ inferenceServiceConfig:
   batcherConfig:
     image:
       repository: ai/containers/kserve/agent
-      tag: v0.16.0
+      tag: v0.19.0
     memoryRequest: "1Gi"
     memoryLimit: "1Gi"
     cpuRequest: "1"
@@ -176,15 +176,15 @@ inferenceServiceConfig:
     alibi:
       image:
         repository: ai/containers/kserve/alibi-explainer
-        tag: v0.16.0
+        tag: v0.19.0
     aix:
       image:
         repository: ai/containers/kserve/aix-explainer
-        tag: v0.16.0
+        tag: v0.19.0
     art:
       image:
         repository: ai/containers/kserve/art-explainer
-        tag: v0.16.0
+        tag: v0.19.0
 
   ingress: |
     {
@@ -202,7 +202,7 @@ inferenceServiceConfig:
   loggerConfig:
     image:
       repository: ai/containers/kserve/agent
-      tag: v0.16.0
+      tag: v0.19.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"
@@ -218,7 +218,7 @@ inferenceServiceConfig:
   routerConfig:
     image:
       repository: ai/containers/kserve/router
-      tag: v0.16.0
+      tag: v0.19.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"
@@ -227,7 +227,7 @@ inferenceServiceConfig:
   storageInitializerConfig:
     image:
       repository: ai/containers/kserve/storage-initializer
-      tag: v0.16.0
+      tag: v0.19.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"

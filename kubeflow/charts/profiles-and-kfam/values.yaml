@@ -15,8 +15,8 @@ replicaCount: 1
 kfam:
   image:
     registry: stgregistry.suse.com
-    repository: ai/containers/kubeflow/kubeflow/kfam
-    tag: v1.10.0
+    repository: ai/containers/kubeflow/dashboard/access-management
+    tag: v2.0.0
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -36,8 +36,8 @@ kfam:
 profileController:
   image:
     registry: stgregistry.suse.com
-    repository: ai/containers/kubeflow/kubeflow/profile-controller
-    tag: v1.10.0
+    repository: ai/containers/kubeflow/dashboard/profile-controller
+    tag: v2.0.0
     pullPolicy: IfNotPresent
   resources:
     requests:
