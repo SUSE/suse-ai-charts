@@ -101,18 +101,19 @@ global:
   # Leave empty to use the default registry specified in each sub-chart's values.
   imageRegistry: ""
 
-  # SUSE AI registry override (production/staging).
-  # Controls only SUSE AI images (registry.suse.com/ai/containers/*).
-  # SUSE Application Collection images (Rancher, MariaDB, etc.) are unaffected.
-  # Set to "stgregistry.suse.com" for QA testing against staging registry.
-  # Precedence: global.imageRegistry (if set) overrides this value.
-  # Default: "registry.suse.com" (production)
-  suseRegistry: "registry.suse.com"
+  # SUSE AI registry OVERRIDE for all SUSE AI images (registry.suse.com/ai/containers/*).
+  # Leave empty (default) to use each component's own image.registry value.
+  # When set, overrides every SUSE component's image.registry (e.g. "stgregistry.suse.com"
+  # for QA against staging). SUSE Application Collection images are unaffected.
+  # Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+  suseRegistry: ""
 
-  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror).
-  # Precedence: global.imageRegistry (if set) overrides this value.
-  # Default: "dp.apps.rancher.io" (production Application Collection)
-  suseApplicationCollection: "dp.apps.rancher.io"
+  # -- Application Collection registry OVERRIDE for all App Collection images
+  # (dp.apps.rancher.io/containers/* that are wired through the chart's helpers).
+  # Leave empty (default) to use each component's own image.registry value.
+  # When set, overrides every App Collection component's image.registry.
+  # Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+  suseApplicationCollection: ""
 
   # Demo mode: set true ONLY for local development/tutorial.
   # When false (default), Helm fails at render time if any credential is a known demo default.
@@ -472,11 +473,6 @@ tensorboard:
 networkPolicies:
   enabled: false
 
-# Top-level fallback registry for Application Collection images when neither
-# global.imageRegistry nor global.suseApplicationCollection is set.
-appCollection:
-  registry: dp.apps.rancher.io
-
 # Pre-install preflight checks (Helm hook Job).
 # Validates: default StorageClass exists, cert-manager CRDs present.
 preflightChecks:
@@ -528,7 +524,6 @@ externalSecrets:
 # --- Central Dashboard ---
 # central-dashboard:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/central-dashboard
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -544,7 +539,6 @@ externalSecrets:
 #   nvidiaGPU:
 #     enabled: false
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/jupyter-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -554,7 +548,6 @@ externalSecrets:
 # --- Notebook Controller ---
 # notebook-controller:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/notebook-controller
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -567,7 +560,6 @@ externalSecrets:
 # --- Volumes Web App ---
 # volumes-web-app:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/volumes-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -577,7 +569,6 @@ externalSecrets:
 # --- Tensorboards Web App ---
 # tensorboards-web-app:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/tensorboards-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -587,7 +578,6 @@ externalSecrets:
 # --- Models Web App ---
 # models-web-app:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/models-web-app
 #     tag: v0.13.0
 #     pullPolicy: IfNotPresent
@@ -597,7 +587,6 @@ externalSecrets:
 # --- Admission Webhook ---
 # admission-webhook:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/poddefaults-webhook
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -606,7 +595,6 @@ externalSecrets:
 # --- Training Operator ---
 # training-operator:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/training-operator
 #     tag: v1-d6eb98e
 #     pullPolicy: IfNotPresent
@@ -618,13 +606,11 @@ externalSecrets:
 #   replicaCount: 1
 #   kfam:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kfam
 #       tag: v1.10.0
 #     resources: {}
 #   profileController:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/profile-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -634,7 +620,6 @@ externalSecrets:
 #   replicaCount: 1
 #   manager:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/tensorboard-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -643,13 +628,11 @@ externalSecrets:
 # katib:
 #   controller:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/katib-controller
 #       tag: v0.19.0
 #     resources: {}
 #   ui:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/katib-ui
 #       tag: v0.19.0
 #     resources: {}
@@ -665,13 +648,11 @@ externalSecrets:
 # pipelines:
 #   apiServer:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kfp-api-server
 #       tag: "2.15.0"
 #     resources: {}
 #   frontend:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kfp-frontend
 #       tag: "2.15.0"
 #     resources: {}
@@ -680,7 +661,6 @@ externalSecrets:
 # kserve:
 #   controllerManager:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kserve-controller
 #       tag: v0.16.0
 #       pullPolicy: Always
@@ -696,7 +676,6 @@ externalSecrets:
 # knative-serving:
 #   controller:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/serving/cmd/controller
 #       tag: "v1.20.0"  # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -712,7 +691,6 @@ externalSecrets:
 # knative-eventing:
 #   controller:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/eventing/cmd/controller
 #       tag: "v1.20.0" # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -835,11 +813,9 @@ user-namespace:
       accessKey: *seaweedfsAccessKey
       secretKey: *seaweedfsSecretKey
     visualizationServer:
-      registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-visualization-server
       tag: "2.16.0"
     frontend:
-      registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-frontend
       tag: "2.16.0"
 

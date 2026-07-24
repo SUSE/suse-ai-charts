@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: bind
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.metadbInit.image.registry) }}{{ . }}/{{ end }}{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.metadbInit.image.registry) }}/{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
         command: ["sh", "-c", "echo 'Backup PVC bound and ready.' && ls /backup/"]
         securityContext:

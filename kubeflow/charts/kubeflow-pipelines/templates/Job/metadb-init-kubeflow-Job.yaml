@@ -21,7 +21,7 @@ spec:
       initContainers:
       # Wait until MariaDB is accepting connections before running SQL.
       - name: wait-for-mariadb
-        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" . }}/{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.metadbInit.image.registry) }}/{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
         command:
         - sh
@@ -40,7 +40,7 @@ spec:
               key: password
       containers:
       - name: create-metadb
-        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" . }}/{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.metadbInit.image.registry) }}/{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
         command:
         - sh

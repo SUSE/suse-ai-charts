@@ -8,7 +8,7 @@ data:
   autoUpdatePipelineDefaultVersion: 'true'
   bucketName: mlpipeline
   cacheDb: cachedb
-  cacheImage: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" . }}/{{ .Values.pipelineCacheImage.repository }}{{- if .Values.pipelineCacheImage.digest }}@{{ .Values.pipelineCacheImage.digest }}{{- else }}:{{ .Values.pipelineCacheImage.tag }}{{- end }}"
+  cacheImage: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.pipelineCacheImage.registry) }}/{{ .Values.pipelineCacheImage.repository }}{{- if .Values.pipelineCacheImage.digest }}@{{ .Values.pipelineCacheImage.digest }}{{- else }}:{{ .Values.pipelineCacheImage.tag }}{{- end }}"
   cacheNodeRestrictions: 'false'
   cronScheduleTimezone: UTC
   dbHost: mysql

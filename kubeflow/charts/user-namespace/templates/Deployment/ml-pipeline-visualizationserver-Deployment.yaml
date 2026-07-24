@@ -15,7 +15,7 @@ spec:
         app: ml-pipeline-visualizationserver
     spec:
       containers:
-      - image: "{{ with (coalesce .Values.global.imageRegistry .Values.pipelines.visualizationServer.registry) }}{{ . }}/{{ end }}{{ .Values.pipelines.visualizationServer.repository }}{{- if .Values.pipelines.visualizationServer.digest }}@{{ .Values.pipelines.visualizationServer.digest }}{{- else }}:{{ .Values.pipelines.visualizationServer.tag }}{{- end }}"
+      - image: "{{ include "user-namespace.suseImageRegistry" (dict "ctx" . "registry" .Values.pipelines.visualizationServer.registry) }}/{{ .Values.pipelines.visualizationServer.repository }}{{- if .Values.pipelines.visualizationServer.digest }}@{{ .Values.pipelines.visualizationServer.digest }}{{- else }}:{{ .Values.pipelines.visualizationServer.tag }}{{- end }}"
         imagePullPolicy: IfNotPresent
         name: ml-pipeline-visualizationserver
         ports:

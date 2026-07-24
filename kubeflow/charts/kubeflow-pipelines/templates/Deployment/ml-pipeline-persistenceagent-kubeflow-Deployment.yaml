@@ -82,7 +82,7 @@ spec:
         envFrom:
         - configMapRef:
             name: persistenceagent-config-hkgkmd64bh
-        image: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.persistenceAgent.image.repository }}{{- if .Values.persistenceAgent.image.digest }}@{{ .Values.persistenceAgent.image.digest }}{{- else }}:{{ .Values.persistenceAgent.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.persistenceAgent.image.registry) }}/{{ .Values.persistenceAgent.image.repository }}{{- if .Values.persistenceAgent.image.digest }}@{{ .Values.persistenceAgent.image.digest }}{{- else }}:{{ .Values.persistenceAgent.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.persistenceAgent.image.pullPolicy }}
         name: ml-pipeline-persistenceagent
         {{- with .Values.persistenceAgent.resources }}

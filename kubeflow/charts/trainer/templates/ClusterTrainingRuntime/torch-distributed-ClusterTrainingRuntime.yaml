@@ -27,5 +27,5 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: "{{ with (coalesce .Values.global.imageRegistry .Values.runtimes.torch.distributed.image.registry) }}{{ . }}/{{ end }}{{ .Values.runtimes.torch.distributed.image.repository }}{{- if .Values.runtimes.torch.distributed.image.digest }}@{{ .Values.runtimes.torch.distributed.image.digest }}{{- else }}:{{ .Values.runtimes.torch.distributed.image.tag }}{{- end }}"
+                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torch.distributed.image.registry) }}/{{ .Values.runtimes.torch.distributed.image.repository }}{{- if .Values.runtimes.torch.distributed.image.digest }}@{{ .Values.runtimes.torch.distributed.image.digest }}{{- else }}:{{ .Values.runtimes.torch.distributed.image.tag }}{{- end }}"
 {{- end }}

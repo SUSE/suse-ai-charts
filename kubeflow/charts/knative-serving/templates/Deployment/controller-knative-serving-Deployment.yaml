@@ -47,7 +47,7 @@ spec:
           value: config-observability
         - name: METRICS_DOMAIN
           value: knative.dev/internal/serving
-        image: "{{ include "knative-serving.suseImageRegistry" . }}/{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
+        image: "{{ include "knative-serving.suseImageRegistry" (dict "ctx" . "registry" .Values.controller.image.registry) }}/{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-serving.imagePullPolicy" (dict "image" .Values.controller.image "context" .) }}
         name: controller
         ports:

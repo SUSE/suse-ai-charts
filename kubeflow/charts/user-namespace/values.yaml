@@ -3,6 +3,8 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- SUSE AI image registry (required unless imageRegistry is set)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 

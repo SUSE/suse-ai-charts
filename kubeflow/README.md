@@ -787,7 +787,6 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 |-----|---------|-------------|
 | `networkPolicies.enabled` | `false` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Disable with bare Flannel or any CNI that does not enforce NetworkPolicy. |
 | `preflightChecks.enabled` | `false` | Pre-install hook Job that validates default StorageClass and cert-manager CRDs |
-| `preflightChecks.image.registry` | `dp.apps.rancher.io` | Registry for the preflight kubectl image |
 | `preflightChecks.image.repository` | `containers/kubectl` | Repository for the preflight kubectl image |
 | `preflightChecks.image.tag` | `1.34.5` | Tag for the preflight kubectl image |
 | `monitoring.enabled` | `false` | ServiceMonitors + PrometheusRules (requires Rancher Monitoring) |
@@ -832,20 +831,26 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 
 ### Registry Overrides
 
-Three values control where images are pulled from, with a clear precedence:
+Images resolve their registry through a three-tier precedence: an optional master
+override, an optional per-family override, then a per-component default.
 
 | Value | Default | Scope |
 |-------|---------|-------|
-| `global.imageRegistry` | `""` | **All images** — SUSE AI and Application Collection. Overrides everything. |
-| `global.suseRegistry` | `"registry.suse.com"` | SUSE AI images only (`registry.suse.com/*` — kubeflow components, kfp, kserve, etc.) |
-| `global.suseApplicationCollection` | `"dp.apps.rancher.io"` | Application Collection images only (`dp.apps.rancher.io/*` — mariadb, bci-busybox, kubectl, kube-rbac-proxy, workflow-controller, argoexec, metacontroller) |
+| `global.imageRegistry` | `""` | **All images** — SUSE AI and Application Collection. Overrides everything when set. |
+| `global.suseRegistry` | `""` | Optional override for SUSE AI images only (`registry.suse.com/*` — kubeflow components, kfp, kserve, etc.) |
+| `global.suseApplicationCollection` | `""` | Optional override for Application Collection images only (`dp.apps.rancher.io/*` — mariadb, bci-busybox, kubectl, kube-rbac-proxy, workflow-controller, argoexec, metacontroller) |
+| `<subchart>.<component>.image.registry` | `registry.suse.com` (SUSE) / `dp.apps.rancher.io` (App Collection) | The per-component default used when the globals above are empty. |
 
 Precedence (highest to lowest) for each image type:
-- **SUSE AI images:** `global.imageRegistry` → `global.suseRegistry` → chart-level `image.registry`
-- **App Collection images:** `global.imageRegistry` → `global.suseApplicationCollection` → chart-level `appCollection.registry`
+- **SUSE AI images:** `global.imageRegistry` → `global.suseRegistry` → component `image.registry`
+- **App Collection images:** `global.imageRegistry` → `global.suseApplicationCollection` → component `image.registry`
 
-Setting `global.suseApplicationCollection` to empty (`""`) falls through to the chart-level
-`appCollection.registry: dp.apps.rancher.io` fallback — the chart works correctly either way.
+All three globals default to empty, so out of the box every image resolves from its own
+component `registry:` field (`registry.suse.com` for SUSE AI, `dp.apps.rancher.io` for
+Application Collection). Setting a family global overrides that default in bulk for its family;
+setting `global.imageRegistry` overrides every image. An unset global simply falls through to
+the next tier — nothing is mandatory, so a subchart also renders correctly standalone. See
+[docs/registry-values.md](docs/registry-values.md) for the full model.
 
 **Example — mirror only Application Collection images:**
 
@@ -1402,4 +1407,4 @@ kubectl get authorizationpolicy -A
   crashing Dex on startup. The chart pins v0.23.0.
 - **SeaweedFS image is pulled from Docker Hub** (`chrislusf/seaweedfs:4.00`). Air-gapped clusters
   or environments with Docker Hub pull-rate limits will fail to start Kubeflow Pipelines. Mirror
-  the image to a private registry and set `pipelines.seaweedfs.image.registry` to override.
+  the image to a private registry and set `global.imageRegistry` (or `global.suseRegistry`) to override.

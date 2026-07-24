@@ -8,14 +8,6 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
-# -- Fallback registry for suseImageRegistry helper when global overrides are not set
-image:
-  registry: registry.suse.com
-
-# Top-level fallback registry for Application Collection images
-appCollection:
-  registry: dp.apps.rancher.io
-
 replicaCount: 1
 
 manager:

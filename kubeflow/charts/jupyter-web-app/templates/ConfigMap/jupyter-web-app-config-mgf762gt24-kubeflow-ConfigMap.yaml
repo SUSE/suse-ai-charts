@@ -1,4 +1,4 @@
-{{- $reg := include "jupyter-web-app.suseImageRegistry" . -}}
+{{- $reg := include "jupyter-web-app.suseImageRegistry" (dict "ctx" . "registry" .Values.image.registry) -}}
 {{- $ni := .Values.notebookImages -}}
 apiVersion: v1
 data:

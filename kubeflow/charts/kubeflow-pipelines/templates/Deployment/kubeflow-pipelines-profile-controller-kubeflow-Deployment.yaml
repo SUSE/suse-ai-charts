@@ -64,7 +64,7 @@ spec:
         envFrom:
         - configMapRef:
             name: kubeflow-pipelines-profile-controller-env-5252m69c4c
-        image: "{{ include "kubeflow-pipelines.suseImageRegistry" . }}/{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.profileController.image.registry) }}/{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.profileController.image.pullPolicy }}
         name: profile-controller
         ports:

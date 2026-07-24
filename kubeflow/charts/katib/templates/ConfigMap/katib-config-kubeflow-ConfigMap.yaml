@@ -1,4 +1,3 @@
-{{- $reg := include "katib.suseImageRegistry" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,7 +11,7 @@ data:
       suggestions:
       {{- range .Values.katibConfig.suggestions }}
         - algorithmName: {{ .algorithmName }}
-          image: "{{ $reg }}/{{ .image.repository }}:{{ .image.tag }}"
+          image: "{{ include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) }}/{{ .image.repository }}:{{ .image.tag }}"
           {{- if .serviceAccountName }}
           serviceAccountName: {{ .serviceAccountName }}
           {{- end }}
@@ -28,7 +27,7 @@ data:
       metricsCollectors:
       {{- range .Values.katibConfig.metricsCollectors }}
         - kind: {{ .kind }}
-          image: "{{ $reg }}/{{ .image.repository }}:{{ .image.tag }}"
+          image: "{{ include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) }}/{{ .image.repository }}:{{ .image.tag }}"
           {{- if .resources }}
           resources:
             {{- toYaml .resources | nindent 12 }}
@@ -37,7 +36,7 @@ data:
       earlyStoppings:
       {{- range .Values.katibConfig.earlyStoppings }}
         - algorithmName: {{ .algorithmName }}
-          image: "{{ $reg }}/{{ .image.repository }}:{{ .image.tag }}"
+          image: "{{ include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) }}/{{ .image.repository }}:{{ .image.tag }}"
           {{- if .serviceAccountName }}
           serviceAccountName: {{ .serviceAccountName }}
           {{- end }}

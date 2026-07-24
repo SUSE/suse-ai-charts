@@ -24,27 +24,28 @@ imagePullSecrets:
 
 {{/*
 Return the proper SUSE AI Image Registry
-Precedence: global.imageRegistry > global.suseRegistry > image.registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: include "pvcviewer-controller.suseImageRegistry" (dict "ctx" $ "registry" .Values.<component>.registry)
 */}}
 {{- define "pvcviewer-controller.suseImageRegistry" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}
-{{- else if .Values.global.suseRegistry -}}
-  {{- .Values.global.suseRegistry -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
 {{- else -}}
-  {{- .Values.image.registry -}}
+  {{- .registry -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Return the viewer image (injected into PVCViewer pods) with registry override support
+Return the viewer image (injected into PVCViewer pods), SUSE AI family.
+Precedence: global.imageRegistry > global.suseRegistry > viewerImage.registry
 */}}
 {{- define "pvcviewer-controller.viewerImage" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}/{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
-{{- else if .Values.global.suseRegistry -}}
-  {{- .Values.global.suseRegistry -}}/{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
-{{- else -}}
-  {{- .Values.viewerImage.registry -}}/{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
-{{- end -}}
+{{- $reg := "" -}}
+{{- if .Values.global.imageRegistry -}}{{- $reg = .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}{{- $reg = .Values.global.suseRegistry -}}
+{{- else -}}{{- $reg = .Values.viewerImage.registry -}}{{- end -}}
+{{- $reg -}}/{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
 {{- end -}}

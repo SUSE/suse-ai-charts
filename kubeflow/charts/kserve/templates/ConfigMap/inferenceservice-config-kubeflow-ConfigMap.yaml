@@ -1,9 +1,8 @@
-{{- $registry := include "kserve.suseImageRegistry" . -}}
 apiVersion: v1
 data:
   agent: |-
     {
-        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.agentConfig.image.repository }}:{{ .Values.inferenceServiceConfig.agentConfig.image.tag }}",
+        "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.agentConfig.image.registry) }}/{{ .Values.inferenceServiceConfig.agentConfig.image.repository }}:{{ .Values.inferenceServiceConfig.agentConfig.image.tag }}",
         "memoryRequest": "{{ .Values.inferenceServiceConfig.agentConfig.memoryRequest }}",
         "memoryLimit": "{{ .Values.inferenceServiceConfig.agentConfig.memoryLimit }}",
         "cpuRequest": "{{ .Values.inferenceServiceConfig.agentConfig.cpuRequest }}",
@@ -11,7 +10,7 @@ data:
     }
   batcher: |-
     {
-        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.batcherConfig.image.repository }}:{{ .Values.inferenceServiceConfig.batcherConfig.image.tag }}",
+        "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.batcherConfig.image.registry) }}/{{ .Values.inferenceServiceConfig.batcherConfig.image.repository }}:{{ .Values.inferenceServiceConfig.batcherConfig.image.tag }}",
         "memoryRequest": "{{ .Values.inferenceServiceConfig.batcherConfig.memoryRequest }}",
         "memoryLimit": "{{ .Values.inferenceServiceConfig.batcherConfig.memoryLimit }}",
         "cpuRequest": "{{ .Values.inferenceServiceConfig.batcherConfig.cpuRequest }}",
@@ -24,15 +23,15 @@ data:
   explainers: |-
     {
         "alibi": {
-            "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.repository }}",
+            "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.explainersConfig.alibi.image.registry) }}/{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.repository }}",
             "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.tag }}"
         },
         "aix": {
-            "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.repository }}",
+            "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.explainersConfig.aix.image.registry) }}/{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.repository }}",
             "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.tag }}"
         },
         "art": {
-            "image" : "{{ .Values.inferenceServiceConfig.explainersConfig.art.image.registry }}/{{ .Values.inferenceServiceConfig.explainersConfig.art.image.repository }}",
+            "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.explainersConfig.art.image.registry) }}/{{ .Values.inferenceServiceConfig.explainersConfig.art.image.repository }}",
             "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.art.image.tag }}"
         }
     }
@@ -40,7 +39,7 @@ data:
     {{- mergeOverwrite (.Values.inferenceServiceConfig.ingress | fromJson) (dict "ingressDomain" .Values.ingressDomain) | toJson | nindent 4 }}
   logger: |-
     {
-        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.loggerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.loggerConfig.image.tag }}",
+        "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.loggerConfig.image.registry) }}/{{ .Values.inferenceServiceConfig.loggerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.loggerConfig.image.tag }}",
         "memoryRequest": "{{ .Values.inferenceServiceConfig.loggerConfig.memoryRequest }}",
         "memoryLimit": "{{ .Values.inferenceServiceConfig.loggerConfig.memoryLimit }}",
         "cpuRequest": "{{ .Values.inferenceServiceConfig.loggerConfig.cpuRequest }}",
@@ -51,7 +50,7 @@ data:
     {{- .Values.inferenceServiceConfig.metricsAggregator | nindent 4 }}
   router: |-
     {
-        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.routerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.routerConfig.image.tag }}",
+        "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.routerConfig.image.registry) }}/{{ .Values.inferenceServiceConfig.routerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.routerConfig.image.tag }}",
         "memoryRequest": "{{ .Values.inferenceServiceConfig.routerConfig.memoryRequest }}",
         "memoryLimit": "{{ .Values.inferenceServiceConfig.routerConfig.memoryLimit }}",
         "cpuRequest": "{{ .Values.inferenceServiceConfig.routerConfig.cpuRequest }}",
@@ -59,7 +58,7 @@ data:
     }
   storageInitializer: |-
     {
-        "image" : "{{ $registry }}/{{ .Values.inferenceServiceConfig.storageInitializerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.storageInitializerConfig.image.tag }}",
+        "image" : "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.storageInitializerConfig.image.registry) }}/{{ .Values.inferenceServiceConfig.storageInitializerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.storageInitializerConfig.image.tag }}",
         "memoryRequest": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.memoryRequest }}",
         "memoryLimit": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.memoryLimit }}",
         "cpuRequest": "{{ .Values.inferenceServiceConfig.storageInitializerConfig.cpuRequest }}",

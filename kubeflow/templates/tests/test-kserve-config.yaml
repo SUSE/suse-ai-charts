@@ -87,7 +87,7 @@ spec:
   serviceAccountName: "{{ .Release.Name }}-kserve-config-test"
   containers:
   - name: test
-    image: "{{ include "kubeflow.suseApplicationCollectionRegistry" . }}/{{ .Values.testImages.kubectl.repository }}{{- if .Values.testImages.kubectl.digest }}@{{ .Values.testImages.kubectl.digest }}{{- else }}:{{ .Values.testImages.kubectl.tag }}{{- end }}"
+    image: "{{ include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.testImages.kubectl.registry) }}/{{ .Values.testImages.kubectl.repository }}{{- if .Values.testImages.kubectl.digest }}@{{ .Values.testImages.kubectl.digest }}{{- else }}:{{ .Values.testImages.kubectl.tag }}{{- end }}"
     command:
     - sh
     - -c

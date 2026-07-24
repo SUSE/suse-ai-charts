@@ -24,14 +24,16 @@ imagePullSecrets:
 
 {{/*
 Return the proper Application Collection Image Registry.
-Precedence: global.imageRegistry > global.suseApplicationCollection > appCollection.registry
+Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+Usage: {{ include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
 */}}
 {{- define "kubeflow.suseApplicationCollectionRegistry" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}
-{{- else if .Values.global.suseApplicationCollection -}}
-  {{- .Values.global.suseApplicationCollection -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseApplicationCollection -}}
+  {{- $ctx.Values.global.suseApplicationCollection -}}
 {{- else -}}
-  {{- .Values.appCollection.registry -}}
+  {{- .registry -}}
 {{- end -}}
 {{- end -}}

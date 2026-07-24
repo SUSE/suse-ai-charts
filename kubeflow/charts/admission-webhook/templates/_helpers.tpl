@@ -87,14 +87,16 @@ imagePullSecrets:
 
 {{/*
 Return the proper SUSE AI Image Registry
-Precedence: global.imageRegistry > global.suseRegistry > image.registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: include "admission-webhook.suseImageRegistry" (dict "ctx" $ "registry" .Values.image.registry)
 */}}
 {{- define "admission-webhook.suseImageRegistry" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}
-{{- else if .Values.global.suseRegistry -}}
-  {{- .Values.global.suseRegistry -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
 {{- else -}}
-  {{- .Values.image.registry -}}
+  {{- .registry -}}
 {{- end -}}
 {{- end -}}

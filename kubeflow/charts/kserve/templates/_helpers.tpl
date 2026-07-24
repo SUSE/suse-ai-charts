@@ -63,15 +63,17 @@ Create the name of the service account to use
 
 {{/*
 Return the proper SUSE AI Image Registry
-Precedence: global.imageRegistry > global.suseRegistry > image.registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: {{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
 */}}
 {{- define "kserve.suseImageRegistry" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}
-{{- else if .Values.global.suseRegistry -}}
-  {{- .Values.global.suseRegistry -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
 {{- else -}}
-  {{- .Values.image.registry -}}
+  {{- .registry -}}
 {{- end -}}
 {{- end -}}
 
@@ -105,14 +107,16 @@ imagePullSecrets:
 
 {{/*
 Return the proper Application Collection Image Registry.
-Precedence: global.imageRegistry > global.suseApplicationCollection > appCollection.registry
+Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+Usage: {{ include "kserve.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
 */}}
 {{- define "kserve.suseApplicationCollectionRegistry" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}
-{{- else if .Values.global.suseApplicationCollection -}}
-  {{- .Values.global.suseApplicationCollection -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseApplicationCollection -}}
+  {{- $ctx.Values.global.suseApplicationCollection -}}
 {{- else -}}
-  {{- .Values.appCollection.registry -}}
+  {{- .registry -}}
 {{- end -}}
 {{- end -}}

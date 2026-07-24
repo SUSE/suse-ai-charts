@@ -12,14 +12,6 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
-# Top-level registry fallback for SUSE AI images when global overrides are not set
-image:
-  registry: registry.suse.com
-
-# Top-level fallback registry for Application Collection images
-appCollection:
-  registry: dp.apps.rancher.io
-
 # PodDisruptionBudgets for KFP critical path components.
 # With maxUnavailable: 1 and single replicas this is a no-op; meaningful protection
 # requires replicaCount >= 2 (use ha-overrides.yaml).

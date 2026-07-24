@@ -11,7 +11,7 @@ metadata:
 spec:
   container:
     name: storage-initializer
-    image: "{{ with (coalesce .Values.global.imageRegistry .Values.kserve.storageContainer.image.registry) }}{{ . }}/{{ end }}{{ .Values.kserve.storageContainer.image.repository }}{{- if .Values.kserve.storageContainer.image.digest }}@{{ .Values.kserve.storageContainer.image.digest }}{{- else }}:{{ .Values.kserve.storageContainer.image.tag }}{{- end }}"
+    image: "{{ include "model-registry.suseImageRegistry" (dict "ctx" . "registry" .Values.kserve.storageContainer.image.registry) }}/{{ .Values.kserve.storageContainer.image.repository }}{{- if .Values.kserve.storageContainer.image.digest }}@{{ .Values.kserve.storageContainer.image.digest }}{{- else }}:{{ .Values.kserve.storageContainer.image.tag }}{{- end }}"
     imagePullPolicy: {{ .Values.kserve.storageContainer.image.pullPolicy }}
     env:
     - name: MODEL_REGISTRY_BASE_URL

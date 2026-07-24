@@ -8,10 +8,6 @@ global:
   # -- Global override for image pull policy
   imagePullPolicy: IfNotPresent
 
-# Fallback image registry when global.imageRegistry and global.suseRegistry are not set
-image:
-  registry: registry.suse.com
-
 controller:
   image:
     registry: registry.suse.com

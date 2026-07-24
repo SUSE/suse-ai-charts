@@ -11,7 +11,7 @@ spec:
     - --model_name={{`{{.Name}}`}}
     - --model_dir=/mnt/models
     - --http_port=8080
-    image: "{{ with (coalesce .Values.global.imageRegistry .Values.pmmlServer.image.registry) }}{{ . }}/{{ end }}{{ .Values.pmmlServer.image.repository }}{{- if .Values.pmmlServer.image.digest }}@{{ .Values.pmmlServer.image.digest }}{{- else }}:{{ .Values.pmmlServer.image.tag }}{{- end }}"
+    image: "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.pmmlServer.image.registry) }}/{{ .Values.pmmlServer.image.repository }}{{- if .Values.pmmlServer.image.digest }}@{{ .Values.pmmlServer.image.digest }}{{- else }}:{{ .Values.pmmlServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

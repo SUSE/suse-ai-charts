@@ -36,7 +36,7 @@ spec:
         envFrom:
         - configMapRef:
             name: profiles-config-46c7tgh6fd
-        image: "{{ include "profiles-and-kfam.suseImageRegistry" . }}/{{ .Values.kfam.image.repository }}{{- if .Values.kfam.image.digest }}@{{ .Values.kfam.image.digest }}{{- else }}:{{ .Values.kfam.image.tag }}{{- end }}"
+        image: "{{ include "profiles-and-kfam.suseImageRegistry" (dict "ctx" . "registry" .Values.kfam.image.registry) }}/{{ .Values.kfam.image.repository }}{{- if .Values.kfam.image.digest }}@{{ .Values.kfam.image.digest }}{{- else }}:{{ .Values.kfam.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.kfam.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false
@@ -70,7 +70,7 @@ spec:
         envFrom:
         - configMapRef:
             name: profiles-config-46c7tgh6fd
-        image: "{{ include "profiles-and-kfam.suseImageRegistry" . }}/{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
+        image: "{{ include "profiles-and-kfam.suseImageRegistry" (dict "ctx" . "registry" .Values.profileController.image.registry) }}/{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.profileController.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false

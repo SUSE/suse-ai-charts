@@ -30,7 +30,7 @@ spec:
               fieldPath: metadata.namespace
         - name: APP_DISABLE_AUTH
           value: {{ .Values.ui.env.APP_DISABLE_AUTH | quote }}
-        image: "{{ include "katib.suseImageRegistry" . }}/{{ .Values.ui.image.repository }}{{- if .Values.ui.image.digest }}@{{ .Values.ui.image.digest }}{{- else }}:{{ .Values.ui.image.tag }}{{- end }}"
+        image: "{{ include "katib.suseImageRegistry" (dict "ctx" . "registry" .Values.ui.image.registry) }}/{{ .Values.ui.image.repository }}{{- if .Values.ui.image.digest }}@{{ .Values.ui.image.digest }}{{- else }}:{{ .Values.ui.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
         name: katib-ui
         ports:

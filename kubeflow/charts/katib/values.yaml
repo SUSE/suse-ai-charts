@@ -8,14 +8,6 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
-# -- Default registry for all container images
-image:
-  registry: registry.suse.com
-
-# Top-level fallback registry for Application Collection images
-appCollection:
-  registry: dp.apps.rancher.io
-
 controller:
   image:
     registry: registry.suse.com
@@ -110,46 +102,55 @@ katibConfig:
   suggestions:
     - algorithmName: random
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-hyperopt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: tpe
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-hyperopt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: grid
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-optuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: hyperband
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-hyperband
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: bayesianoptimization
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-skopt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: cmaes
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-goptuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: sobol
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-goptuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: multivariate-tpe
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-optuna
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: enas
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-enas
         tag: v0.19.0
       serviceAccountName: katib-suggestion
@@ -158,11 +159,13 @@ katibConfig:
           memory: "200Mi"
     - algorithmName: darts
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-darts
         tag: v0.19.0
       serviceAccountName: katib-suggestion
     - algorithmName: pbt
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/suggestion-pbt
         tag: v0.19.0
       serviceAccountName: katib-suggestion
@@ -175,14 +178,17 @@ katibConfig:
   metricsCollectors:
     - kind: StdOut
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/file-metrics-collector
         tag: v0.19.0
     - kind: File
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/file-metrics-collector
         tag: v0.19.0
     - kind: TensorFlowEvent
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/tfevent-metrics-collector
         tag: v0.19.0
       resources:
@@ -191,6 +197,7 @@ katibConfig:
   earlyStoppings:
     - algorithmName: medianstop
       image:
+        registry: registry.suse.com
         repository: ai/containers/kubeflow/katib/earlystopping-medianstop
         tag: v0.19.0
       serviceAccountName: katib-suggestion

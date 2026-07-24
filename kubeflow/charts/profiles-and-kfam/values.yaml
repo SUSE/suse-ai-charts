@@ -7,8 +7,6 @@ global:
   imagePullSecrets: []
 
 image:
-  # -- Fallback registry for suseImageRegistry helper when global overrides are not set
-  registry: registry.suse.com
 
 replicaCount: 1
 

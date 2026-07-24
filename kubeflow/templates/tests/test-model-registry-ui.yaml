@@ -14,7 +14,7 @@ spec:
   restartPolicy: Never
   containers:
   - name: test
-    image: "{{ include "kubeflow.suseApplicationCollectionRegistry" . }}/{{ .Values.testImages.busybox.repository }}{{- if .Values.testImages.busybox.digest }}@{{ .Values.testImages.busybox.digest }}{{- else }}:{{ .Values.testImages.busybox.tag }}{{- end }}"
+    image: "{{ include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.testImages.busybox.registry) }}/{{ .Values.testImages.busybox.repository }}{{- if .Values.testImages.busybox.digest }}@{{ .Values.testImages.busybox.digest }}{{- else }}:{{ .Values.testImages.busybox.tag }}{{- end }}"
     command:
     - sh
     - -c

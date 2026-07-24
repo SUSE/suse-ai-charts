@@ -112,14 +112,16 @@ Uses the chart-level image.pullPolicy as primary, falling back to global.imagePu
 
 {{/*
 Return the proper SUSE AI Image Registry
-Precedence: global.imageRegistry > global.suseRegistry > image.registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: {{ include "knative-serving.suseImageRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
 */}}
 {{- define "knative-serving.suseImageRegistry" -}}
-{{- if .Values.global.imageRegistry -}}
-  {{- .Values.global.imageRegistry -}}
-{{- else if .Values.global.suseRegistry -}}
-  {{- .Values.global.suseRegistry -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
 {{- else -}}
-  {{- .Values.image.registry -}}
+  {{- .registry -}}
 {{- end -}}
 {{- end -}}
