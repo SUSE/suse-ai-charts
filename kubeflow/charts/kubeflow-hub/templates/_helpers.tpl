@@ -15,13 +15,24 @@ Usage: include "kubeflow-hub.suseImageRegistry" (dict "ctx" $ "registry" .Values
 {{- end -}}
 
 {{/*
-Return image pull secrets.
+Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "kubeflow-hub.imagePullSecrets" -}}
+{{- if and (hasKey .Values "global") .Values.global }}
 {{- if .Values.global.imagePullSecrets }}
 imagePullSecrets:
 {{- range .Values.global.imagePullSecrets }}
-  - name: {{ . }}
+  {{- $imagePullSecrets := list }}
+  {{- if kindIs "string" . }}
+    {{- $imagePullSecrets = append $imagePullSecrets (dict "name" .) }}
+  {{- else }}
+    {{- $imagePullSecrets = append $imagePullSecrets . }}
+  {{- end }}
+  {{- toYaml $imagePullSecrets | nindent 2 }}
 {{- end }}
+{{- else if .Values.imagePullSecrets }}
+imagePullSecrets:
+    {{ toYaml .Values.imagePullSecrets }}
+{{- end -}}
 {{- end -}}
 {{- end -}}
