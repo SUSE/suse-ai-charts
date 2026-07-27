@@ -4,7 +4,7 @@ global:
   # -- Global override for SUSE AI container image registry (e.g. staging registry)
   suseRegistry: ""
   # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
-  suseApplicationCollection: ""
+  suseApplicationCollectionRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 

@@ -199,7 +199,7 @@ helm upgrade --install kubeflow "$SCRIPT_DIR" \
   --server-side=true \
   --wait --timeout 15m \
   --set global.suseRegistry="${SUSE_REGISTRY}" \
-  --set global.suseApplicationCollection="${SUSE_APP_COLLECTION}" \
+  --set global.suseApplicationCollectionRegistry="${SUSE_APP_COLLECTION}" \
   $VALUES_ARGUMENT
 
 echo ""

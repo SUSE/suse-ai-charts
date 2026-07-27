@@ -112,8 +112,8 @@ global:
   # (dp.apps.rancher.io/containers/* that are wired through the chart's helpers).
   # Leave empty (default) to use each component's own image.registry value.
   # When set, overrides every App Collection component's image.registry.
-  # Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
-  suseApplicationCollection: ""
+  # Precedence: global.imageRegistry > global.suseApplicationCollectionRegistry > component image.registry
+  suseApplicationCollectionRegistry: ""
 
   # Demo mode: set true ONLY for local development/tutorial.
   # When false (default), Helm fails at render time if any credential is a known demo default.

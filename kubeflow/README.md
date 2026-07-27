@@ -170,7 +170,7 @@ To redirect images through an internal mirror registry, pass both flags:
   --suse-app-collection=<mirror>
 ```
 
-`--suse-app-collection` redirects: the `dp.apps.rancher.io` registry login, the `application-collection` pull secret, the cert-manager / Istio / ESO OCI chart installs, and sets `global.suseApplicationCollection` on the Kubeflow helm install so all pod images resolve from the mirror.
+`--suse-app-collection` redirects: the `dp.apps.rancher.io` registry login, the `application-collection` pull secret, the cert-manager / Istio / ESO OCI chart installs, and sets `global.suseApplicationCollectionRegistry` on the Kubeflow helm install so all pod images resolve from the mirror.
 `--suse-registry` redirects: the `registry.suse.com` registry login, the `suse-ai-registry` pull secret, and sets `global.suseRegistry` on the Kubeflow helm install.
 
 #### Using a values override file with `runMe.sh`
@@ -335,7 +335,7 @@ helm upgrade --install kubeflow \
 #### Using a mirror / air-gapped registry (Mode 2)
 
 Substitute the mirror hostname in each `oci://` URL, update the `--docker-server` in the pull
-secrets, and pass the `global.suseApplicationCollection` / `global.suseRegistry` values to the
+secrets, and pass the `global.suseApplicationCollectionRegistry` / `global.suseRegistry` values to the
 Kubeflow chart:
 
 ```bash
@@ -357,7 +357,7 @@ kubectl create secret docker-registry suse-ai-registry \
 # Kubeflow chart + images from mirror
 helm upgrade --install kubeflow oci://${MIRROR}/ai/charts/kubeflow \
   --version 0.3.2 -n kubeflow \
-  --set global.suseApplicationCollection="${MIRROR}" \
+  --set global.suseApplicationCollectionRegistry="${MIRROR}" \
   --set global.suseRegistry="${MIRROR}" \
   --force-conflicts --server-side=true --wait --timeout 15m
 ```
@@ -719,7 +719,7 @@ Full JSON schema: [`charts/kubeflow/values.schema.json`](charts/kubeflow/values.
 | `global.imagePullSecrets` | `[{name: application-collection}]` | Registry pull secrets — defined once, used everywhere |
 | `global.imageRegistry` | `""` | Nuclear override — redirects **all** images (SUSE AI + Application Collection) to this registry |
 | `global.suseRegistry` | `"registry.suse.com"` | Override for SUSE AI images only (`registry.suse.com/*`); use for staging or mirror registries |
-| `global.suseApplicationCollection` | `"dp.apps.rancher.io"` | Override for SUSE Application Collection images only (`dp.apps.rancher.io/*`); use for mirror registries |
+| `global.suseApplicationCollectionRegistry` | `"dp.apps.rancher.io"` | Override for SUSE Application Collection images only (`dp.apps.rancher.io/*`); use for mirror registries |
 | `global.labels` | `{}` | Common labels applied to all managed resources |
 | `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
 | `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer |
@@ -838,12 +838,12 @@ override, an optional per-family override, then a per-component default.
 |-------|---------|-------|
 | `global.imageRegistry` | `""` | **All images** — SUSE AI and Application Collection. Overrides everything when set. |
 | `global.suseRegistry` | `""` | Optional override for SUSE AI images only (`registry.suse.com/*` — kubeflow components, kfp, kserve, etc.) |
-| `global.suseApplicationCollection` | `""` | Optional override for Application Collection images only (`dp.apps.rancher.io/*` — mariadb, bci-busybox, kubectl, kube-rbac-proxy, workflow-controller, argoexec, metacontroller) |
+| `global.suseApplicationCollectionRegistry` | `""` | Optional override for Application Collection images only (`dp.apps.rancher.io/*` — mariadb, bci-busybox, kubectl, kube-rbac-proxy, workflow-controller, argoexec, metacontroller) |
 | `<subchart>.<component>.image.registry` | `registry.suse.com` (SUSE) / `dp.apps.rancher.io` (App Collection) | The per-component default used when the globals above are empty. |
 
 Precedence (highest to lowest) for each image type:
 - **SUSE AI images:** `global.imageRegistry` → `global.suseRegistry` → component `image.registry`
-- **App Collection images:** `global.imageRegistry` → `global.suseApplicationCollection` → component `image.registry`
+- **App Collection images:** `global.imageRegistry` → `global.suseApplicationCollectionRegistry` → component `image.registry`
 
 All three globals default to empty, so out of the box every image resolves from its own
 component `registry:` field (`registry.suse.com` for SUSE AI, `dp.apps.rancher.io` for
@@ -856,7 +856,7 @@ the next tier — nothing is mandatory, so a subchart also renders correctly sta
 
 ```yaml
 global:
-  suseApplicationCollection: mirror.corp.example.com
+  suseApplicationCollectionRegistry: mirror.corp.example.com
 ```
 
 **Example — mirror both registries:**
@@ -864,7 +864,7 @@ global:
 ```yaml
 global:
   suseRegistry: mirror.corp.example.com
-  suseApplicationCollection: mirror.corp.example.com
+  suseApplicationCollectionRegistry: mirror.corp.example.com
 ```
 
 **Example — single nuclear override for all images:**
