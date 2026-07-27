@@ -11,7 +11,7 @@ spec:
     - --model_name={{`{{.Name}}`}}
     - --model_dir=/mnt/models
     - --http_port=8080
-    image: "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.sklearnServer.image.registry) }}/{{ .Values.sklearnServer.image.repository }}{{- if .Values.sklearnServer.image.digest }}@{{ .Values.sklearnServer.image.digest }}{{- else }}:{{ .Values.sklearnServer.image.tag }}{{- end }}"
+    image: "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.sklearnServer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.sklearnServer.image.repository }}{{- if .Values.sklearnServer.image.digest }}@{{ .Values.sklearnServer.image.digest }}{{- else }}:{{ .Values.sklearnServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

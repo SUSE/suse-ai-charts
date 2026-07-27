@@ -27,7 +27,7 @@ spec:
                 spec:
                   containers:
                     - name: dataset-initializer
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.datasetInitializer.registry) }}/{{ .Values.runtimes.torchtune.images.datasetInitializer.repository }}{{- if .Values.runtimes.torchtune.images.datasetInitializer.digest }}@{{ .Values.runtimes.torchtune.images.datasetInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.datasetInitializer.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.datasetInitializer.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torchtune.images.datasetInitializer.repository }}{{- if .Values.runtimes.torchtune.images.datasetInitializer.digest }}@{{ .Values.runtimes.torchtune.images.datasetInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.datasetInitializer.tag }}{{- end }}"
                       env:
                         - name: STORAGE_URI
                           value: hf://tatsu-lab/alpaca
@@ -48,7 +48,7 @@ spec:
                 spec:
                   containers:
                     - name: model-initializer
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.modelInitializer.registry) }}/{{ .Values.runtimes.torchtune.images.modelInitializer.repository }}{{- if .Values.runtimes.torchtune.images.modelInitializer.digest }}@{{ .Values.runtimes.torchtune.images.modelInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.modelInitializer.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.modelInitializer.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torchtune.images.modelInitializer.repository }}{{- if .Values.runtimes.torchtune.images.modelInitializer.digest }}@{{ .Values.runtimes.torchtune.images.modelInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.modelInitializer.tag }}{{- end }}"
                       env:
                         - name: STORAGE_URI
                           value: hf://meta-llama/Llama-3.2-1B-Instruct
@@ -74,7 +74,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.trainer.registry) }}/{{ .Values.runtimes.torchtune.images.trainer.repository }}{{- if .Values.runtimes.torchtune.images.trainer.digest }}@{{ .Values.runtimes.torchtune.images.trainer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.trainer.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.trainer.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torchtune.images.trainer.repository }}{{- if .Values.runtimes.torchtune.images.trainer.digest }}@{{ .Values.runtimes.torchtune.images.trainer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.trainer.tag }}{{- end }}"
                       command:
                         - tune
                         - run

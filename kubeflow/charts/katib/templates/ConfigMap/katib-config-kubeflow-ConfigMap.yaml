@@ -11,7 +11,7 @@ data:
       suggestions:
       {{- range .Values.katibConfig.suggestions }}
         - algorithmName: {{ .algorithmName }}
-          image: "{{ include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) }}/{{ .image.repository }}:{{ .image.tag }}"
+          image: "{{- $registry := include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .image.repository }}:{{ .image.tag }}"
           {{- if .serviceAccountName }}
           serviceAccountName: {{ .serviceAccountName }}
           {{- end }}
@@ -27,7 +27,7 @@ data:
       metricsCollectors:
       {{- range .Values.katibConfig.metricsCollectors }}
         - kind: {{ .kind }}
-          image: "{{ include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) }}/{{ .image.repository }}:{{ .image.tag }}"
+          image: "{{- $registry := include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .image.repository }}:{{ .image.tag }}"
           {{- if .resources }}
           resources:
             {{- toYaml .resources | nindent 12 }}
@@ -36,7 +36,7 @@ data:
       earlyStoppings:
       {{- range .Values.katibConfig.earlyStoppings }}
         - algorithmName: {{ .algorithmName }}
-          image: "{{ include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) }}/{{ .image.repository }}:{{ .image.tag }}"
+          image: "{{- $registry := include "katib.suseImageRegistry" (dict "ctx" $ "registry" .image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .image.repository }}:{{ .image.tag }}"
           {{- if .serviceAccountName }}
           serviceAccountName: {{ .serviceAccountName }}
           {{- end }}

@@ -27,7 +27,7 @@ spec:
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
       initContainers:
       - name: wait-for-mlmd
-        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataWriter.image.registry) }}/{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataWriter.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataWriter.image.pullPolicy }}
         command:
         - python3
@@ -56,7 +56,7 @@ spec:
       - env:
         - name: NAMESPACE_TO_WATCH
           value: ''
-        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataWriter.image.registry) }}/{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataWriter.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataWriter.image.pullPolicy }}
         name: main
         {{- with .Values.metadataWriter.resources }}

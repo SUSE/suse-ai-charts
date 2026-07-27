@@ -70,7 +70,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        image: "{{ include "knative-eventing.suseImageRegistry" (dict "ctx" . "registry" .Values.pingsource.image.registry) }}/{{ .Values.pingsource.image.repository }}{{- if .Values.pingsource.image.digest }}@{{ .Values.pingsource.image.digest }}{{- else }}:{{ .Values.pingsource.image.tag }}{{- end }}"
+        image: "{{- $registry := include "knative-eventing.suseImageRegistry" (dict "ctx" . "registry" .Values.pingsource.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.pingsource.image.repository }}{{- if .Values.pingsource.image.digest }}@{{ .Values.pingsource.image.digest }}{{- else }}:{{ .Values.pingsource.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-eventing.imagePullPolicy" (dict "image" .Values.pingsource.image "context" .) }}
         name: dispatcher
         ports:

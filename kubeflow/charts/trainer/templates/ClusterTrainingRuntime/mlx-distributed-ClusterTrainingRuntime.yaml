@@ -36,7 +36,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.mlx.image.registry) }}/{{ .Values.runtimes.mlx.image.repository }}{{- if .Values.runtimes.mlx.image.digest }}@{{ .Values.runtimes.mlx.image.digest }}{{- else }}:{{ .Values.runtimes.mlx.image.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.mlx.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.mlx.image.repository }}{{- if .Values.runtimes.mlx.image.digest }}@{{ .Values.runtimes.mlx.image.digest }}{{- else }}:{{ .Values.runtimes.mlx.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
         - name: node
@@ -46,7 +46,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.mlx.image.registry) }}/{{ .Values.runtimes.mlx.image.repository }}{{- if .Values.runtimes.mlx.image.digest }}@{{ .Values.runtimes.mlx.image.digest }}{{- else }}:{{ .Values.runtimes.mlx.image.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.mlx.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.mlx.image.repository }}{{- if .Values.runtimes.mlx.image.digest }}@{{ .Values.runtimes.mlx.image.digest }}{{- else }}:{{ .Values.runtimes.mlx.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
                       command:

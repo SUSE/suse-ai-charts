@@ -5,7 +5,7 @@ metadata:
 spec:
   container:
     name: storage-initializer
-    image: "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.storageInitializer.image.registry) }}/{{ .Values.storageInitializer.image.repository }}{{- if .Values.storageInitializer.image.digest }}@{{ .Values.storageInitializer.image.digest }}{{- else }}:{{ .Values.storageInitializer.image.tag }}{{- end }}"
+    image: "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.storageInitializer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.storageInitializer.image.repository }}{{- if .Values.storageInitializer.image.digest }}@{{ .Values.storageInitializer.image.digest }}{{- else }}:{{ .Values.storageInitializer.image.tag }}{{- end }}"
     resources:
       requests:
         memory: 100Mi
