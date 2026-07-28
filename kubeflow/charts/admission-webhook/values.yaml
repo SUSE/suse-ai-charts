@@ -1,12 +1,14 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 image:
   registry: registry.suse.com
-  repository: ai/containers/poddefaults-webhook
-  tag: v1.10.0
+  repository: ai/containers/kubeflow/dashboard/poddefaults-webhook
+  tag: v2.0.0
   pullPolicy: IfNotPresent
 
 nameOverride: ""

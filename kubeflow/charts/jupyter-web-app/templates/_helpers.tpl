@@ -83,3 +83,19 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: include "jupyter-web-app.suseImageRegistry" (dict "ctx" $ "registry" .Values.image.registry)
+*/}}
+{{- define "jupyter-web-app.suseImageRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}

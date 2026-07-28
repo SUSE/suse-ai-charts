@@ -102,6 +102,18 @@ rules:
   - patch
   - watch
 - apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - delete
+  - patch
+  - watch
+- apiGroups:
   - serving.knative.dev
   - autoscaling.internal.knative.dev
   - networking.internal.knative.dev

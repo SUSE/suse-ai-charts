@@ -52,12 +52,12 @@ spec:
         - name: METRICS_DOMAIN
           value: knative.dev/eventing
         - name: APISERVER_RA_IMAGE
-          value: "{{ with (coalesce .Values.global.imageRegistry .Values.controller.env.APISERVER_RA_IMAGE.registry) }}{{ . }}/{{ end }}{{ .Values.controller.env.APISERVER_RA_IMAGE.repository }}{{- if .Values.controller.env.APISERVER_RA_IMAGE.digest }}@{{ .Values.controller.env.APISERVER_RA_IMAGE.digest }}{{- else }}:{{ .Values.controller.env.APISERVER_RA_IMAGE.tag }}{{- end }}"
+          value: "{{ include "knative-eventing.suseImageRegistry" (dict "ctx" . "registry" .Values.controller.env.APISERVER_RA_IMAGE.registry) }}/{{ .Values.controller.env.APISERVER_RA_IMAGE.repository }}{{- if .Values.controller.env.APISERVER_RA_IMAGE.digest }}@{{ .Values.controller.env.APISERVER_RA_IMAGE.digest }}{{- else }}:{{ .Values.controller.env.APISERVER_RA_IMAGE.tag }}{{- end }}"
         - name: POD_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.controller.image.registry) }}{{ . }}/{{ end }}{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
+        image: "{{ include "knative-eventing.suseImageRegistry" (dict "ctx" . "registry" .Values.controller.image.registry) }}/{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-eventing.imagePullPolicy" (dict "image" .Values.controller.image "context" .) }}
         livenessProbe:
           httpGet:

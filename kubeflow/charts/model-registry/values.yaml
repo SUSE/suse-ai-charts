@@ -1,11 +1,16 @@
 global:
+  # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   imagePullSecrets: []
 
 server:
   image:
     registry: registry.suse.com
-    repository: ai/containers/model-registry/server
+    repository: ai/containers/kubeflow/model-registry/server
     tag: v0.3.7
     pullPolicy: IfNotPresent
     digest: ""
@@ -45,7 +50,7 @@ server:
 ui:
   image:
     registry: registry.suse.com
-    repository: ai/containers/model-registry/ui
+    repository: ai/containers/kubeflow/model-registry/ui
     tag: v0.3.7
     pullPolicy: IfNotPresent
     digest: ""
@@ -94,7 +99,7 @@ dbInit:
   image:
     registry: dp.apps.rancher.io
     repository: containers/mariadb
-    tag: "11.8.6-5.1"
+    tag: "11.8.8-10.1"
     pullPolicy: IfNotPresent
     digest: ""
 
@@ -102,7 +107,7 @@ controller:
   enabled: false
   image:
     registry: registry.suse.com
-    repository: ai/containers/model-registry/controller
+    repository: ai/containers/kubeflow/model-registry/controller
     tag: v0.3.7            # pinned — manifests use latest; same release train as server/ui
     pullPolicy: IfNotPresent
     digest: ""
@@ -140,7 +145,7 @@ kserve:
     enabled: false
     image:
       registry: registry.suse.com
-      repository: ai/containers/model-registry/storage-initializer
+      repository: ai/containers/kubeflow/model-registry/storage-initializer
       tag: v0.3.7          # pinned — manifests use latest; same release train as server/ui
       pullPolicy: IfNotPresent
       digest: ""

@@ -60,7 +60,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.webhook.image.registry) }}{{ . }}/{{ end }}{{ .Values.webhook.image.repository }}{{- if .Values.webhook.image.digest }}@{{ .Values.webhook.image.digest }}{{- else }}:{{ .Values.webhook.image.tag }}{{- end }}"
+        image: "{{ include "knative-eventing.suseImageRegistry" (dict "ctx" . "registry" .Values.webhook.image.registry) }}/{{ .Values.webhook.image.repository }}{{- if .Values.webhook.image.digest }}@{{ .Values.webhook.image.digest }}{{- else }}:{{ .Values.webhook.image.tag }}{{- end }}"
         imagePullPolicy: {{ include "knative-eventing.imagePullPolicy" (dict "image" .Values.webhook.image "context" .) }}
         livenessProbe:
           httpGet:

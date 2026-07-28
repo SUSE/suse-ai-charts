@@ -63,6 +63,39 @@ Create the name of the service account to use
 
 
 {{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: {{ include "tensorboard-controller.suseImageRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
+*/}}
+{{- define "tensorboard-controller.suseImageRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the proper Application Collection Image Registry.
+Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+Usage: {{ include "tensorboard-controller.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
+*/}}
+{{- define "tensorboard-controller.suseApplicationCollectionRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseApplicationCollection -}}
+  {{- $ctx.Values.global.suseApplicationCollection -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/*
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "tensorboard-controller.imagePullSecrets" -}}

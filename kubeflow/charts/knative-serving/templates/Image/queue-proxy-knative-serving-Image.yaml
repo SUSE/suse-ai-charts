@@ -8,4 +8,4 @@ metadata:
   name: queue-proxy
   namespace: knative-serving
 spec:
-  image: "{{ with (coalesce .Values.global.imageRegistry .Values.queueProxy.image.registry) }}{{ . }}/{{ end }}{{ .Values.queueProxy.image.repository }}{{- if .Values.queueProxy.image.digest }}@{{ .Values.queueProxy.image.digest }}{{- else }}:{{ .Values.queueProxy.image.tag }}{{- end }}"
+  image: "{{ include "knative-serving.suseImageRegistry" (dict "ctx" . "registry" .Values.queueProxy.image.registry) }}/{{ .Values.queueProxy.image.repository }}{{- if .Values.queueProxy.image.digest }}@{{ .Values.queueProxy.image.digest }}{{- else }}:{{ .Values.queueProxy.image.tag }}{{- end }}"

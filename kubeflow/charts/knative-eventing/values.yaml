@@ -1,6 +1,8 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
   # -- Global override for image pull policy
@@ -9,8 +11,9 @@ global:
 controller:
   image:
     registry: registry.suse.com
-    repository: ai/containers/eventing/cmd/controller
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/eventing/cmd/controller
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -19,15 +22,17 @@ controller:
   env:
     APISERVER_RA_IMAGE:
       registry: registry.suse.com
-      repository: ai/containers/eventing/cmd/apiserver_receive_adapter
-      tag: "v1.20.0"  # unused when digest is set
+      repository: ai/containers/knative-releases/knative.dev/eventing/cmd/apiserver_receive_adapter
+      tag: "v1.22.0"  # unused when digest is set
+      digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
       pullPolicy: IfNotPresent
 
 webhook:
   image:
     registry: registry.suse.com
-    repository: ai/containers/eventing/cmd/webhook
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/eventing/cmd/webhook
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -40,8 +45,8 @@ webhook:
 pingsource:
   image:
     registry: registry.suse.com
-    repository: ai/containers/eventing/cmd/mtping
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/eventing/cmd/mtping
+    tag: "v1.22.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:

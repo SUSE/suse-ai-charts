@@ -1,12 +1,14 @@
 image:
   registry: registry.suse.com
-  repository: ai/containers/central-dashboard
-  tag: v1.10.0
+  repository: ai/containers/kubeflow/dashboard/dashboard
+  tag: v2.0.0
   pullPolicy: IfNotPresent
 
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI image registry
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 replicaCount: 1

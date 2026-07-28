@@ -1,0 +1,6 @@
+apiVersion: v2
+appVersion: v0.3.10
+description: Kubeflow Hub - Model Registry proxy server over the KFP embedded database
+name: kubeflow-hub
+type: application
+version: 0.1.0

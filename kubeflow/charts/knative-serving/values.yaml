@@ -4,6 +4,8 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
   # -- Global override for image pull policy
@@ -12,8 +14,9 @@ global:
 controller:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/controller
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/controller
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -26,8 +29,9 @@ controller:
 activator:
   image:
     registry: registry.suse.com
-    repository: ai/containers/activator
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/activator
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -40,8 +44,9 @@ activator:
 autoscaler:
   image:
     registry: registry.suse.com
-    repository: ai/containers/autoscaler
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/autoscaler
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -54,8 +59,9 @@ autoscaler:
 webhook:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/webhook
-    tag: "v1.20.0"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/webhook
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -68,8 +74,9 @@ webhook:
 netIstioController:
   image:
     registry: registry.suse.com
-    repository: ai/containers/net-istio/cmd/controller
-    tag: "v1.20.1"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/controller
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -82,8 +89,9 @@ netIstioController:
 netIstioWebhook:
   image:
     registry: registry.suse.com
-    repository: ai/containers/net-istio/cmd/webhook
-    tag: "v1.20.1"  # unused when digest is set
+    repository: ai/containers/knative-releases/knative.dev/net-istio/cmd/webhook
+    tag: "v1.22.0"  # unused when digest is set
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -97,19 +105,25 @@ netIstioWebhook:
 queueSidecarImage:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/queue
-    tag: "v1.20.0"
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
+    tag: "v1.22.0"
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
 
 # Queue proxy image used in the queue-proxy Image resource
 queueProxy:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving/cmd/queue
-    tag: "v1.20.0"
+    repository: ai/containers/knative-releases/knative.dev/serving/cmd/queue
+    tag: "v1.22.0"
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
     pullPolicy: IfNotPresent
+
+# Registries that Knative skips image tag resolving for (digest pinning).
+# Supports a comma-separated list of registries.
+# Defaults to the resolved SUSE AI registry; override to list multiple registries.
+registriesSkippingTagResolving: ""
 
 # Domain for InferenceService external URLs.
 # Override with <node-ip>.nip.io or your real domain.
 domain: "example.com"
-registriesSkippingTagResolving: "registry.suse.com"

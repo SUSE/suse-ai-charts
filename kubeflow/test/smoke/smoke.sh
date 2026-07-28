@@ -14,10 +14,14 @@ set -uo pipefail
 
 NS=kubeflow
 USER_NS=kubeflow-user-example-com
+SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=
+SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=
 
 for arg in "$@"; do
   case "$arg" in
-    --user-namespace=*) USER_NS="${arg#*=}" ;;
+    --user-namespace=*)       USER_NS="${arg#*=}" ;;
+    --suse-registry=*)        SUSE_REGISTRY="${arg#*=}" ;;
+    --suse-app-collection=*)  SUSE_APP_COLLECTION="${arg#*=}" ;;
   esac
 done
 
@@ -37,14 +41,20 @@ warn()    { yellow "$1"; ((WARNINGS++)) || true; }
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
-# Check that a kubectl resource exists
+# Check that a kubectl resource exists, retrying for up to 30s to absorb transient API errors.
 check_resource() {
   local kind="$1" name="$2" ns="${3:-$NS}"
-  if kubectl get "$kind" "$name" -n "$ns" &>/dev/null; then
-    pass "$kind/$name exists in $ns"
-  else
-    fail "$kind/$name missing in $ns"
-  fi
+  local elapsed=0 max_wait=30
+  while true; do
+    if kubectl get "$kind" "$name" -n "$ns" &>/dev/null; then
+      pass "$kind/$name exists in $ns"
+      return 0
+    fi
+    elapsed=$((elapsed+5))
+    [[ $elapsed -ge $max_wait ]] && break
+    sleep 5
+  done
+  fail "$kind/$name missing in $ns"
 }
 
 # Check that a CRD exists
@@ -57,32 +67,42 @@ check_crd() {
   fi
 }
 
-# Check that a deployment has at least N ready replicas
+# Check that a deployment has at least N ready replicas, retrying for up to 60s.
 check_deploy_ready() {
   local name="$1" ns="${2:-$NS}" min="${3:-1}"
-  local ready
-  ready=$(kubectl get deploy "$name" -n "$ns" \
-    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
-  ready=${ready:-0}
-  if [ "$ready" -ge "$min" ]; then
-    pass "Deployment $name ready ($ready/$min)"
-  else
-    fail "Deployment $name not ready ($ready/$min replicas)"
-  fi
+  local ready elapsed=0 max_wait=60
+  while true; do
+    ready=$(kubectl get deploy "$name" -n "$ns" \
+      -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+    ready=${ready:-0}
+    if [ "$ready" -ge "$min" ]; then
+      pass "Deployment $name ready ($ready/$min)"
+      return 0
+    fi
+    elapsed=$((elapsed+5))
+    [[ $elapsed -ge $max_wait ]] && break
+    sleep 5
+  done
+  fail "Deployment $name not ready ($ready/$min replicas) after ${max_wait}s"
 }
 
-# Check that a statefulset has at least N ready replicas
+# Check that a statefulset has at least N ready replicas, retrying for up to 60s.
 check_sts_ready() {
   local name="$1" ns="${2:-$NS}" min="${3:-1}"
-  local ready
-  ready=$(kubectl get sts "$name" -n "$ns" \
-    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
-  ready=${ready:-0}
-  if [ "$ready" -ge "$min" ]; then
-    pass "StatefulSet $name ready ($ready/$min)"
-  else
-    fail "StatefulSet $name not ready ($ready/$min replicas)"
-  fi
+  local ready elapsed=0 max_wait=60
+  while true; do
+    ready=$(kubectl get sts "$name" -n "$ns" \
+      -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+    ready=${ready:-0}
+    if [ "$ready" -ge "$min" ]; then
+      pass "StatefulSet $name ready ($ready/$min)"
+      return 0
+    fi
+    elapsed=$((elapsed+5))
+    [[ $elapsed -ge $max_wait ]] && break
+    sleep 5
+  done
+  fail "StatefulSet $name not ready ($ready/$min replicas) after ${max_wait}s"
 }
 
 # HTTP health check via a temporary kubectl run pod (no port-forward needed)
@@ -91,7 +111,7 @@ check_http() {
   local result
 
   if result=$(kubectl run "smoke-http-$$" \
-        --image=dp.apps.rancher.io/containers/bci-busybox:15.7 \
+        --image=${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7 \
         --restart=Never \
         --rm \
         --attach \
@@ -121,7 +141,7 @@ check_http() {
 check_tcp() {
   local label="$1" host="$2" port="$3"
   if kubectl run "smoke-tcp-$$" \
-      --image=dp.apps.rancher.io/containers/bci-busybox:15.7 \
+      --image=${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7 \
       --restart=Never \
       --rm \
       --attach \
@@ -162,12 +182,19 @@ check_seaweedfs_bucket() {
   local bucket="$1"
   # Use weed shell via kubectl exec — S3 API requires auth after IAM is configured.
   # weed shell connects to the master gRPC port (9333) which does not require S3 auth.
-  if kubectl exec -n "$NS" deploy/seaweedfs -- \
-      sh -c "printf 's3.bucket.list\n' | weed shell -master 127.0.0.1:9333 2>&1 | grep -q '${bucket}'"; then
-    pass "SeaweedFS bucket '$bucket' accessible"
-  else
-    fail "SeaweedFS bucket '$bucket' not accessible"
-  fi
+  # Retry for up to 60s: the bucket is created asynchronously on first startup.
+  local elapsed=0 max_wait=60
+  while true; do
+    if kubectl exec -n "$NS" deploy/seaweedfs -- \
+        sh -c "printf 's3.bucket.list\n' | weed shell -master 127.0.0.1:9333 2>&1 | grep -q '${bucket}'"; then
+      pass "SeaweedFS bucket '$bucket' accessible"
+      return 0
+    fi
+    elapsed=$((elapsed+5))
+    [[ $elapsed -ge $max_wait ]] && break
+    sleep 5
+  done
+  fail "SeaweedFS bucket '$bucket' not accessible after ${max_wait}s"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════

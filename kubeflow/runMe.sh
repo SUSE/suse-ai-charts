@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=
+SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=
+
 # ── Credentials ──────────────────────────────────────────────────────────────
 # Collect non-flag positional args first so flags like --kubeconfig aren't
 # mistakenly treated as the registry username/token.
@@ -67,6 +70,14 @@ while [ $# -gt 0 ] ; do
       ENABLE_CERT_MANAGER=0
       shift
       ;;
+    --suse-registry=*)
+      SUSE_REGISTRY="${1#*=}"
+      shift
+      ;;
+    --suse-app-collection=*)
+      SUSE_APP_COLLECTION="${1#*=}"
+      shift
+      ;;
     *)
       # for now assume they are AppCo cred args and SUSE registry cred args
       shift
@@ -90,20 +101,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Helm registry logins
 echo "=== Step 1: Helm registry login ==="
-echo "$APPCO_REGISTRY_TOKEN" | helm registry login dp.apps.rancher.io --username "$APPCO_REGISTRY_USER" --password-stdin
-echo "$SUSE_AI_REGISTRY_TOKEN" | helm registry login registry.suse.com --username "$SUSE_AI_REGISTRY_USER" --password-stdin
+echo "$APPCO_REGISTRY_TOKEN" | helm registry login "${SUSE_APP_COLLECTION}" --username "$APPCO_REGISTRY_USER" --password-stdin
+echo "$SUSE_AI_REGISTRY_TOKEN" | helm registry login "${SUSE_REGISTRY}" --username "$SUSE_AI_REGISTRY_USER" --password-stdin
 
 echo "=== Step 2 & 3: Create namespaces and all the required secrets ==="
 for ns in "${NAMESPACES_TO_CREATE[@]}"; do
   kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
   kubectl create secret docker-registry application-collection \
-    --docker-server=dp.apps.rancher.io \
+    --docker-server="${SUSE_APP_COLLECTION}" \
     --docker-username="$APPCO_REGISTRY_USER" \
     --docker-password="$APPCO_REGISTRY_TOKEN" \
     -n "$ns" \
     --dry-run=client -o yaml | kubectl apply -f -
   kubectl create secret docker-registry suse-ai-registry \
-    --docker-server=registry.suse.com \
+    --docker-server="${SUSE_REGISTRY}" \
     --docker-username="$SUSE_AI_REGISTRY_USER" \
     --docker-password="$SUSE_AI_REGISTRY_TOKEN" \
     -n "$ns" \
@@ -129,7 +140,7 @@ done
 
 echo "=== Step 5: Optionally install cert-manager ==="
 if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
-  helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
+  helm upgrade --install cert-manager oci://${SUSE_APP_COLLECTION}/charts/cert-manager \
     --version 1.19.3 \
     --namespace cert-manager \
     --set crds.enabled=true \
@@ -139,8 +150,8 @@ if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
 fi
 
 echo "=== Step 6: Install Istio ==="
-helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
-  --version 1.1.3 \
+helm upgrade --install istio oci://${SUSE_APP_COLLECTION}/charts/istio \
+  --version 1.3.0 \
   --namespace istio-system \
   --set global.imagePullSecrets[0].name=application-collection \
   --set gateway.enabled=true \
@@ -149,8 +160,8 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --wait --timeout 5m
 
 echo "=== Step 7: Install External Secrets Operator ==="
-helm upgrade --install external-secrets-operator oci://dp.apps.rancher.io/charts/external-secrets-operator \
-  --version 2.3.0 \
+helm upgrade --install external-secrets-operator oci://${SUSE_APP_COLLECTION}/charts/external-secrets-operator \
+  --version 2.6.0 \
   --namespace kubeflow \
   --set installCRDs=true \
   --set global.imagePullSecrets[0].name=application-collection \
@@ -186,7 +197,10 @@ helm upgrade --install kubeflow "$SCRIPT_DIR" \
   -n kubeflow \
   --force-conflicts \
   --server-side=true \
-  --wait --timeout 15m $VALUES_ARGUMENT
+  --wait --timeout 15m \
+  --set global.suseRegistry="${SUSE_REGISTRY}" \
+  --set global.suseApplicationCollection="${SUSE_APP_COLLECTION}" \
+  $VALUES_ARGUMENT
 
 echo ""
 echo ""

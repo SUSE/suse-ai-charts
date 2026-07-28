@@ -2,8 +2,8 @@ apiVersion: v2
 name: kubeflow
 description: Kubeflow ML Platform - End-to-end Machine Learning on Kubernetes
 type: application
-version: 0.4.0-alpha.1
-appVersion: "0.4.0-alpha.1"
+version: "0.4.0-alpha.1"
+appVersion: "26.03.1"
 kubeVersion: ">=1.25.0-0"
 
 keywords:
@@ -40,13 +40,13 @@ dependencies:
   # Infrastructure - conditionally installed
   # Rancher cert-manager (set certManager.install=true to deploy)
   - name: cert-manager
-    version: "1.13.1"
+    version: "1.20.2"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: certManager.install
 
-  # Rancher Istio (set istio.install=true to deploy)
+  # SUSE Application Collection Istio (set istio.install=true to deploy)
   # - name: istio
-  #   version: "106.3.0+up1.25.0"
+  #   version: "1.3.2"
   #   repository: "oci://dp.apps.rancher.io/charts"
   #   condition: istio.install
 
@@ -56,13 +56,13 @@ dependencies:
     repository: "file://./charts/kubeflow-namespace"
 
   - name: knative-serving
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/knative-serving"
     alias: knativeServing
     condition: knativeServing.enabled
 
   - name: knative-eventing
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/knative-eventing"
     condition: knativeEventing.enabled
 
@@ -70,13 +70,13 @@ dependencies:
   # v0.24.0 (dex 2.44.0 / Go 1.25.3) crashes on Kubernetes storage due to Go's
   # stricter IPv4-in-brackets URL validation. v0.23.0 (dex 2.42.0) is stable.
   - name: dex-idp
-    version: "0.23.0"
+    version: "0.24.1"
     repository: "oci://dp.apps.rancher.io/charts"
     alias: dex
     condition: dex.enabled
 
   - name: oauth2-proxy
-    version: "10.1.4"
+    version: "10.7.0"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: global.oauth2Proxy.enabled
 
@@ -89,88 +89,94 @@ dependencies:
     repository: "file://./charts/kubeflow-roles"
   
   - name: central-dashboard
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/central-dashboard"
     condition: centralDashboard.enabled
 
   - name: kubeflow-pipelines
-    version: "0.2.3"
+    version: "0.2.4"
     repository: "file://./charts/kubeflow-pipelines"
     alias: pipelines
     condition: pipelines.enabled
 
   - name: notebook-controller
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/notebook-controller"
     condition: notebooks.controller.enabled
 
   - name: jupyter-web-app
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/jupyter-web-app"
     condition: notebooks.webApp.enabled
 
   - name: katib
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/katib"
     condition: katib.enabled
 
   - name: kserve
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/kserve"
     condition: kserve.enabled
 
   - name: training-operator
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/training-operator"
     condition: trainingOperator.enabled
 
   - name: trainer
-    version: "0.1.0"
+    version: "0.1.1"
     repository: "file://./charts/trainer"
     condition: trainer.enabled
 
   - name: profiles-and-kfam
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/profiles-and-kfam"
     condition: profiles.enabled
 
   - name: volumes-web-app
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/volumes-web-app"
     condition: volumesWebApp.enabled
 
   - name: pvcviewer-controller
-    version: "0.1.0"
+    version: "0.1.1"
     repository: "file://./charts/pvcviewer-controller"
     condition: volumesWebApp.enabled
 
   - name: tensorboard-controller
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/tensorboard-controller"
     condition: tensorboard.controller.enabled
 
   - name: tensorboards-web-app
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/tensorboards-web-app"
     condition: tensorboard.webApp.enabled
 
   - name: admission-webhook
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/admission-webhook"
 
   - name: models-web-app
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/models-web-app"
     condition: kserve.enabled
 
   - name: model-registry
-    version: "0.1.0"
+    version: "0.1.1"
     repository: "file://./charts/model-registry"
     alias: modelRegistry
     condition: modelRegistry.enabled
 
+  - name: kubeflow-hub
+    version: "0.1.0"
+    repository: "file://./charts/kubeflow-hub"
+    alias: hub
+    condition: hub.enabled
+
   - name: user-namespace
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/user-namespace"
 
   # NetworkPolicies — deny-by-default with explicit allow rules
@@ -189,14 +195,14 @@ dependencies:
   # External Secrets Operator — propagates registry pull secrets into user namespaces automatically.
   # Set externalSecretsOperator.enabled=false if ESO is already installed cluster-wide.
   - name: external-secrets-operator
-    version: "2.3.0"
+    version: "2.6.0"
     repository: "oci://dp.apps.rancher.io/charts"
     alias: externalSecretsOperator
     condition: externalSecretsOperator.enabled
 
   # External-DNS — automatically manages DNS records for kubeflow-istio-resources.hostname
   - name: external-dns
-    version: "1.20.0"
+    version: "1.21.1"
     repository: "oci://dp.apps.rancher.io/charts"
     alias: externaldns
     condition: externaldns.enabled

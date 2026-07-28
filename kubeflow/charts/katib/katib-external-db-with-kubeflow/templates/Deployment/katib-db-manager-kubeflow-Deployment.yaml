@@ -49,7 +49,7 @@ spec:
             secretKeyRef:
               key: port
               name: mysql-secret
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.dbManager.image.registry) }}{{ . }}/{{ end }}{{ .Values.dbManager.image.repository }}:{{ .Values.dbManager.image.tag }}"
+        image: "{{ include "katib.suseImageRegistry" (dict "ctx" . "registry" .Values.dbManager.image.registry) }}/{{ .Values.dbManager.image.repository }}:{{ .Values.dbManager.image.tag }}"
         livenessProbe:
           exec:
             command:

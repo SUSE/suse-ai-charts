@@ -1,13 +1,15 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
 image:
   registry: registry.suse.com
-  repository: ai/containers/models-web-app
-  tag: v0.13.0
+  repository: ai/containers/kserve/models-web-app
+  tag: 1.0.1
   pullPolicy: IfNotPresent
 
 replicaCount: 1

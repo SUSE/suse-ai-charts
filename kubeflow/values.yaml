@@ -101,6 +101,20 @@ global:
   # Leave empty to use the default registry specified in each sub-chart's values.
   imageRegistry: ""
 
+  # SUSE AI registry OVERRIDE for all SUSE AI images (registry.suse.com/ai/containers/*).
+  # Leave empty (default) to use each component's own image.registry value.
+  # When set, overrides every SUSE component's image.registry (e.g. "stgregistry.suse.com"
+  # for QA against staging). SUSE Application Collection images are unaffected.
+  # Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+  suseRegistry: ""
+
+  # -- Application Collection registry OVERRIDE for all App Collection images
+  # (dp.apps.rancher.io/containers/* that are wired through the chart's helpers).
+  # Leave empty (default) to use each component's own image.registry value.
+  # When set, overrides every App Collection component's image.registry.
+  # Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+  suseApplicationCollection: ""
+
   # Demo mode: set true ONLY for local development/tutorial.
   # When false (default), Helm fails at render time if any credential is a known demo default.
   # NEVER set true in production.
@@ -466,7 +480,7 @@ preflightChecks:
   image:
     registry: dp.apps.rancher.io
     repository: containers/kubectl
-    tag: "1.34.5"
+    tag: "1.36.2"
     pullPolicy: IfNotPresent
 
 # Observability — ServiceMonitors + PrometheusRules.
@@ -510,7 +524,6 @@ externalSecrets:
 # --- Central Dashboard ---
 # central-dashboard:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/central-dashboard
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -526,7 +539,6 @@ externalSecrets:
 #   nvidiaGPU:
 #     enabled: false
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/jupyter-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -536,7 +548,6 @@ externalSecrets:
 # --- Notebook Controller ---
 # notebook-controller:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/notebook-controller
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -549,7 +560,6 @@ externalSecrets:
 # --- Volumes Web App ---
 # volumes-web-app:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/volumes-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -559,7 +569,6 @@ externalSecrets:
 # --- Tensorboards Web App ---
 # tensorboards-web-app:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/tensorboards-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -569,7 +578,6 @@ externalSecrets:
 # --- Models Web App ---
 # models-web-app:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/models-web-app
 #     tag: v0.13.0
 #     pullPolicy: IfNotPresent
@@ -579,7 +587,6 @@ externalSecrets:
 # --- Admission Webhook ---
 # admission-webhook:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/poddefaults-webhook
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -588,7 +595,6 @@ externalSecrets:
 # --- Training Operator ---
 # training-operator:
 #   image:
-#     registry: registry.suse.com
 #     repository: ai/containers/training-operator
 #     tag: v1-d6eb98e
 #     pullPolicy: IfNotPresent
@@ -600,13 +606,11 @@ externalSecrets:
 #   replicaCount: 1
 #   kfam:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kfam
 #       tag: v1.10.0
 #     resources: {}
 #   profileController:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/profile-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -616,7 +620,6 @@ externalSecrets:
 #   replicaCount: 1
 #   manager:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/tensorboard-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -625,13 +628,11 @@ externalSecrets:
 # katib:
 #   controller:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/katib-controller
 #       tag: v0.19.0
 #     resources: {}
 #   ui:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/katib-ui
 #       tag: v0.19.0
 #     resources: {}
@@ -647,13 +648,11 @@ externalSecrets:
 # pipelines:
 #   apiServer:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kfp-api-server
 #       tag: "2.15.0"
 #     resources: {}
 #   frontend:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kfp-frontend
 #       tag: "2.15.0"
 #     resources: {}
@@ -662,7 +661,6 @@ externalSecrets:
 # kserve:
 #   controllerManager:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/kserve-controller
 #       tag: v0.16.0
 #       pullPolicy: Always
@@ -678,7 +676,6 @@ externalSecrets:
 # knative-serving:
 #   controller:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/serving/cmd/controller
 #       tag: "v1.20.0"  # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -694,7 +691,6 @@ externalSecrets:
 # knative-eventing:
 #   controller:
 #     image:
-#       registry: registry.suse.com
 #       repository: ai/containers/eventing/cmd/controller
 #       tag: "v1.20.0" # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -817,12 +813,10 @@ user-namespace:
       accessKey: *seaweedfsAccessKey
       secretKey: *seaweedfsSecretKey
     visualizationServer:
-      registry: registry.suse.com
-      repository: ai/containers/kfp-visualization-server
+      repository: ai/containers/kubeflow/kfp-visualization-server
       tag: "2.16.0"
     frontend:
-      registry: registry.suse.com
-      repository: ai/containers/kfp-frontend
+      repository: ai/containers/kubeflow/kfp-frontend
       tag: "2.16.0"
 
 # Test images for Helm hook test Pods.
@@ -838,7 +832,7 @@ testImages:
   mariadb:
     registry: dp.apps.rancher.io
     repository: containers/mariadb
-    tag: "11.8.6-5.1"
+    tag: "11.8.8-10.1"
     pullPolicy: IfNotPresent
   # kubectl for Kubernetes API tests
   kubectl:

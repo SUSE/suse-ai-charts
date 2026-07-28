@@ -83,3 +83,35 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: {{ include "katib.suseImageRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
+*/}}
+{{- define "katib.suseImageRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the proper Application Collection Image Registry.
+Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+Usage: {{ include "katib.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
+*/}}
+{{- define "katib.suseApplicationCollectionRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseApplicationCollection -}}
+  {{- $ctx.Values.global.suseApplicationCollection -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}

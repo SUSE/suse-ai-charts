@@ -83,3 +83,19 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: include "central-dashboard.suseImageRegistry" (dict "ctx" $ "registry" .Values.image.registry)
+*/}}
+{{- define "central-dashboard.suseImageRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}

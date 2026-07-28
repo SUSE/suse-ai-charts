@@ -1,6 +1,10 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (staging vs production)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   # -- Global override for container image registry pull secrets
   imagePullSecrets: []
 
@@ -9,8 +13,8 @@ controllerManager:
   replicaCount: 1
   image:
     registry: registry.suse.com
-    repository: ai/containers/kserve-controller
-    tag: v0.16.0
+    repository: ai/containers/kserve/kserve-controller
+    tag: v0.19.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -25,7 +29,7 @@ kubeRbacProxy:
   image:
     registry: dp.apps.rancher.io
     repository: containers/kube-rbac-proxy
-    tag: "0.20.2"
+    tag: "0.22.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -39,78 +43,78 @@ kubeRbacProxy:
 storageInitializer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/storage-initializer
-    tag: v0.16.0
+    repository: ai/containers/kserve/storage-initializer
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 # Serving runtime images - these are used by ClusterServingRuntime resources
 tensorflowServing:
   image:
     registry: registry.suse.com
-    repository: ai/containers/serving
+    repository: ai/containers/tensorflow/serving
     tag: "2.6.2"
     pullPolicy: IfNotPresent
 
 huggingfaceServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/huggingfaceserver
-    tag: v0.16.0
+    repository: ai/containers/kserve/huggingfaceserver
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/xgbserver
-    tag: v0.15.2
+    repository: ai/containers/kserve/xgbserver
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/lgbserver
-    tag: v0.15.2
+    repository: ai/containers/kserve/lgbserver
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/sklearnserver
-    tag: v0.15.2
+    repository: ai/containers/kserve/sklearnserver
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/paddleserver
-    tag: v0.15.2
+    repository: ai/containers/kserve/paddleserver
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/pmmlserver
-    tag: v0.15.2
+    repository: ai/containers/kserve/pmmlserver
+    tag: v0.19.0
     pullPolicy: IfNotPresent
 
 tritonServer:
   image:
-    registry: nvcr.io
-    repository: nvidia/tritonserver
+    registry: registry.suse.com
+    repository: ai/containers/nvidia/tritonserver
     tag: "23.05-py3"
     pullPolicy: IfNotPresent
 
 mlServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/mlserver
+    repository: ai/containers/seldonio/mlserver
     tag: "1.5.0"
     pullPolicy: IfNotPresent
 
 torchServe:
   image:
     registry: registry.suse.com
-    repository: ai/containers/torchserve-kfs
+    repository: ai/containers/pytorch/torchserve-kfs
     tag: "0.9.0"
     pullPolicy: IfNotPresent
 
@@ -120,22 +124,26 @@ torchServe:
 ingressDomain: "example.com"
 
 inferenceServiceConfig:
-  agent: |
-    {
-        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1"
-    }
-  batcher: |
-    {
-        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
-        "memoryRequest": "1Gi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "1",
-        "cpuLimit": "1"
-    }
+  agentConfig:
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kserve/agent
+      tag: v0.19.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+
+  batcherConfig:
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kserve/agent
+      tag: v0.19.0
+    memoryRequest: "1Gi"
+    memoryLimit: "1Gi"
+    cpuRequest: "1"
+    cpuLimit: "1"
+
   credentials: |
     {
        "gcs": {
@@ -157,21 +165,24 @@ inferenceServiceConfig:
     {
       "defaultDeploymentMode": "Serverless"
     }
-  explainers: |
-    {
-        "alibi": {
-            "image" : "registry.suse.com/ai/containers/alibi-explainer",
-            "defaultImageVersion": "v0.16.0"
-        },
-        "aix": {
-            "image" : "registry.suse.com/ai/containers/aix-explainer",
-            "defaultImageVersion": "v0.16.0"
-        },
-        "art": {
-            "image" : "kserve/art-explainer",
-            "defaultImageVersion": "v0.16.0"
-        }
-    }
+
+  explainersConfig:
+    alibi:
+      image:
+        registry: registry.suse.com
+        repository: ai/containers/kserve/alibi-explainer
+        tag: v0.19.0
+    aix:
+      image:
+        registry: registry.suse.com
+        repository: ai/containers/kserve/aix-explainer
+        tag: v0.19.0
+    art:
+      image:
+        registry: registry.suse.com
+        repository: ai/containers/kserve/art-explainer
+        tag: v0.19.0
+
   ingress: |
     {
       "ingressGateway": "kubeflow/kubeflow-gateway",
@@ -184,40 +195,47 @@ inferenceServiceConfig:
       "urlScheme": "http",
       "disableIstioVirtualHost": false
     }
-  logger: |
-    {
-        "image" : "registry.suse.com/ai/containers/agent:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1",
-        "defaultUrl": "http://default-broker"
-    }
+
+  loggerConfig:
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kserve/agent
+      tag: v0.19.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+    defaultUrl: "http://default-broker"
+
   metricsAggregator: |
     {
       "enableMetricAggregation": "false",
       "enablePrometheusScraping" : "false"
     }
-  router: |
-    {
-        "image" : "registry.suse.com/ai/containers/router:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1"
-    }
-  storageInitializer: |
-    {
-        "image" : "registry.suse.com/ai/containers/storage-initializer:v0.16.0",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "1Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1",
-        "storageSpecSecretName": "storage-config",
-        "caBundleConfigMapName": "",
-        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
-        "enableModelcar": false,
-        "cpuModelcar": "10m",
-        "memoryModelcar": "15Mi",
-        "uidModelcar": 10
-    }
+
+  routerConfig:
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kserve/router
+      tag: v0.19.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+
+  storageInitializerConfig:
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kserve/storage-initializer
+      tag: v0.19.0
+    memoryRequest: "100Mi"
+    memoryLimit: "1Gi"
+    cpuRequest: "100m"
+    cpuLimit: "1"
+    storageSpecSecretName: "storage-config"
+    caBundleConfigMapName: ""
+    caBundleVolumeMountPath: "/etc/ssl/custom-certs"
+    enableModelcar: false
+    cpuModelcar: "10m"
+    memoryModelcar: "15Mi"
+    uidModelcar: 10

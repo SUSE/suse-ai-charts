@@ -1,12 +1,14 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
 image:
   registry: registry.suse.com
-  repository: ai/containers/training-operator
+  repository: ai/containers/kubeflow/training-v1/training-operator
   tag: v1-3f15cb8
   pullPolicy: IfNotPresent
 

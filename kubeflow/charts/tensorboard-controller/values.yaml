@@ -1,6 +1,10 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
@@ -9,8 +13,8 @@ replicaCount: 1
 manager:
   image:
     registry: registry.suse.com
-    repository: ai/containers/tensorboard-controller
-    tag: v1.10.0
+    repository: ai/containers/kubeflow/notebooks/tensorboard-controller
+    tag: v1.11.0
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -36,7 +40,7 @@ kubeRbacProxy:
   image:
     registry: dp.apps.rancher.io
     repository: containers/kube-rbac-proxy
-    tag: "0.20.2"
+    tag: "0.22.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -50,4 +54,7 @@ configMapData:
   ISTIO_GATEWAY: kubeflow/kubeflow-gateway
   ISTIO_HOST: "*"
   RWO_PVC_SCHEDULING: "True"
-  TENSORBOARD_IMAGE: registry.suse.com/ai/containers/tensorflow:2.15.0
+  tensorboardImage:
+    registry: registry.suse.com
+    repository: ai/containers/tensorflow/tensorflow
+    tag: "2.21.0"

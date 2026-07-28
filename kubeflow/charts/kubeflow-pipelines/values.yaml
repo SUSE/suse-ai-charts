@@ -5,6 +5,10 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
+  # -- Global override for SUSE AI container image registry (staging vs production)
+  suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollection: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
@@ -23,13 +27,17 @@ pdb:
 mysqlSecret:
   password: ""  # leave empty for auto-generated password (recommended)
 
+# Database name used by Kubeflow Hub (model registry proxy over the KFP MySQL instance).
+# Must match the embedmdDb key in the pipeline-install-config ConfigMap.
+embedmdDb: "model_registry"
+
 # Post-install hook Job that creates the metadb database required by MLMD.
 # Runs automatically after MariaDB is ready on every install and upgrade.
 metadbInit:
   image:
     registry: dp.apps.rancher.io
     repository: containers/mariadb
-    tag: "11.8.6-5.1"
+    tag: "11.8.8-10.1"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
 
@@ -71,7 +79,7 @@ mariadb:
 seaweedfs:
   image:
     registry: registry.suse.com
-    repository: ai/containers/seaweedfs
+    repository: ai/containers/chrislusf/seaweedfs
     tag: "4.00"
     pullPolicy: IfNotPresent
   enabled: true
@@ -105,15 +113,17 @@ seaweedfs:
 launcher:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-launcher
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-launcher
+    tag: "2.17.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
 
 # KFP API server
 apiServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-api-server
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-api-server
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -125,8 +135,8 @@ apiServer:
 frontend:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-frontend
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-frontend
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -138,8 +148,8 @@ frontend:
 persistenceAgent:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-persistence-agent
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-persistence-agent
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -151,8 +161,8 @@ persistenceAgent:
 scheduledWorkflow:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-scheduled-workflow-controller
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-scheduled-workflow-controller
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -167,8 +177,8 @@ scheduledWorkflow:
 viewerCrdController:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-viewer-crd-controller
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-viewer-crd-controller
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -183,8 +193,8 @@ viewerCrdController:
 visualizationServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-visualization-server
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-visualization-server
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -192,12 +202,21 @@ visualizationServer:
       cpu: 30m
       memory: 500Mi
 
+# BCI BusyBox image used as the Argo cache sidecar for pipeline steps.
+# Referenced by the cacheImage key in pipeline-install-config ConfigMap.
+pipelineCacheImage:
+  registry: dp.apps.rancher.io
+  repository: containers/bci-busybox
+  tag: "15.7"
+  pullPolicy: IfNotPresent
+  digest: ""  # optional: sha256:... pins this image for supply-chain security
+
 # Cache server
 cacheServer:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-cache-server
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-cache-server
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -213,13 +232,14 @@ workflowController:
   image:
     registry: dp.apps.rancher.io
     repository: containers/workflow-controller
-    tag: "3.7.10"
+    tag: "4.0.5"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   executorImage:
     registry: dp.apps.rancher.io
     repository: containers/argoexec
-    tag: "3.7.10"
+    tag: "4.0.5"
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
     requests:
       cpu: 100m
@@ -229,7 +249,7 @@ workflowController:
 metadataGrpc:
   image:
     registry: registry.suse.com
-    repository: ai/containers/ml_metadata_store_server
+    repository: ai/containers/tfx-oss-public/ml_metadata_store_server
     tag: "1.14.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
@@ -245,8 +265,8 @@ metadataGrpc:
 metadataEnvoy:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-metadata-envoy
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-metadata-envoy
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -261,8 +281,8 @@ metadataEnvoy:
 metadataWriter:
   image:
     registry: registry.suse.com
-    repository: ai/containers/kfp-metadata-writer
-    tag: "2.16.0"
+    repository: ai/containers/kubeflow/kfp-metadata-writer
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -278,7 +298,7 @@ metacontroller:
   image:
     registry: dp.apps.rancher.io
     repository: containers/metacontroller
-    tag: "4.12.5"
+    tag: "4.15.1"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:

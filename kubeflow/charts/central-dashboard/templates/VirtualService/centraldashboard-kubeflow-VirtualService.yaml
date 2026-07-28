@@ -6,7 +6,7 @@ metadata:
     {{- include "central-dashboard.labels" . | nindent 4 }}
 spec:
   gateways:
-  - {{ .Values.global.gateway.name | default "kubeflow/kubeflow-gateway" }}
+  - {{ .Values.global | dig "gateway" "name" "kubeflow/kubeflow-gateway" }}
   hosts:
   - '*'
   http:

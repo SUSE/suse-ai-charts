@@ -25,11 +25,38 @@ spec:
         application-crd-id: kubeflow-pipelines
     spec:
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+      - name: wait-for-mlmd
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataWriter.image.registry) }}/{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
+        imagePullPolicy: {{ .Values.metadataWriter.image.pullPolicy }}
+        command:
+        - python3
+        - -c
+        - |
+          import socket, time, sys
+          host, port = 'metadata-grpc-service', 8080
+          print(f'Waiting for {host}:{port}...', flush=True)
+          while True:
+              try:
+                  socket.create_connection((host, port), timeout=5).close()
+                  print(f'{host}:{port} is ready', flush=True)
+                  sys.exit(0)
+              except OSError:
+                  time.sleep(2)
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
       containers:
       - env:
         - name: NAMESPACE_TO_WATCH
           value: ''
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.metadataWriter.image.registry) }}{{ . }}/{{ end }}{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataWriter.image.registry) }}/{{ .Values.metadataWriter.image.repository }}{{- if .Values.metadataWriter.image.digest }}@{{ .Values.metadataWriter.image.digest }}{{- else }}:{{ .Values.metadataWriter.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataWriter.image.pullPolicy }}
         name: main
         {{- with .Values.metadataWriter.resources }}

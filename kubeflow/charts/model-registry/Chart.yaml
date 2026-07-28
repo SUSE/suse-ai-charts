@@ -2,11 +2,11 @@ apiVersion: v2
 name: model-registry
 description: A Helm chart for Kubeflow Model Registry
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: v0.3.7
 
 dependencies:
   - name: postgresql
-    version: "0.5.5"
+    version: "0.6.0"
     repository: "oci://dp.apps.rancher.io/charts"
     condition: catalog.enabled

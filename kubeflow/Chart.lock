@@ -1,22 +1,22 @@
 dependencies:
 - name: cert-manager
   repository: oci://dp.apps.rancher.io/charts
-  version: 1.13.1
+  version: 1.20.2
 - name: kubeflow-namespace
   repository: file://./charts/kubeflow-namespace
   version: 0.1.0
 - name: knative-serving
   repository: file://./charts/knative-serving
-  version: 0.2.0
+  version: 0.2.1
 - name: knative-eventing
   repository: file://./charts/knative-eventing
-  version: 0.2.0
+  version: 0.2.1
 - name: dex-idp
   repository: oci://dp.apps.rancher.io/charts
-  version: 0.23.0
+  version: 0.24.1
 - name: oauth2-proxy
   repository: oci://dp.apps.rancher.io/charts
-  version: 10.1.4
+  version: 10.7.0
 - name: kubeflow-istio-resources
   repository: file://./charts/kubeflow-istio-resources
   version: 0.2.0
@@ -25,55 +25,58 @@ dependencies:
   version: 0.1.0
 - name: central-dashboard
   repository: file://./charts/central-dashboard
-  version: 0.2.0
+  version: 0.2.1
 - name: kubeflow-pipelines
   repository: file://./charts/kubeflow-pipelines
-  version: 0.2.3
+  version: 0.2.4
 - name: notebook-controller
   repository: file://./charts/notebook-controller
-  version: 0.2.0
+  version: 0.2.1
 - name: jupyter-web-app
   repository: file://./charts/jupyter-web-app
-  version: 0.2.0
+  version: 0.2.1
 - name: katib
   repository: file://./charts/katib
-  version: 0.2.0
+  version: 0.2.1
 - name: kserve
   repository: file://./charts/kserve
-  version: 0.2.0
+  version: 0.2.1
 - name: training-operator
   repository: file://./charts/training-operator
-  version: 0.2.0
+  version: 0.2.1
 - name: trainer
   repository: file://./charts/trainer
-  version: 0.1.0
+  version: 0.1.1
 - name: profiles-and-kfam
   repository: file://./charts/profiles-and-kfam
-  version: 0.2.0
+  version: 0.2.1
 - name: volumes-web-app
   repository: file://./charts/volumes-web-app
-  version: 0.2.0
+  version: 0.2.1
 - name: pvcviewer-controller
   repository: file://./charts/pvcviewer-controller
-  version: 0.1.0
+  version: 0.1.1
 - name: tensorboard-controller
   repository: file://./charts/tensorboard-controller
-  version: 0.2.0
+  version: 0.2.1
 - name: tensorboards-web-app
   repository: file://./charts/tensorboards-web-app
-  version: 0.2.0
+  version: 0.2.1
 - name: admission-webhook
   repository: file://./charts/admission-webhook
-  version: 0.2.0
+  version: 0.2.1
 - name: models-web-app
   repository: file://./charts/models-web-app
-  version: 0.2.0
+  version: 0.2.1
 - name: model-registry
   repository: file://./charts/model-registry
+  version: 0.1.1
+- name: kubeflow-hub
+  repository: file://./charts/kubeflow-hub
   version: 0.1.0
 - name: user-namespace
   repository: file://./charts/user-namespace
-  version: 0.2.0
+  version: 0.2.1
 - name: network-policies
   repository: file://./charts/network-policies
   version: 0.1.0
@@ -82,9 +85,9 @@ dependencies:
   version: 0.1.0
 - name: external-secrets-operator
   repository: oci://dp.apps.rancher.io/charts
-  version: 2.3.0
+  version: 2.6.0
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
-  version: 1.20.0
-digest: sha256:509281c2af54d313e7f12c73a3c208550ef9be06a6be857bef8f53de11ec195c
-generated: "2026-04-17T14:46:55.6563965-07:00"
+  version: 1.21.1
+digest: sha256:d7fcc2ffd8bb68002acb0bf41eff4f13d9a2df643331e8c3122b361360d6e043
+generated: "2026-07-15T15:19:39.907663191-03:00"

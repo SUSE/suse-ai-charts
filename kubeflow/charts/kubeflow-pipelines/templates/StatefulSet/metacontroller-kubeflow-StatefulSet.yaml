@@ -30,7 +30,7 @@ spec:
         - /usr/bin/metacontroller
         - --zap-log-level=4
         - --discovery-interval=3600s
-        image: "{{ with (coalesce .Values.global.imageRegistry .Values.metacontroller.image.registry) }}{{ . }}/{{ end }}{{ .Values.metacontroller.image.repository }}{{- if .Values.metacontroller.image.digest }}@{{ .Values.metacontroller.image.digest }}{{- else }}:{{ .Values.metacontroller.image.tag }}{{- end }}"
+        image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.metacontroller.image.registry) }}/{{ .Values.metacontroller.image.repository }}{{- if .Values.metacontroller.image.digest }}@{{ .Values.metacontroller.image.digest }}{{- else }}:{{ .Values.metacontroller.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metacontroller.image.pullPolicy }}
         name: metacontroller
         {{- with .Values.metacontroller.resources }}

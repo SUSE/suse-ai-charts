@@ -8,16 +8,14 @@ data:
   autoUpdatePipelineDefaultVersion: 'true'
   bucketName: mlpipeline
   cacheDb: cachedb
-  cacheImage: dp.apps.rancher.io/containers/bci-busybox:15.7
+  cacheImage: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.pipelineCacheImage.registry) }}/{{ .Values.pipelineCacheImage.repository }}{{- if .Values.pipelineCacheImage.digest }}@{{ .Values.pipelineCacheImage.digest }}{{- else }}:{{ .Values.pipelineCacheImage.tag }}{{- end }}"
   cacheNodeRestrictions: 'false'
   cronScheduleTimezone: UTC
   dbHost: mysql
   dbPort: '3306'
   defaultPipelineRoot: ''
   mlmdDb: metadb
-  {{- if .Values.embedmdDb }}
-  embedmdDb: {{ .Values.embedmdDb | quote }}
-  {{- end }}
+  embedmdDb: {{ .Values.embedmdDb | default "model_registry" | quote }}
   pipelineDb: mlpipeline
   warning: '1. Do not use kubectl to edit this configmap, because some values are
     used

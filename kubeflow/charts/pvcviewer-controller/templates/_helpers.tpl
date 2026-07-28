@@ -21,3 +21,31 @@ imagePullSecrets:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper SUSE AI Image Registry
+Precedence: global.imageRegistry > global.suseRegistry > component image.registry
+Usage: include "pvcviewer-controller.suseImageRegistry" (dict "ctx" $ "registry" .Values.<component>.registry)
+*/}}
+{{- define "pvcviewer-controller.suseImageRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseRegistry -}}
+  {{- $ctx.Values.global.suseRegistry -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the viewer image (injected into PVCViewer pods), SUSE AI family.
+Precedence: global.imageRegistry > global.suseRegistry > viewerImage.registry
+*/}}
+{{- define "pvcviewer-controller.viewerImage" -}}
+{{- $reg := "" -}}
+{{- if .Values.global.imageRegistry -}}{{- $reg = .Values.global.imageRegistry -}}
+{{- else if .Values.global.suseRegistry -}}{{- $reg = .Values.global.suseRegistry -}}
+{{- else -}}{{- $reg = .Values.viewerImage.registry -}}{{- end -}}
+{{- $reg -}}/{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
+{{- end -}}
