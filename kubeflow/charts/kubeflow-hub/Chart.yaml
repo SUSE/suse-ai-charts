@@ -1,6 +1,17 @@
 apiVersion: v2
-appVersion: v0.3.10
-description: Kubeflow Hub - Model Registry proxy server over the KFP embedded database
 name: kubeflow-hub
+# Kubeflow Hub (formerly Model Registry) is the umbrella component that bundles the
+# Model Registry (server + UI) and the Model Catalog. Kubernetes resource names and
+# the /api/model_registry/ routes are kept as "model-registry" to match upstream.
+description: Kubeflow Hub - Model Registry and Model Catalog for the ML model lifecycle
 type: application
-version: 0.1.0
+version: 0.2.0
+# All Hub component images (server, ui, controller, storage-initializer) are pinned
+# to v0.3.10 under the hub/* path, matching community-distribution release-26.03.1.
+appVersion: v0.3.10
+
+dependencies:
+  - name: postgresql
+    version: "0.6.0"
+    repository: "oci://dp.apps.rancher.io/charts"
+    condition: catalog.enabled

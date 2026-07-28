@@ -42,8 +42,8 @@ pipelines:
   visualizationServer:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-visualization-server
-    tag: "2.16.1"
+    tag: "2.17.0"
   frontend:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-frontend
-    tag: "2.16.1"
+    tag: "2.17.0"

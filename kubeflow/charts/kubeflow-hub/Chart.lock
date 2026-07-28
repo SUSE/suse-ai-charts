@@ -1,0 +1,6 @@
+dependencies:
+- name: postgresql
+  repository: oci://dp.apps.rancher.io/charts
+  version: 0.6.0
+digest: sha256:613dee738af070a3054684d729cb0d05355d9941cb52fbb2105145735049cb8f
+generated: "2026-07-27T13:12:42.081346392-07:00"

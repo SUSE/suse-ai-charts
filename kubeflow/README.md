@@ -26,6 +26,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 - [Production Hardening](#production-hardening)
 - [Multi-tenancy](#multi-tenancy)
 - [Upgrade Notes](#upgrade-notes)
+  - [Migration — Model Registry consolidated into Kubeflow Hub](#migration--model-registry-consolidated-into-kubeflow-hub)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 
@@ -70,7 +71,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 |-------------|---------|-------|
 | Kubernetes | >= 1.30 | Tested on RKE2 / K3s |
 | Helm | >= 4.0 | Required for OCI chart support |
-| cert-manager | 1.19.3 | Installed by `runMe.sh`; or pre-install manually |
+| cert-manager | 1.20.2 | Installed by `runMe.sh`; or pre-install manually |
 | Istio | 1.1.3 | Installed by `runMe.sh`; or pre-install manually |
 | Load Balancer (i.e. metallb) | - | It is required when used in conjunction with external-dns and cert-manager. Tested with MetalLB v0.15.3 |
 | Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
@@ -267,7 +268,7 @@ done
 
 ```bash
 helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
-  --version 1.19.3 \
+  --version 1.20.2 \
   --namespace cert-manager \
   --set crds.enabled=true \
   --set crds.keep=true \
@@ -746,7 +747,7 @@ Full JSON schema: [`charts/kubeflow/values.schema.json`](charts/kubeflow/values.
 | `notebooks.webApp.enabled` | `true` | Jupyter Web App |
 | `katib.enabled` | `true` | Katib hyperparameter tuning |
 | `kserve.enabled` | `true` | KServe model serving + Models Web App |
-| `modelRegistry.enabled` | `true` | Model Registry (requires `pipelines.enabled=true`) |
+| `hub.enabled` | `true` | Kubeflow Hub — Model Registry + Model Catalog (requires `pipelines.enabled=true`) |
 | `trainingOperator.enabled` | `true` | Training Operator V1 (TFJob, PyTorchJob, etc.) |
 | `trainer.enabled` | `true` | Trainer V2 (TrainJob, TrainingRuntime, ClusterTrainingRuntime) |
 | `profiles.enabled` | `true` | Profiles & KFAM (multi-tenancy) |
@@ -756,7 +757,7 @@ Full JSON schema: [`charts/kubeflow/values.schema.json`](charts/kubeflow/values.
 | `knativeServing.enabled` | `true` | Knative Serving (required by KServe) |
 | `knativeEventing.enabled` | `false` | Knative Eventing (optional, disabled by default) |
 | `notebooks.enabled` | `true` | Master switch for all notebook components |
-| `modelRegistry.catalog.enabled` | `false` | Model catalog server with PostgreSQL backend (disabled by default) |
+| `hub.catalog.enabled` | `false` | Model Catalog server with PostgreSQL backend (disabled by default) |
 | `trainer.runtimes.enabled` | `true` | Deploy built-in ClusterTrainingRuntime manifests |
 | `trainer.runtimes.torchtune.enabled` | `false` | TorchTune fine-tuning runtime (disabled by default) |
 | `dex.enabled` | `true` | Dex OIDC identity provider |
@@ -791,7 +792,7 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 | `preflightChecks.image.tag` | `1.34.5` | Tag for the preflight kubectl image |
 | `monitoring.enabled` | `false` | ServiceMonitors + PrometheusRules (requires Rancher Monitoring) |
 | `pipelines.mariadb.backup.enabled` | `false` | Daily MariaDB backup CronJob to a dedicated PVC |
-| `certManager.install` | `false` | Install bundled cert-manager v1.13.1 via this chart (not recommended — install separately) |
+| `certManager.install` | `false` | Install bundled cert-manager v1.20.2 via this chart (not recommended — install separately) |
 
 ### Storage and persistence
 
@@ -1092,6 +1093,42 @@ in a single step.
 ---
 
 ## Upgrade Notes
+
+### Migration — Model Registry consolidated into Kubeflow Hub
+
+_Applies to chart version `0.4.0-alpha.2` and later._
+
+The separate `model-registry` and `kubeflow-hub` subcharts have been merged into a
+single **`kubeflow-hub`** chart, matching upstream, where "Hub" (formerly Model
+Registry) is the umbrella component bundling the Model Registry (server + UI) and
+the Model Catalog. The redundant server-only `kubeflow-hub` subchart was removed.
+
+**Action required:** rename any `modelRegistry.*` values to `hub.*` in your overrides.
+
+```diff
+- modelRegistry:
+-   enabled: true
+-   catalog:
+-     enabled: false
++ hub:
++   enabled: true
++   catalog:
++     enabled: false
+```
+
+Notes:
+- `hub.enabled` defaults to `true`, so default installs are unaffected.
+- Kubernetes resource names (`model-registry-*`) and routes (`/api/model_registry/`,
+  `/model-registry/`) are unchanged — no dashboard or client changes needed.
+- All Hub component images are aligned to community-distribution **release-26.03.1**
+  and pinned to **v0.3.10** under the renamed `hub/*` path: `hub/server` (also reused
+  by the Model Catalog), `hub/ui`, `hub/controller`, and `hub/storage-initializer`
+  (previously the UI/controller/storage-initializer used `model-registry/*` at v0.3.7).
+- The registry server liveness/startup probes now use `/readyz/isDirty` (readiness
+  stays `/readyz/health`), matching release-26.03.1.
+- Catalog PostgreSQL dependency bumped `0.5.5` → `0.6.0` (PostgreSQL 18.3 → 18.4,
+  same major version — no data migration).
+- `hub.enabled=true` still requires `pipelines.enabled=true` (shares KFP's MariaDB).
 
 ### Always use `--force-conflicts`
 

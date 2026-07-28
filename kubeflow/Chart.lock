@@ -68,12 +68,9 @@ dependencies:
 - name: models-web-app
   repository: file://./charts/models-web-app
   version: 0.2.1
-- name: model-registry
-  repository: file://./charts/model-registry
-  version: 0.1.1
 - name: kubeflow-hub
   repository: file://./charts/kubeflow-hub
-  version: 0.1.0
+  version: 0.2.0
 - name: user-namespace
   repository: file://./charts/user-namespace
   version: 0.2.1
@@ -89,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:d7fcc2ffd8bb68002acb0bf41eff4f13d9a2df643331e8c3122b361360d6e043
-generated: "2026-07-15T15:19:39.907663191-03:00"
+digest: sha256:9a41fc57d1f79df523d728a263a3778efe271c009147caa6dc59603e10f68db8
+generated: "2026-07-27T13:08:28.097066632-07:00"

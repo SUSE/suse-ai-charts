@@ -141,7 +141,7 @@ done
 echo "=== Step 5: Optionally install cert-manager ==="
 if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
   helm upgrade --install cert-manager oci://${SUSE_APP_COLLECTION}/charts/cert-manager \
-    --version 1.19.3 \
+    --version 1.20.2 \
     --namespace cert-manager \
     --set crds.enabled=true \
     --set crds.keep=true \

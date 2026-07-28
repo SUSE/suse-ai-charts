@@ -2,7 +2,7 @@ apiVersion: v2
 name: kubeflow
 description: Kubeflow ML Platform - End-to-end Machine Learning on Kubernetes
 type: application
-version: "0.4.0-alpha.1"
+version: "0.4.0-alpha.2"
 appVersion: "26.03.1"
 kubeVersion: ">=1.25.0-0"
 
@@ -163,14 +163,10 @@ dependencies:
     repository: "file://./charts/models-web-app"
     condition: kserve.enabled
 
-  - name: model-registry
-    version: "0.1.1"
-    repository: "file://./charts/model-registry"
-    alias: modelRegistry
-    condition: modelRegistry.enabled
-
+  # Kubeflow Hub (formerly Model Registry) — Model Registry + Model Catalog.
+  # Consolidated single chart; values live under the "hub" key.
   - name: kubeflow-hub
-    version: "0.1.0"
+    version: "0.2.0"
     repository: "file://./charts/kubeflow-hub"
     alias: hub
     condition: hub.enabled
