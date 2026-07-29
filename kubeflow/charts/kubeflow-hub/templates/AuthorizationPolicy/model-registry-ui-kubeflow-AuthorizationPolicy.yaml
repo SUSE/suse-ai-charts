@@ -11,11 +11,23 @@ metadata:
 spec:
   action: ALLOW
   rules:
+  {{- if .Values.authorizationPolicy.strict }}
+  # STRICT (default): aligned to kubeflow/community-distribution release-26.03.1 hub UI policy
+  # (applications/hub/upstream/options/ui/overlays/istio/authorization-policy-ui.yaml). The UI
+  # is reached only through the ingress gateway, where users authenticate at oauth2-proxy, so
+  # only the gateway SA principal is allowed. Requires mesh mTLS.
+  - from:
+    - source:
+        principals:
+        - {{ .Values.authorizationPolicy.ingressGatewayPrincipal }}
+  {{- else }}
+  # LOOSE (authorizationPolicy.strict=false): namespace-scoped fallback.
   - from:
     - source:
         namespaces:
         - istio-system
         - kubeflow
+  {{- end }}
   selector:
     matchLabels:
       app: model-registry

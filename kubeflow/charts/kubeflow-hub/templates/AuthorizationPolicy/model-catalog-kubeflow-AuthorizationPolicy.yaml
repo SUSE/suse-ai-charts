@@ -10,13 +10,39 @@ metadata:
   name: model-catalog
   namespace: kubeflow
 spec:
+  # model-catalog has NO AuthorizationPolicy in kubeflow/community-distribution release-26.03.1.
+  # Default is the looser namespace-scoped ALLOW so in-cluster catalog calls are not broken on
+  # upgrade. Set authorizationPolicy.catalogStrict=true to apply the same tight server-style
+  # policy (gateway SA principal + internal-JWT anti-spoofing rule; requires mesh mTLS).
   action: ALLOW
   rules:
+  {{- if .Values.authorizationPolicy.catalogStrict }}
+  - from:
+    - source:
+        principals:
+        - {{ .Values.authorizationPolicy.ingressGatewayPrincipal }}
+  - when:
+    - key: request.headers[authorization]
+      values:
+      - "*"
+    - key: request.headers[kubeflow-userid]
+      notValues:
+      - "*"
+  # Mirror of the server policy's BFF rule: the model-registry-ui BFF calls the catalog server
+  # pod-to-pod (default --auth-method=internal) with no authorization/kubeflow-userid headers, so
+  # neither rule above matches. Trust its mesh-mTLS SA principal so the dashboard catalog view
+  # works when catalogStrict=true. See model-registry-kubeflow-AuthorizationPolicy.yaml.
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/kubeflow/sa/model-registry-ui
+  {{- else }}
   - from:
     - source:
         namespaces:
         - istio-system
         - kubeflow
+  {{- end }}
   selector:
     matchLabels:
       app: model-registry

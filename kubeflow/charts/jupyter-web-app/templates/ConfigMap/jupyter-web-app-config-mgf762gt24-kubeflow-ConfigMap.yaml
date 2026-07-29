@@ -22,12 +22,12 @@ data:
     spawnerFormDefaults:
       image:
         # The container Image for the user's Jupyter Notebook
-        value: "{{ $reg }}/{{ $ni.image.value.repository }}:{{ $ni.image.value.tag }}"
+        value: "{{ if $reg }}{{ $reg }}/{{ end }}{{ $ni.image.value.repository }}:{{ $ni.image.value.tag }}"
         # The list of available standard container Images
         options:
         {{- if $ni.image.options }}
         {{- range $ni.image.options }}
-        - "{{ $reg }}/{{ .repository }}:{{ .tag }}"
+        - "{{ if $reg }}{{ $reg }}/{{ end }}{{ .repository }}:{{ .tag }}"
         {{- end }}
         {{- else }} []
         {{- end }}
@@ -36,12 +36,12 @@ data:
         # The annotation `notebooks.kubeflow.org/http-rewrite-uri: /`
         # is applied to notebook in this group, configuring
         # the Istio rewrite for containers that host their web UI at `/`
-        value: "{{ $reg }}/{{ $ni.imageGroupOne.value.repository }}:{{ $ni.imageGroupOne.value.tag }}"
+        value: "{{ if $reg }}{{ $reg }}/{{ end }}{{ $ni.imageGroupOne.value.repository }}:{{ $ni.imageGroupOne.value.tag }}"
         # The list of available standard container Images
         options:
         {{- if $ni.imageGroupOne.options }}
         {{- range $ni.imageGroupOne.options }}
-        - "{{ $reg }}/{{ .repository }}:{{ .tag }}"
+        - "{{ if $reg }}{{ $reg }}/{{ end }}{{ .repository }}:{{ .tag }}"
         {{- end }}
         {{- else }} []
         {{- end }}
@@ -53,12 +53,12 @@ data:
         # The annotation `notebooks.kubeflow.org/http-headers-request-set`
         # is applied to notebook in this group, configuring Istio
         # to add the `X-RStudio-Root-Path` header to requests
-        value: "{{ $reg }}/{{ $ni.imageGroupTwo.value.repository }}:{{ $ni.imageGroupTwo.value.tag }}"
+        value: "{{ if $reg }}{{ $reg }}/{{ end }}{{ $ni.imageGroupTwo.value.repository }}:{{ $ni.imageGroupTwo.value.tag }}"
         # The list of available standard container Images
         options:
         {{- if $ni.imageGroupTwo.options }}
         {{- range $ni.imageGroupTwo.options }}
-        - "{{ $reg }}/{{ .repository }}:{{ .tag }}"
+        - "{{ if $reg }}{{ $reg }}/{{ end }}{{ .repository }}:{{ .tag }}"
         {{- end }}
         {{- else }} []
         {{- end }}

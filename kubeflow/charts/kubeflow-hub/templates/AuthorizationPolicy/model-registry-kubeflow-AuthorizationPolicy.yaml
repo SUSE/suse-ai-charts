@@ -11,11 +11,50 @@ metadata:
 spec:
   action: ALLOW
   rules:
+  {{- if .Values.authorizationPolicy.strict }}
+  # STRICT (default): aligned to kubeflow/community-distribution release-26.03.1 hub policy
+  # (applications/hub/upstream/options/istio/istio-authorization-policy.yaml). Requires mesh
+  # mTLS so source.principals are populated (Istio auto-mTLS satisfies this by default).
+  # External users are authenticated by oauth2-proxy/authservice at the ingress gateway, which
+  # injects the kubeflow-userid header. Allow all traffic coming from the gateway SA.
+  - from:
+    - source:
+        principals:
+        - {{ .Values.authorizationPolicy.ingressGatewayPrincipal }}
+  # Allow in-cluster requests bearing a valid Kubernetes JWT (authorization header) but block
+  # any that also carry a kubeflow-userid header, preventing identity spoofing from within.
+  - when:
+    - key: request.headers[authorization]
+      values:
+      - "*"
+    - key: request.headers[kubeflow-userid]
+      notValues:
+      - "*"
+  # Allow the Model Registry UI/BFF service account. Unlike upstream community-distribution
+  # release-26.03.1 — which deploys model-registry into the per-profile user namespace and
+  # exposes the server through the ingress gateway (so server traffic satisfies the gateway-SA
+  # rule above) — this chart runs everything in the `kubeflow` namespace and the BFF calls the
+  # server directly pod-to-pod. In its default `internal` auth mode the BFF sends no
+  # `authorization` header and never forwards `kubeflow-userid` to the server, so neither rule
+  # above matches. The BFF pod is the only workload running as this SA and is itself the authz
+  # checkpoint (it runs a SubjectAccessReview per request), so trusting its mesh-mTLS principal
+  # is a sound boundary. To instead use the upstream rule above, run the BFF with
+  # `--auth-method=user_token` so it forwards the user's bearer token.
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/kubeflow/sa/model-registry-ui
+  {{- else }}
+  # LOOSE (authorizationPolicy.strict=false): namespace-scoped fallback. Availability-safe but
+  # broader than upstream — any workload in istio-system/kubeflow may call the server.
   - from:
     - source:
         namespaces:
         - istio-system
         - kubeflow
+  {{- end }}
+  # Selector keeps this chart's own labels since our pods carry app.kubernetes.io/component,
+  # not upstream's bare `component: model-registry-server`.
   selector:
     matchLabels:
       app: model-registry

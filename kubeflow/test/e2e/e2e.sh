@@ -465,8 +465,13 @@ header "5. Model Registry — register model → list → verify"
 if ! kubectl get deploy model-registry-deployment -n "$NS" &>/dev/null; then
   info "Model Registry not deployed — skipping"
 else
-  # Exec into the model-registry-server pod (already in-mesh) to run API calls.
-  # A separate non-mesh kubectl-run pod gets 403 from the namespace-based AuthorizationPolicy.
+  # Exec into the model-registry-server pod (already in-mesh) to run API calls against
+  # localhost, which bypasses the sidecar's inbound AuthorizationPolicy entirely.
+  # The server carries a strict Istio AuthorizationPolicy (aligned to
+  # kubeflow/community-distribution release-26.03.1): it only admits the ingress-gateway
+  # SA principal, in-cluster callers bearing an `authorization` header without a
+  # `kubeflow-userid` header, or the model-registry-ui BFF service account (which calls the
+  # server pod-to-pod in internal auth mode). A bare call from any other pod is denied with 403.
   MR_POD=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=model-registry-server \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
   if [ -z "$MR_POD" ]; then
@@ -512,6 +517,32 @@ curl -sf -X PATCH \
   -d '{"state":"ARCHIVED"}' \
   && echo "Archived model $MODEL_ID"
 MRSCRIPT
+
+    # ── Authz path: BFF (model-registry-ui SA) → server, pod-to-pod ──
+    # The dashboard runs the BFF in --deployment-mode=kubeflow / default --auth-method=internal,
+    # so it calls the server directly by ClusterIP with NO authorization header and NO
+    # kubeflow-userid header. The strict AuthorizationPolicy admits this only via the
+    # model-registry-ui SA principal rule (mesh mTLS populates the principal). This exercises the
+    # real dashboard path that a localhost probe cannot — a regression here (e.g. removing that
+    # rule) surfaces to users as "RBAC: access denied". We send no auth headers on purpose to
+    # mirror internal-mode BFF traffic; the SA principal alone must be sufficient.
+    UI_POD=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=model-registry-ui \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -z "$UI_POD" ]; then
+      info "Model Registry: UI pod not found — skipping BFF authz-path check"
+    elif ! kubectl exec -n "$NS" "$UI_POD" -c model-registry-ui -- sh -c 'command -v curl' &>/dev/null; then
+      info "Model Registry: no curl in UI container — skipping BFF authz-path check"
+    else
+      MR_SVC="model-registry-service.${NS}.svc.cluster.local:8080"
+      MR_API="http://${MR_SVC}/api/model_registry/v1alpha3/registered_models"
+      CODE=$(kubectl exec -n "$NS" "$UI_POD" -c model-registry-ui -- \
+        curl -s -o /dev/null -w '%{http_code}' "$MR_API" 2>/dev/null)
+      if [ "$CODE" = "200" ]; then
+        pass "Model Registry: BFF SA principal path (no auth headers) allowed"
+      else
+        fail "Model Registry: BFF SA principal path denied (HTTP ${CODE:-none}) — check the model-registry-ui SA principal rule in the strict AuthorizationPolicy"
+      fi
+    fi
   fi
 fi
 

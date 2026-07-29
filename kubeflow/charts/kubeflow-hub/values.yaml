@@ -9,6 +9,27 @@ global:
   gateway:
     name: "kubeflow/kubeflow-gateway"
 
+# Istio AuthorizationPolicy posture for the model-registry server/UI/catalog.
+# Escape hatch so operators can adjust mesh authz per-cluster without editing templates.
+authorizationPolicy:
+  # strict=true (default) renders the upstream kubeflow/community-distribution release-26.03.1
+  # policies for the SERVER and UI: allow from the ingress-gateway SA, plus (server only) an
+  # internal Kubernetes-JWT rule that blocks kubeflow-userid header spoofing. Requires mesh
+  # mTLS so source.principals are populated (Istio auto-mTLS satisfies this by default).
+  # strict=false falls back to a namespace-scoped ALLOW (from istio-system + kubeflow) — looser,
+  # but a safety valve if a legitimate in-namespace caller is unexpectedly denied after upgrade.
+  strict: true
+  # catalogStrict controls the model-catalog policy independently. model-catalog has NO upstream
+  # AuthorizationPolicy, so it defaults to the looser namespace-scoped ALLOW to avoid breaking
+  # in-cluster catalog calls on upgrade. Set true to apply the same tight server-style policy.
+  catalogStrict: false
+  # Ingress gateway ServiceAccount principal used by the strict policies. Upstream Kubeflow uses
+  # 'istio-ingressgateway-service-account', but Rancher Istio (this deployment's mesh) runs the
+  # gateway as SA 'istio'. If this does not match the real gateway SA, the strict rules never
+  # match the gateway->UI/server hop and Envoy returns "RBAC: access denied". Verify with:
+  #   kubectl get pod -n istio-system -l app=istio -o jsonpath='{.items[0].spec.serviceAccountName}'
+  ingressGatewayPrincipal: "cluster.local/ns/istio-system/sa/istio"
+
 server:
   # Server + Model Catalog run the renamed Hub image (formerly model-registry/server).
   # The catalog Deployment reuses this same image with the "catalog" command.
@@ -191,6 +212,12 @@ catalog:
 # (charts/kubeflow-hub/templates/Secret/model-catalog-postgres-kubeflow-Secret.yaml).
 # Do NOT set postgresql.auth.password or postgresql.auth.postgresPassword here;
 # the Secret template generates them and passes them as existingSecret.
+#
+# GitOps caveat: the generated Secret relies on Helm's `lookup` + `helm.sh/resource-policy: keep`,
+# which are Helm-runtime-only. Under ArgoCD/Flux (which render with `helm template`) `lookup`
+# returns empty, so a new random password would be re-applied on every sync against an already
+# initialized PVC -> "password authentication failed" crash-loop. For GitOps, pre-create the
+# `model-catalog-postgres` Secret (or point existingSecret at an externally managed Secret).
 postgresql:
   fullnameOverride: "model-catalog-postgres"
   auth:

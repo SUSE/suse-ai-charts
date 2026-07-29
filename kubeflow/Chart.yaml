@@ -2,7 +2,7 @@ apiVersion: v2
 name: kubeflow
 description: Kubeflow ML Platform - End-to-end Machine Learning on Kubernetes
 type: application
-version: "0.4.0-alpha.2"
+version: "0.4.0-alpha.1"
 appVersion: "26.03.1"
 kubeVersion: ">=1.25.0-0"
 
@@ -172,7 +172,7 @@ dependencies:
     condition: hub.enabled
 
   - name: user-namespace
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/user-namespace"
 
   # NetworkPolicies — deny-by-default with explicit allow rules

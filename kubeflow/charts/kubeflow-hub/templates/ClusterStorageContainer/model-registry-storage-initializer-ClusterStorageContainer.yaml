@@ -15,7 +15,9 @@ spec:
     imagePullPolicy: {{ .Values.kserve.storageContainer.image.pullPolicy }}
     env:
     - name: MODEL_REGISTRY_BASE_URL
-      value: "model-registry-service.{{ .Release.Namespace }}.svc.cluster.local:8080"
+      # model-registry-service is created with a hardcoded `kubeflow` namespace (like every
+      # Service/Deployment in this chart), so target it explicitly rather than Release.Namespace.
+      value: "model-registry-service.kubeflow.svc.cluster.local:8080"
     resources:
       requests:
         cpu: 100m

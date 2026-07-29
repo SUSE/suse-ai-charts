@@ -73,7 +73,7 @@ dependencies:
   version: 0.2.0
 - name: user-namespace
   repository: file://./charts/user-namespace
-  version: 0.2.1
+  version: 0.2.2
 - name: network-policies
   repository: file://./charts/network-policies
   version: 0.1.0
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:9a41fc57d1f79df523d728a263a3778efe271c009147caa6dc59603e10f68db8
-generated: "2026-07-27T13:08:28.097066632-07:00"
+digest: sha256:8772cd558af50d96737a2f1fd699bfe642ace6fb8332724f321c60e0324bee9d
+generated: "2026-07-29T08:57:37.270053428-07:00"
