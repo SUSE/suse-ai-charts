@@ -34,7 +34,7 @@ spec:
               name: katib-mysql-secrets
         - name: MYSQL_DATABASE
           value: katib
-        image: "{{ include "katib.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.mariadb.image.registry) }}/{{ .Values.mariadb.image.repository }}{{- if .Values.mariadb.image.digest }}@{{ .Values.mariadb.image.digest }}{{- else }}:{{ .Values.mariadb.image.tag }}{{- end }}"
+        image: "{{- $registry := include "katib.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.mariadb.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.mariadb.image.repository }}{{- if .Values.mariadb.image.digest }}@{{ .Values.mariadb.image.digest }}{{- else }}:{{ .Values.mariadb.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
         livenessProbe:
           exec:

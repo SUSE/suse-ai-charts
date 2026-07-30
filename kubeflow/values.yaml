@@ -22,7 +22,7 @@
 #
 #   4. Install cert-manager (required):
 #      helm install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
-#        --version 1.13.1 \
+#        --version 1.20.2 \
 #        --namespace cert-manager \
 #        --set crds.enabled=true \
 #        --set crds.keep=true \
@@ -112,8 +112,8 @@ global:
   # (dp.apps.rancher.io/containers/* that are wired through the chart's helpers).
   # Leave empty (default) to use each component's own image.registry value.
   # When set, overrides every App Collection component's image.registry.
-  # Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
-  suseApplicationCollection: ""
+  # Precedence: global.imageRegistry > global.suseApplicationCollectionRegistry > component image.registry
+  suseApplicationCollectionRegistry: ""
 
   # Demo mode: set true ONLY for local development/tutorial.
   # When false (default), Helm fails at render time if any credential is a known demo default.
@@ -364,7 +364,7 @@ centralDashboard:
 # Kubeflow Pipelines
 pipelines:
   enabled: true
-  # Set to the model-registry DB name when modelRegistry.enabled=true so KFP knows which DB to use.
+  # Set to the model-registry DB name when hub.enabled=true so KFP knows which DB to use.
   # Automatically populated here; override to "" to disable.
   embedmdDb: "modelregistry"
   # Rancher MariaDB sub-chart (oci://dp.apps.rancher.io/charts/mariadb 0.1.7)
@@ -422,9 +422,11 @@ kserve:
   enabled: true
   ingressDomain: *kserveInferenceDomain
 
-# Model Registry - Model versioning and metadata
-# Requires pipelines.enabled=true (shares KFP's MariaDB and mysql-secret)
-modelRegistry:
+# Kubeflow Hub (formerly Model Registry) - Model Registry + Model Catalog.
+# Single consolidated chart; serves /api/model_registry/ via the model-registry
+# VirtualService and provides the registry server, UI, and (optional) catalog.
+# Requires pipelines.enabled=true (shares KFP's MariaDB and mysql-secret).
+hub:
   enabled: true
   catalog:
     # Disabled by default: catalog deploys a PostgreSQL StatefulSet and is only useful
@@ -524,6 +526,7 @@ externalSecrets:
 # --- Central Dashboard ---
 # central-dashboard:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/central-dashboard
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -539,6 +542,7 @@ externalSecrets:
 #   nvidiaGPU:
 #     enabled: false
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/jupyter-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -548,6 +552,7 @@ externalSecrets:
 # --- Notebook Controller ---
 # notebook-controller:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/notebook-controller
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -560,6 +565,7 @@ externalSecrets:
 # --- Volumes Web App ---
 # volumes-web-app:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/volumes-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -569,6 +575,7 @@ externalSecrets:
 # --- Tensorboards Web App ---
 # tensorboards-web-app:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/tensorboards-web-app
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -578,6 +585,7 @@ externalSecrets:
 # --- Models Web App ---
 # models-web-app:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/models-web-app
 #     tag: v0.13.0
 #     pullPolicy: IfNotPresent
@@ -587,6 +595,7 @@ externalSecrets:
 # --- Admission Webhook ---
 # admission-webhook:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/poddefaults-webhook
 #     tag: v1.10.0
 #     pullPolicy: IfNotPresent
@@ -595,6 +604,7 @@ externalSecrets:
 # --- Training Operator ---
 # training-operator:
 #   image:
+#     registry: registry.suse.com
 #     repository: ai/containers/training-operator
 #     tag: v1-d6eb98e
 #     pullPolicy: IfNotPresent
@@ -606,11 +616,13 @@ externalSecrets:
 #   replicaCount: 1
 #   kfam:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/kfam
 #       tag: v1.10.0
 #     resources: {}
 #   profileController:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/profile-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -620,6 +632,7 @@ externalSecrets:
 #   replicaCount: 1
 #   manager:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/tensorboard-controller
 #       tag: v1.10.0
 #     resources: {}
@@ -628,11 +641,13 @@ externalSecrets:
 # katib:
 #   controller:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/katib-controller
 #       tag: v0.19.0
 #     resources: {}
 #   ui:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/katib-ui
 #       tag: v0.19.0
 #     resources: {}
@@ -648,11 +663,13 @@ externalSecrets:
 # pipelines:
 #   apiServer:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/kfp-api-server
 #       tag: "2.15.0"
 #     resources: {}
 #   frontend:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/kfp-frontend
 #       tag: "2.15.0"
 #     resources: {}
@@ -661,6 +678,7 @@ externalSecrets:
 # kserve:
 #   controllerManager:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/kserve-controller
 #       tag: v0.16.0
 #       pullPolicy: Always
@@ -676,6 +694,7 @@ externalSecrets:
 # knative-serving:
 #   controller:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/serving/cmd/controller
 #       tag: "v1.20.0"  # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -691,6 +710,7 @@ externalSecrets:
 # knative-eventing:
 #   controller:
 #     image:
+#       registry: registry.suse.com
 #       repository: ai/containers/eventing/cmd/controller
 #       tag: "v1.20.0" # unused when digest is set
 #       pullPolicy: IfNotPresent
@@ -813,11 +833,13 @@ user-namespace:
       accessKey: *seaweedfsAccessKey
       secretKey: *seaweedfsSecretKey
     visualizationServer:
+      registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-visualization-server
-      tag: "2.16.0"
+      tag: "2.17.0"
     frontend:
+      registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-frontend
-      tag: "2.16.0"
+      tag: "2.17.0"
 
 # Test images for Helm hook test Pods.
 # These are used in charts/kubeflow/templates/tests/ for connectivity checks.

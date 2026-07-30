@@ -219,7 +219,7 @@
         "enabled": { "type": "boolean" }
       }
     },
-    "modelRegistry": {
+    "hub": {
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },

@@ -56,7 +56,7 @@ spec:
             configMapKeyRef:
               key: dbPort
               name: pipeline-install-config
-        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataGrpc.image.registry) }}/{{ .Values.metadataGrpc.image.repository }}{{- if .Values.metadataGrpc.image.digest }}@{{ .Values.metadataGrpc.image.digest }}{{- else }}:{{ .Values.metadataGrpc.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.metadataGrpc.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.metadataGrpc.image.repository }}{{- if .Values.metadataGrpc.image.digest }}@{{ .Values.metadataGrpc.image.digest }}{{- else }}:{{ .Values.metadataGrpc.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.metadataGrpc.image.pullPolicy }}
         livenessProbe:
           initialDelaySeconds: 3

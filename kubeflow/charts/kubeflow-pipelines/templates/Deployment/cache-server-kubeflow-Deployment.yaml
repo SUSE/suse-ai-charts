@@ -86,7 +86,7 @@ spec:
             secretKeyRef:
               key: password
               name: mysql-secret
-        image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.cacheServer.image.registry) }}/{{ .Values.cacheServer.image.repository }}{{- if .Values.cacheServer.image.digest }}@{{ .Values.cacheServer.image.digest }}{{- else }}:{{ .Values.cacheServer.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.cacheServer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.cacheServer.image.repository }}{{- if .Values.cacheServer.image.digest }}@{{ .Values.cacheServer.image.digest }}{{- else }}:{{ .Values.cacheServer.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.cacheServer.image.pullPolicy }}
         name: server
         ports:

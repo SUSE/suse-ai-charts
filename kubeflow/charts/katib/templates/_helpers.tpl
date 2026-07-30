@@ -102,15 +102,15 @@ Usage: {{ include "katib.suseImageRegistry" (dict "ctx" . "registry" .Values.com
 
 {{/*
 Return the proper Application Collection Image Registry.
-Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+Precedence: global.imageRegistry > global.suseApplicationCollectionRegistry > component image.registry
 Usage: {{ include "katib.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.component.image.registry) }}
 */}}
 {{- define "katib.suseApplicationCollectionRegistry" -}}
 {{- $ctx := .ctx -}}
 {{- if $ctx.Values.global.imageRegistry -}}
   {{- $ctx.Values.global.imageRegistry -}}
-{{- else if $ctx.Values.global.suseApplicationCollection -}}
-  {{- $ctx.Values.global.suseApplicationCollection -}}
+{{- else if $ctx.Values.global.suseApplicationCollectionRegistry -}}
+  {{- $ctx.Values.global.suseApplicationCollectionRegistry -}}
 {{- else -}}
   {{- .registry -}}
 {{- end -}}

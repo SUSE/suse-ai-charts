@@ -36,7 +36,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.deepspeed.image.registry) }}/{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.deepspeed.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
         - name: node
@@ -46,7 +46,7 @@ spec:
                 spec:
                   containers:
                     - name: node
-                      image: "{{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.deepspeed.image.registry) }}/{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.deepspeed.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
                       command:

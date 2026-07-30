@@ -27,7 +27,7 @@ spec:
           {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 10 }}
           containers:
           - name: mariadb-backup
-            image: "{{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.metadbInit.image.registry) }}/{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
+            image: "{{- $registry := include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.metadbInit.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.metadbInit.image.repository }}{{- if .Values.metadbInit.image.digest }}@{{ .Values.metadbInit.image.digest }}{{- else }}:{{ .Values.metadbInit.image.tag }}{{- end }}"
             imagePullPolicy: {{ .Values.metadbInit.image.pullPolicy }}
             securityContext:
               allowPrivilegeEscalation: false

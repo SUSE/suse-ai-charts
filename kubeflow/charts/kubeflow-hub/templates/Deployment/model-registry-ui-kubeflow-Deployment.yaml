@@ -32,12 +32,12 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
-      {{- include "model-registry.imagePullSecrets" . | nindent 6 }}
+      {{- include "kubeflow-hub.imagePullSecrets" . | nindent 6 }}
       containers:
       - args:
         - --port=8080
         - --deployment-mode=kubeflow
-        image: "{{ include "model-registry.suseImageRegistry" (dict "ctx" . "registry" .Values.ui.image.registry) }}/{{ .Values.ui.image.repository }}{{- if .Values.ui.image.digest }}@{{ .Values.ui.image.digest }}{{- else }}:{{ .Values.ui.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-hub.suseImageRegistry" (dict "ctx" . "registry" .Values.ui.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.ui.image.repository }}{{- if .Values.ui.image.digest }}@{{ .Values.ui.image.digest }}{{- else }}:{{ .Values.ui.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false

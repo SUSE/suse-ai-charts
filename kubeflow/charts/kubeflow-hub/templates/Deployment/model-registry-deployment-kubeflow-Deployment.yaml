@@ -32,10 +32,10 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
-      {{- include "model-registry.imagePullSecrets" . | nindent 6 }}
+      {{- include "kubeflow-hub.imagePullSecrets" . | nindent 6 }}
       initContainers:
       - name: init-db
-        image: "{{ include "model-registry.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.dbInit.image.registry) }}/{{ .Values.dbInit.image.repository }}{{- if .Values.dbInit.image.digest }}@{{ .Values.dbInit.image.digest }}{{- else }}:{{ .Values.dbInit.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-hub.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.dbInit.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.dbInit.image.repository }}{{- if .Values.dbInit.image.digest }}@{{ .Values.dbInit.image.digest }}{{- else }}:{{ .Values.dbInit.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.dbInit.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false
@@ -119,7 +119,7 @@ spec:
             configMapKeyRef:
               name: {{ .Values.db.configMapName }}
               key: dbPort
-        image: "{{ include "model-registry.suseImageRegistry" (dict "ctx" . "registry" .Values.server.image.registry) }}/{{ .Values.server.image.repository }}{{- if .Values.server.image.digest }}@{{ .Values.server.image.digest }}{{- else }}:{{ .Values.server.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-hub.suseImageRegistry" (dict "ctx" . "registry" .Values.server.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.server.image.repository }}{{- if .Values.server.image.digest }}@{{ .Values.server.image.digest }}{{- else }}:{{ .Values.server.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.server.image.pullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false

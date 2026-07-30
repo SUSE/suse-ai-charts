@@ -163,20 +163,16 @@ dependencies:
     repository: "file://./charts/models-web-app"
     condition: kserve.enabled
 
-  - name: model-registry
-    version: "0.1.1"
-    repository: "file://./charts/model-registry"
-    alias: modelRegistry
-    condition: modelRegistry.enabled
-
+  # Kubeflow Hub (formerly Model Registry) — Model Registry + Model Catalog.
+  # Consolidated single chart; values live under the "hub" key.
   - name: kubeflow-hub
-    version: "0.1.0"
+    version: "0.2.0"
     repository: "file://./charts/kubeflow-hub"
     alias: hub
     condition: hub.enabled
 
   - name: user-namespace
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/user-namespace"
 
   # NetworkPolicies — deny-by-default with explicit allow rules

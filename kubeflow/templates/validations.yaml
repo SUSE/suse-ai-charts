@@ -2,8 +2,8 @@
 Chart-level prerequisite validations. This file renders nothing but fails fast
 with a human-readable error when required dependencies are misconfigured.
 */}}
-{{- if and .Values.modelRegistry.enabled (not .Values.pipelines.enabled) }}
-{{- fail "modelRegistry.enabled=true requires pipelines.enabled=true (model-registry-server shares KFP's MariaDB and mysql-secret)" }}
+{{- if and .Values.hub.enabled (not .Values.pipelines.enabled) }}
+{{- fail "hub.enabled=true requires pipelines.enabled=true (Kubeflow Hub shares KFP's MariaDB and mysql-secret)" }}
 {{- end }}
 
 {{- /*

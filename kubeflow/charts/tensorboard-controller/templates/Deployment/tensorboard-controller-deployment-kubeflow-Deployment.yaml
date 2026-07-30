@@ -33,7 +33,7 @@ spec:
         envFrom:
         - configMapRef:
             name: tensorboard-controller-config-b98cb9gk9k
-        image: "{{ include "tensorboard-controller.suseImageRegistry" (dict "ctx" . "registry" .Values.manager.image.registry) }}/{{ .Values.manager.image.repository }}{{- if .Values.manager.image.digest }}@{{ .Values.manager.image.digest }}{{- else }}:{{ .Values.manager.image.tag }}{{- end }}"
+        image: "{{- $registry := include "tensorboard-controller.suseImageRegistry" (dict "ctx" . "registry" .Values.manager.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.manager.image.repository }}{{- if .Values.manager.image.digest }}@{{ .Values.manager.image.digest }}{{- else }}:{{ .Values.manager.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
         {{- with .Values.manager.livenessProbe }}
         livenessProbe:
@@ -53,7 +53,7 @@ spec:
         - --upstream=http://127.0.0.1:8080/
         - --logtostderr=true
         - --v=0
-        image: "{{ include "tensorboard-controller.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.kubeRbacProxy.image.registry) }}/{{ .Values.kubeRbacProxy.image.repository }}{{- if .Values.kubeRbacProxy.image.digest }}@{{ .Values.kubeRbacProxy.image.digest }}{{- else }}:{{ .Values.kubeRbacProxy.image.tag }}{{- end }}"
+        image: "{{- $registry := include "tensorboard-controller.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.kubeRbacProxy.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.kubeRbacProxy.image.repository }}{{- if .Values.kubeRbacProxy.image.digest }}@{{ .Values.kubeRbacProxy.image.digest }}{{- else }}:{{ .Values.kubeRbacProxy.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.kubeRbacProxy.image.pullPolicy }}
         name: kube-rbac-proxy
         ports:

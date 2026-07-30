@@ -141,7 +141,7 @@ done
 echo "=== Step 5: Optionally install cert-manager ==="
 if [[ $ENABLE_CERT_MANAGER -eq 1 ]]; then
   helm upgrade --install cert-manager oci://${SUSE_APP_COLLECTION}/charts/cert-manager \
-    --version 1.19.3 \
+    --version 1.20.2 \
     --namespace cert-manager \
     --set crds.enabled=true \
     --set crds.keep=true \
@@ -199,7 +199,7 @@ helm upgrade --install kubeflow "$SCRIPT_DIR" \
   --server-side=true \
   --wait --timeout 15m \
   --set global.suseRegistry="${SUSE_REGISTRY}" \
-  --set global.suseApplicationCollection="${SUSE_APP_COLLECTION}" \
+  --set global.suseApplicationCollectionRegistry="${SUSE_APP_COLLECTION}" \
   $VALUES_ARGUMENT
 
 echo ""

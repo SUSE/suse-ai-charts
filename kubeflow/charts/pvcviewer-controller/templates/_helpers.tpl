@@ -47,5 +47,5 @@ Precedence: global.imageRegistry > global.suseRegistry > viewerImage.registry
 {{- if .Values.global.imageRegistry -}}{{- $reg = .Values.global.imageRegistry -}}
 {{- else if .Values.global.suseRegistry -}}{{- $reg = .Values.global.suseRegistry -}}
 {{- else -}}{{- $reg = .Values.viewerImage.registry -}}{{- end -}}
-{{- $reg -}}/{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
+{{- if $reg }}{{ $reg }}/{{ end }}{{ .Values.viewerImage.repository }}{{- if .Values.viewerImage.digest }}@{{ .Values.viewerImage.digest }}{{- else }}:{{ .Values.viewerImage.tag }}{{- end }}
 {{- end -}}

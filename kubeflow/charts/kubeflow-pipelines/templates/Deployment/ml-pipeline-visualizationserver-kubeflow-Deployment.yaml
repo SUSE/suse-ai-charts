@@ -27,7 +27,7 @@ spec:
     spec:
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
       containers:
-      - image: "{{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.visualizationServer.image.registry) }}/{{ .Values.visualizationServer.image.repository }}{{- if .Values.visualizationServer.image.digest }}@{{ .Values.visualizationServer.image.digest }}{{- else }}:{{ .Values.visualizationServer.image.tag }}{{- end }}"
+      - image: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.visualizationServer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.visualizationServer.image.repository }}{{- if .Values.visualizationServer.image.digest }}@{{ .Values.visualizationServer.image.digest }}{{- else }}:{{ .Values.visualizationServer.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.visualizationServer.image.pullPolicy }}
         livenessProbe:
           exec:

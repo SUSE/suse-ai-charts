@@ -105,10 +105,16 @@ check_sts_ready() {
   fail "StatefulSet $name not ready ($ready/$min replicas) after ${max_wait}s"
 }
 
-# HTTP health check via a temporary kubectl run pod (no port-forward needed)
+# HTTP health check via a temporary kubectl run pod (no port-forward needed).
+# Optional 3rd arg is an extra request header ("Name: value"), e.g. to satisfy
+# an Istio AuthorizationPolicy on the target service.
 check_http() {
-  local label="$1" url="$2"
+  local label="$1" url="$2" extra_header="${3:-}"
   local result
+
+  # Build the wget arg list; append --header only when an extra header is given.
+  local -a wget_args=(-qO- --timeout=10)
+  [[ -n "$extra_header" ]] && wget_args+=(--header "$extra_header")
 
   if result=$(kubectl run "smoke-http-$$" \
         --image=${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7 \
@@ -130,7 +136,7 @@ check_http() {
   }
 }' \
         --command -- \
-        wget -qO- --timeout=10 "$url" 2>/dev/null); then
+        wget "${wget_args[@]}" "$url" 2>/dev/null); then
     pass "HTTP $label ($url)"
   else
     fail "HTTP $label ($url)"
@@ -331,8 +337,15 @@ check_tcp "Katib MariaDB"        "katib-mysql.${NS}.svc.cluster.local"         3
 if kubectl get svc model-registry-service -n "$NS" &>/dev/null; then
   check_tcp  "Model Registry API" "model-registry-service.${NS}.svc.cluster.local" 8080
   check_tcp  "Model Registry UI"  "model-registry-ui-service.${NS}.svc.cluster.local" 8080
+  # The model-registry server carries a strict Istio AuthorizationPolicy (aligned to
+  # kubeflow/community-distribution release-26.03.1): in-cluster callers must present an
+  # `authorization` header and must NOT carry a `kubeflow-userid` header (anti-spoofing).
+  # A bare request is denied with 403, so send an authorization header to exercise the
+  # legitimate in-cluster path. The policy only checks the header's presence (value "*"),
+  # so a static probe token is sufficient.
   check_http "Model Registry API healthz" \
-    "http://model-registry-service.${NS}.svc.cluster.local:8080/api/model_registry/v1alpha3/registered_models"
+    "http://model-registry-service.${NS}.svc.cluster.local:8080/api/model_registry/v1alpha3/registered_models" \
+    "authorization: Bearer smoke-test-probe"
 fi
 if kubectl get sts model-catalog-postgres -n "$NS" &>/dev/null; then
   check_sts_ready    "model-catalog-postgres"

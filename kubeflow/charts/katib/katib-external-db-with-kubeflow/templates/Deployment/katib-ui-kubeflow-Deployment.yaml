@@ -30,7 +30,7 @@ spec:
               fieldPath: metadata.namespace
         - name: APP_DISABLE_AUTH
           value: 'false'
-        image: "{{ include "katib.suseImageRegistry" (dict "ctx" . "registry" .Values.ui.image.registry) }}/{{ .Values.ui.image.repository }}:{{ .Values.ui.image.tag }}"
+        image: "{{- $registry := include "katib.suseImageRegistry" (dict "ctx" . "registry" .Values.ui.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.ui.image.repository }}:{{ .Values.ui.image.tag }}"
         name: katib-ui
         ports:
         - containerPort: 8080

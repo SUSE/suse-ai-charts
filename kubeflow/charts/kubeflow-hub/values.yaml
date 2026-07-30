@@ -1,34 +1,242 @@
 global:
   # -- Global override for container image registry
   imageRegistry: ""
-  # -- Global override for SUSE AI container image registry (staging vs production)
+  # -- Global override for SUSE AI container image registry (e.g. staging registry)
   suseRegistry: ""
-  # -- Global override for container image pull secrets
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollectionRegistry: ""
   imagePullSecrets: []
   gateway:
     name: "kubeflow/kubeflow-gateway"
 
-image:
-  registry: registry.suse.com
-  repository: ai/containers/kubeflow/hub/server
-  tag: v0.3.10
-  pullPolicy: IfNotPresent
-  digest: ""  # optional: sha256:... pins this image for supply-chain security
+# Istio AuthorizationPolicy posture for the model-registry server/UI/catalog.
+# Escape hatch so operators can adjust mesh authz per-cluster without editing templates.
+authorizationPolicy:
+  # strict=true (default) renders the upstream kubeflow/community-distribution release-26.03.1
+  # policies for the SERVER and UI: allow from the ingress-gateway SA, plus (server only) an
+  # internal Kubernetes-JWT rule that blocks kubeflow-userid header spoofing. Requires mesh
+  # mTLS so source.principals are populated (Istio auto-mTLS satisfies this by default).
+  # strict=false falls back to a namespace-scoped ALLOW (from istio-system + kubeflow) — looser,
+  # but a safety valve if a legitimate in-namespace caller is unexpectedly denied after upgrade.
+  strict: true
+  # catalogStrict controls the model-catalog policy independently. model-catalog has NO upstream
+  # AuthorizationPolicy, so it defaults to the looser namespace-scoped ALLOW to avoid breaking
+  # in-cluster catalog calls on upgrade. Set true to apply the same tight server-style policy.
+  catalogStrict: false
+  # Ingress gateway ServiceAccount principal used by the strict policies. Upstream Kubeflow uses
+  # 'istio-ingressgateway-service-account', but Rancher Istio (this deployment's mesh) runs the
+  # gateway as SA 'istio'. If this does not match the real gateway SA, the strict rules never
+  # match the gateway->UI/server hop and Envoy returns "RBAC: access denied". Verify with:
+  #   kubectl get pod -n istio-system -l app=istio -o jsonpath='{.items[0].spec.serviceAccountName}'
+  ingressGatewayPrincipal: "cluster.local/ns/istio-system/sa/istio"
 
-replicaCount: 1
+server:
+  # Server + Model Catalog run the renamed Hub image (formerly model-registry/server).
+  # The catalog Deployment reuses this same image with the "catalog" command.
+  image:
+    registry: registry.suse.com
+    repository: ai/containers/kubeflow/hub/server
+    tag: v0.3.10
+    pullPolicy: IfNotPresent
+    digest: ""
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Liveness/startup use /readyz/isDirty (fails while a schema migration is mid-flight);
+  # readiness uses /readyz/health. Matches community-distribution release-26.03.1.
+  livenessProbe:
+    httpGet:
+      path: /readyz/isDirty
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startupProbe:
+    httpGet:
+      path: /readyz/isDirty
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    httpGet:
+      path: /readyz/health
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
 
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+ui:
+  image:
+    registry: registry.suse.com
+    repository: ai/containers/kubeflow/hub/ui
+    tag: v0.3.10
+    pullPolicy: IfNotPresent
+    digest: ""
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  startupProbe:
+    httpGet:
+      path: /healthcheck
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 12
+  livenessProbe:
+    httpGet:
+      path: /healthcheck
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 15
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /healthcheck
+      port: 8080
+    initialDelaySeconds: 15
+    periodSeconds: 30
+    timeoutSeconds: 15
+    failureThreshold: 3
 
-service:
-  type: ClusterIP
-  port: 8080
+# Database: shares KFP's MariaDB (requires pipelines.enabled=true)
+# Credentials from mysql-secret (username=root, password=<root password>)
+# Host/port/dbname from pipeline-install-config (embedmdDb key added by this chart)
+db:
+  secretName: mysql-secret
+  configMapName: pipeline-install-config
 
-# Istio VirtualService path prefix — routes traffic from the Kubeflow gateway
-# to the model-registry-service. Must match the path used by the central dashboard.
-virtualServicePrefix: /api/model_registry/
+# initContainer image: waits for MariaDB and creates the DB before the server starts
+dbInit:
+  image:
+    registry: dp.apps.rancher.io
+    repository: containers/mariadb
+    tag: "11.8.8-10.1"
+    pullPolicy: IfNotPresent
+    digest: ""
+
+controller:
+  enabled: false
+  image:
+    registry: registry.suse.com
+    repository: ai/containers/kubeflow/hub/controller
+    tag: v0.3.10           # pinned — upstream manifest uses latest; release-26.03.1 train
+    pullPolicy: IfNotPresent
+    digest: ""
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  env:
+    inferenceServiceController: "false"
+    registriesNamespace: ""
+    skipTlsVerify: "false"
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+kserve:
+  storageContainer:
+    enabled: false
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kubeflow/hub/storage-initializer
+      tag: v0.3.10         # pinned — upstream manifest uses latest; release-26.03.1 train
+      pullPolicy: IfNotPresent
+      digest: ""
+
+catalog:
+  enabled: true
+  # Uses same server image as model-registry-server (different command: catalog)
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # sources is a SourceConfig object rendered into sources.yaml.
+  # An empty map ({}) starts the catalog with no sources; override to add HuggingFace etc.
+  sources: "{}"
+  livenessProbe:
+    tcpSocket:
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    tcpSocket:
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# AppCo PostgreSQL sub-chart for model catalog.
+# Condition mirrors catalog.enabled (set in Chart.yaml dependency condition).
+# Passwords are generated once at install time via the lookup-idempotent Secret template
+# (charts/kubeflow-hub/templates/Secret/model-catalog-postgres-kubeflow-Secret.yaml).
+# Do NOT set postgresql.auth.password or postgresql.auth.postgresPassword here;
+# the Secret template generates them and passes them as existingSecret.
+#
+# GitOps caveat: the generated Secret relies on Helm's `lookup` + `helm.sh/resource-policy: keep`,
+# which are Helm-runtime-only. Under ArgoCD/Flux (which render with `helm template`) `lookup`
+# returns empty, so a new random password would be re-applied on every sync against an already
+# initialized PVC -> "password authentication failed" crash-loop. For GitOps, pre-create the
+# `model-catalog-postgres` Secret (or point existingSecret at an externally managed Secret).
+postgresql:
+  fullnameOverride: "model-catalog-postgres"
+  auth:
+    database: catalog
+    username: catalog
+    existingSecret: model-catalog-postgres
+    postgresPasswordKey: postgres-password
+    # passwordKey defaults to "password" which matches the generated secret key
+  persistence:
+    enabled: true
+    storageClassName: ""
+    resources:
+      requests:
+        storage: 5Gi
+  podTemplates:
+    annotations:
+      sidecar.istio.io/inject: 'false'
+    initContainers:
+      volume-permissions:
+        enabled: true
+  metrics:
+    enabled: false

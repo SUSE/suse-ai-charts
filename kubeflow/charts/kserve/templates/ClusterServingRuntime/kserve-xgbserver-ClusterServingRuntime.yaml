@@ -12,7 +12,7 @@ spec:
     - --model_dir=/mnt/models
     - --http_port=8080
     - --nthread=1
-    image: "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.xgbServer.image.registry) }}/{{ .Values.xgbServer.image.repository }}{{- if .Values.xgbServer.image.digest }}@{{ .Values.xgbServer.image.digest }}{{- else }}:{{ .Values.xgbServer.image.tag }}{{- end }}"
+    image: "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.xgbServer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.xgbServer.image.repository }}{{- if .Values.xgbServer.image.digest }}@{{ .Values.xgbServer.image.digest }}{{- else }}:{{ .Values.xgbServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

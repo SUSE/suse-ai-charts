@@ -14,7 +14,7 @@ spec:
     - --http-port=8080
     - --allow-grpc=true
     - --allow-http=true
-    image: "{{ include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.tritonServer.image.registry) }}/{{ .Values.tritonServer.image.repository }}{{- if .Values.tritonServer.image.digest }}@{{ .Values.tritonServer.image.digest }}{{- else }}:{{ .Values.tritonServer.image.tag }}{{- end }}"
+    image: "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.tritonServer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.tritonServer.image.repository }}{{- if .Values.tritonServer.image.digest }}@{{ .Values.tritonServer.image.digest }}{{- else }}:{{ .Values.tritonServer.image.tag }}{{- end }}"
     name: kserve-container
     resources:
       limits:

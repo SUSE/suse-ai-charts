@@ -103,15 +103,15 @@ Usage: {{ include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry
 
 {{/*
 Return the proper Application Collection Image Registry.
-Precedence: global.imageRegistry > global.suseApplicationCollection > component image.registry
+Precedence: global.imageRegistry > global.suseApplicationCollectionRegistry > component image.registry
 Usage: {{ include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.<component>.image.registry) }}
 */}}
 {{- define "kubeflow-pipelines.suseApplicationCollectionRegistry" -}}
 {{- $ctx := .ctx -}}
 {{- if $ctx.Values.global.imageRegistry -}}
   {{- $ctx.Values.global.imageRegistry -}}
-{{- else if $ctx.Values.global.suseApplicationCollection -}}
-  {{- $ctx.Values.global.suseApplicationCollection -}}
+{{- else if $ctx.Values.global.suseApplicationCollectionRegistry -}}
+  {{- $ctx.Values.global.suseApplicationCollectionRegistry -}}
 {{- else -}}
   {{- .registry -}}
 {{- end -}}

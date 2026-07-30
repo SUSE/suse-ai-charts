@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: ml-pipeline-ui-artifact
-        image: "{{ include "user-namespace.suseImageRegistry" (dict "ctx" . "registry" .Values.pipelines.frontend.registry) }}/{{ .Values.pipelines.frontend.repository }}{{- if .Values.pipelines.frontend.digest }}@{{ .Values.pipelines.frontend.digest }}{{- else }}:{{ .Values.pipelines.frontend.tag }}{{- end }}"
+        image: "{{- $registry := include "user-namespace.suseImageRegistry" (dict "ctx" . "registry" .Values.pipelines.frontend.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.pipelines.frontend.repository }}{{- if .Values.pipelines.frontend.digest }}@{{ .Values.pipelines.frontend.digest }}{{- else }}:{{ .Values.pipelines.frontend.tag }}{{- end }}"
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
