@@ -5,6 +5,8 @@ metadata:
   namespace: kubeflow-user-example-com
 spec:
   predictor:
+    imagePullSecrets:
+      - name: suse-ai-registry
     model:
       modelFormat:
         name: huggingface
