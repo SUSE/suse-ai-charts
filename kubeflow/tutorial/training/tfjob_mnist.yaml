@@ -47,7 +47,7 @@ spec:
           - name: suse-ai-registry
           containers:
           - name: tensorflow
-            image: registry.suse.com/ai/containers/tensorflow:2.15.0
+            image: registry.suse.com/ai/containers/tensorflow/tensorflow:2.15.0
             imagePullPolicy: IfNotPresent
             resources:
               requests:

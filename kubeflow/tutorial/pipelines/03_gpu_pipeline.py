@@ -22,7 +22,7 @@ from kfp import dsl, compiler
 # ── GPU component ─────────────────────────────────────────────────────────────
 
 @dsl.component(
-    base_image="registry.suse.com/ai/containers/pytorch:2.11.0-cuda12.8-cudnn9-runtime",
+    base_image="registry.suse.com/ai/containers/pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime",
     packages_to_install=["torchvision"],
 )
 def train_on_gpu(
