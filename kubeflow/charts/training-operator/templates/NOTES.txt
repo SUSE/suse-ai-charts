@@ -1,0 +1,23 @@
+training-operator {{ .Chart.AppVersion }} deployed.
+
+** CRD UPGRADE REQUIRED on existing installations **
+Helm does not upgrade CRDs automatically. If you are upgrading from a
+previous release, apply the CRDs manually before or after this upgrade:
+
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/trainer/{{ .Chart.AppVersion }}/manifests/base/crds/kubeflow.org_pytorchjobs.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/trainer/{{ .Chart.AppVersion }}/manifests/base/crds/kubeflow.org_tfjobs.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/trainer/{{ .Chart.AppVersion }}/manifests/base/crds/kubeflow.org_mpijobs.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/trainer/{{ .Chart.AppVersion }}/manifests/base/crds/kubeflow.org_paddlejobs.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/trainer/{{ .Chart.AppVersion }}/manifests/base/crds/kubeflow.org_xgboostjobs.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/trainer/{{ .Chart.AppVersion }}/manifests/base/crds/kubeflow.org_jaxjobs.yaml
+
+** DRA (Dynamic Resource Allocation) prerequisites **
+The CRD schema now includes resourceClaims and resources.claims fields,
+which require the DynamicResourceAllocation feature gate to be enabled.
+
+- Kubernetes >= 1.31 required (feature stable in 1.32).
+- A DRA driver (e.g. gpu.nvidia.com DeviceClass) must be installed.
+- Create a ResourceClaimTemplate in each job namespace before submitting
+  jobs that reference spec.pytorchReplicaSpecs.*.template.spec.resourceClaims.
+
+Jobs that do not use DRA are unaffected.

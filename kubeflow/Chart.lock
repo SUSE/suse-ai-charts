@@ -43,7 +43,7 @@ dependencies:
   version: 0.2.1
 - name: training-operator
   repository: file://./charts/training-operator
-  version: 0.2.1
+  version: 0.3.0
 - name: trainer
   repository: file://./charts/trainer
   version: 0.1.1
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:8772cd558af50d96737a2f1fd699bfe642ace6fb8332724f321c60e0324bee9d
-generated: "2026-07-29T08:57:37.270053428-07:00"
+digest: sha256:864c0fd73ce19043d6ead4349a0cbb7f2ef976fcd591811e41479dea3c0a51f6
+generated: "2026-08-26T09:32:10.920003049-03:00"

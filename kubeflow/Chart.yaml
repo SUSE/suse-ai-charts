@@ -120,7 +120,7 @@ dependencies:
     condition: kserve.enabled
 
   - name: training-operator
-    version: "0.2.1"
+    version: "0.3.0"
     repository: "file://./charts/training-operator"
     condition: trainingOperator.enabled
 
