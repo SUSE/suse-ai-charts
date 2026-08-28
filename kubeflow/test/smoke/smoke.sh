@@ -24,7 +24,6 @@ for arg in "$@"; do
     --suse-registry=*)        SUSE_REGISTRY="${arg#*=}" ;;
     --suse-app-collection=*)  SUSE_APP_COLLECTION="${arg#*=}" ;;
     --include-dra-tests)      INCLUDE_DRA=true ;;
-    --include-dra-tests=true) INCLUDE_DRA=true ;;
   esac
 done
 

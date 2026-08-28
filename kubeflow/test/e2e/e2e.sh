@@ -50,7 +50,6 @@ for arg in "$@"; do
   case "$arg" in
     --include-gpu-tests)       INCLUDE_GPU=true ;;
     --include-dra-tests)       INCLUDE_DRA=true ;;
-    --include-dra-tests=true)  INCLUDE_DRA=true ;;
     --user-namespace=*)        USER_NS="${arg#*=}" ;;
     --user-email=*)            KFP_USER="${arg#*=}" ;;
     --suse-registry=*)         SUSE_REGISTRY="${arg#*=}" ;;
