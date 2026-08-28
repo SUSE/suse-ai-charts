@@ -27,6 +27,10 @@
 #   GPU-3. GPU Notebook     — Notebook CR with GPU limit → StatefulSet ready
 #   GPU-4. GPU PyTorchJob   — NCCL init + CUDA tensor op → Succeeded
 #   GPU-5. HuggingFace IS   — tiny synthetic GPT-2 on GPU → /openai/v1/completions
+#
+# DRA tests (opt-in, pass --include-dra-tests):
+#   DRA-1. API availability — resource.k8s.io present (K8s >= 1.31)
+#   DRA-2. PyTorchJob DRA   — resourceClaims → DeviceClass → Succeeded
 
 set -uo pipefail
 
@@ -41,13 +45,16 @@ FAIL=0
 
 # Parse flags
 INCLUDE_GPU=false
+INCLUDE_DRA=false
 for arg in "$@"; do
   case "$arg" in
-    --include-gpu-tests) INCLUDE_GPU=true ;;
-    --user-namespace=*)  USER_NS="${arg#*=}" ;;
-    --user-email=*)      KFP_USER="${arg#*=}" ;;
-    --suse-registry=*)        SUSE_REGISTRY="${arg#*=}" ;;
-    --suse-app-collection=*)  SUSE_APP_COLLECTION="${arg#*=}" ;;
+    --include-gpu-tests)       INCLUDE_GPU=true ;;
+    --include-dra-tests)       INCLUDE_DRA=true ;;
+    --include-dra-tests=true)  INCLUDE_DRA=true ;;
+    --user-namespace=*)        USER_NS="${arg#*=}" ;;
+    --user-email=*)            KFP_USER="${arg#*=}" ;;
+    --suse-registry=*)         SUSE_REGISTRY="${arg#*=}" ;;
+    --suse-app-collection=*)   SUSE_APP_COLLECTION="${arg#*=}" ;;
   esac
 done
 
@@ -113,6 +120,9 @@ cleanup() {
   kubectl delete pytorchjob       e2e-gpu-pytorch      -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete inferenceservice e2e-tiny-gpt2        -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pod              e2e-gpu-model-build  -n "$NS"      --ignore-not-found &>/dev/null || true
+  # DRA tests
+  kubectl delete pytorchjob       e2e-dra-pytorchjob   -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete resourceclaimtemplate e2e-dra-claim-template -n "$USER_NS" --ignore-not-found &>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -914,7 +924,9 @@ if $INCLUDE_GPU; then
 header "━━━ GPU Tests ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # ── GPU-1: Node capability check ───────────────────────────────────────────────
-header "GPU-1. Node capability — at least one node with nvidia.com/gpu"
+# Accept either legacy nvidia.com/gpu (device-plugin mode) or a gpu.* DeviceClass
+# (DRA / GPUCluster mode — nvidia.com/gpu is not advertised in that mode).
+header "GPU-1. Node capability — at least one node with nvidia.com/gpu or gpu.* DeviceClass"
 
 GPU_NODE_COUNT=$(kubectl get nodes -o json | python3 -c "
 import sys, json
@@ -923,15 +935,28 @@ print(sum(1 for n in nodes
           if int(n['status']['allocatable'].get('nvidia.com/gpu', '0')) > 0))
 " 2>/dev/null || echo "0")
 
+DRA_GPU_DC=$(kubectl get deviceclass --no-headers 2>/dev/null | awk '{print $1}' \
+  | grep -E '^gpu\.' | head -1 || true)
+
 if [[ "${GPU_NODE_COUNT:-0}" -gt 0 ]]; then
-  pass "GPU nodes found: ${GPU_NODE_COUNT}"
+  pass "GPU-1: ${GPU_NODE_COUNT} node(s) with nvidia.com/gpu (device-plugin mode)"
+elif [[ -n "$DRA_GPU_DC" ]]; then
+  pass "GPU-1: DRA mode — gpu DeviceClass '${DRA_GPU_DC}' registered (nvidia.com/gpu not used in DRA mode)"
 else
-  fail "GPU-1: no nodes with nvidia.com/gpu > 0 — skipping remaining GPU tests"
-  # Record remaining GPU tests as skipped by not running them; fall through to summary
+  fail "GPU-1: no nodes with nvidia.com/gpu > 0 and no gpu.* DeviceClass found — skipping remaining GPU tests"
   INCLUDE_GPU=false
 fi
 
 fi  # end GPU_NODE_COUNT gate — re-checked below per test via $INCLUDE_GPU
+
+# GPU-2 through GPU-5 use nvidia.com/gpu resource requests and plain pod specs
+# that don't work in DRA mode (GPUCluster). Skip them when only a DRA DeviceClass
+# is available — the DRA-2 test is the DRA-mode equivalent of this suite.
+if $INCLUDE_GPU && [[ "${GPU_NODE_COUNT:-0}" -eq 0 ]] && [[ -n "${DRA_GPU_DC:-}" ]]; then
+  info "GPU-2 through GPU-5 require nvidia.com/gpu (device-plugin mode); cluster is in DRA mode — skipping"
+  info "Run with --include-dra-tests to validate GPU access via DRA instead"
+  INCLUDE_GPU=false
+fi
 
 if $INCLUDE_GPU; then
 
@@ -1332,6 +1357,135 @@ sys.exit(1)
 fi  # end GPU_BUILD_OK
 
 fi  # end INCLUDE_GPU
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DRA Tests (only when --include-dra-tests is passed)
+# ══════════════════════════════════════════════════════════════════════════════
+
+if $INCLUDE_DRA; then
+
+header "━━━ DRA Tests ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# ── DRA-1: API availability ────────────────────────────────────────────────────
+header "DRA-1. API availability — resource.k8s.io (K8s >= 1.31)"
+
+if ! kubectl api-resources --api-group=resource.k8s.io --no-headers 2>/dev/null \
+    | grep -qi "resourceclaimtemplates"; then
+  fail "DRA-1: resource.k8s.io API not available — requires K8s >= 1.31 with DynamicResourceAllocation enabled; skipping DRA tests"
+  INCLUDE_DRA=false
+fi
+
+if $INCLUDE_DRA; then
+  pass "DRA-1: resource.k8s.io API available"
+fi
+
+fi  # inner gate re-check
+
+if $INCLUDE_DRA; then
+
+# ── DRA-2: Detect DeviceClass and submit a DRA-backed PyTorchJob ──────────────
+header "DRA-2. PyTorchJob with resourceClaims — job reaches Succeeded"
+
+  # Prefer gpu.* DeviceClasses; fall back to first non-management class.
+  DRA_DEVICE_CLASS=$(kubectl get deviceclass --no-headers 2>/dev/null | awk '{print $1}' \
+    | grep -E '^gpu\.' | head -1)
+  if [[ -z "$DRA_DEVICE_CLASS" ]]; then
+    DRA_DEVICE_CLASS=$(kubectl get deviceclass --no-headers 2>/dev/null | awk '{print $1}' \
+      | grep -Ev '^(compute-domain|mig\.|vfio\.)' | head -1)
+  fi
+
+if [[ -z "$DRA_DEVICE_CLASS" ]]; then
+  fail "DRA-2: no DeviceClass found — install a DRA driver before running DRA tests"
+else
+  info "DRA-2: using DeviceClass: $DRA_DEVICE_CLASS"
+
+  # Detect the actual API version — hardcoding v1beta1 breaks on clusters with v1.
+  DRA_API_VERSION=$(kubectl api-versions 2>/dev/null | grep '^resource\.k8s\.io/' \
+    | sort -t/ -k2 -V | tail -1)
+  DRA_API_VERSION="${DRA_API_VERSION:-resource.k8s.io/v1beta1}"
+
+  # v1 / v1beta2 moved deviceClassName inside an `exactly` sub-object.
+  case "$DRA_API_VERSION" in
+    resource.k8s.io/v1|resource.k8s.io/v1beta2)
+      DRA_REQUEST_BLOCK="        - name: dra-device
+          exactly:
+            deviceClassName: ${DRA_DEVICE_CLASS}"
+      ;;
+    *)
+      DRA_REQUEST_BLOCK="        - name: dra-device
+          deviceClassName: ${DRA_DEVICE_CLASS}"
+      ;;
+  esac
+
+  kubectl apply -f - <<EOF
+apiVersion: ${DRA_API_VERSION}
+kind: ResourceClaimTemplate
+metadata:
+  name: e2e-dra-claim-template
+  namespace: ${USER_NS}
+spec:
+  spec:
+    devices:
+      requests:
+${DRA_REQUEST_BLOCK}
+EOF
+  [[ $? -ne 0 ]] && fail "DRA-2: failed to create ResourceClaimTemplate"
+
+  kubectl apply -f - <<EOF
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: e2e-dra-pytorchjob
+  namespace: ${USER_NS}
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        spec:
+          resourceClaims:
+            - name: dra-device
+              resourceClaimTemplateName: e2e-dra-claim-template
+          containers:
+            - name: pytorch
+              image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
+              command: ["sh", "-c", "echo 'DRA allocation OK'; exit 0"]
+              resources:
+                claims:
+                  - name: dra-device
+EOF
+  [[ $? -ne 0 ]] && fail "DRA-2: failed to create PyTorchJob"
+
+  T_DRA=300
+  elapsed=0
+  DRA_SUCCEEDED=false
+  DRA_FAILED=false
+  while true; do
+    sleep 5; elapsed=$((elapsed+5))
+    COND_OK=$(kubectl get pytorchjob e2e-dra-pytorchjob -n "$USER_NS" \
+      -o jsonpath='{.status.conditions[?(@.type=="Succeeded")].status}' 2>/dev/null || echo "")
+    COND_FAIL=$(kubectl get pytorchjob e2e-dra-pytorchjob -n "$USER_NS" \
+      -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+    info "DRA PyTorchJob Succeeded=${COND_OK:-False} Failed=${COND_FAIL:-False} (${elapsed}s/${T_DRA}s)"
+    [[ "$COND_OK" == "True" ]]   && DRA_SUCCEEDED=true && break
+    [[ "$COND_FAIL" == "True" ]] && DRA_FAILED=true    && break
+    [[ $elapsed -ge $T_DRA ]]    && break
+  done
+
+  if $DRA_SUCCEEDED; then
+    pass "DRA-2: PyTorchJob with resourceClaims reached Succeeded"
+  elif $DRA_FAILED; then
+    fail "DRA-2: PyTorchJob with resourceClaims Failed"
+  else
+    fail "DRA-2: PyTorchJob with resourceClaims did not complete within ${T_DRA}s"
+  fi
+
+  kubectl delete pytorchjob e2e-dra-pytorchjob -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete resourceclaimtemplate e2e-dra-claim-template -n "$USER_NS" --ignore-not-found &>/dev/null || true
+fi
+
+fi  # end INCLUDE_DRA
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 header "━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

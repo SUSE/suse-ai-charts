@@ -16,12 +16,15 @@ NS=kubeflow
 USER_NS=kubeflow-user-example-com
 SUSE_REGISTRY=registry.suse.com        # override with --suse-registry=
 SUSE_APP_COLLECTION=dp.apps.rancher.io  # override with --suse-app-collection=
+INCLUDE_DRA=false
 
 for arg in "$@"; do
   case "$arg" in
     --user-namespace=*)       USER_NS="${arg#*=}" ;;
     --suse-registry=*)        SUSE_REGISTRY="${arg#*=}" ;;
     --suse-app-collection=*)  SUSE_APP_COLLECTION="${arg#*=}" ;;
+    --include-dra-tests)      INCLUDE_DRA=true ;;
+    --include-dra-tests=true) INCLUDE_DRA=true ;;
   esac
 done
 
@@ -280,6 +283,39 @@ if kubectl get deploy kubeflow-trainer-controller-manager -n "$NS" &>/dev/null; 
   check_crd "clustertrainingruntimes.trainer.kubeflow.org"
   check_crd "jobsets.jobset.x-k8s.io"
 fi
+
+# ── DRA prerequisites (opt-in: --include-dra-tests) ───────────────────────────
+if $INCLUDE_DRA; then
+
+header "DRA prerequisites"
+
+# resource.k8s.io API must be available (requires K8s >= 1.31 with DRA enabled)
+if kubectl api-resources --api-group=resource.k8s.io --no-headers 2>/dev/null \
+    | grep -qi "resourceclaimtemplates"; then
+  pass "DRA API: ResourceClaimTemplate available (K8s >= 1.31)"
+else
+  fail "DRA API: resource.k8s.io not available — requires K8s >= 1.31 with DynamicResourceAllocation enabled"
+fi
+
+# At least one DeviceClass must exist (confirms a DRA driver is installed)
+DC_COUNT=$(kubectl get deviceclass --no-headers 2>/dev/null | grep -c . || true)
+if [[ "$DC_COUNT" -gt 0 ]]; then
+  DC_NAMES=$(kubectl get deviceclass --no-headers 2>/dev/null | awk '{print $1}' | head -3 | tr '\n' ' ')
+  pass "DRA: $DC_COUNT DeviceClass(es) registered: $DC_NAMES"
+else
+  warn "DRA: no DeviceClass found — install a DRA driver before submitting jobs with resourceClaims"
+fi
+
+# PyTorchJob CRD schema must include resourceClaims (confirms CRD was manually upgraded)
+if kubectl get crd pytorchjobs.kubeflow.org \
+    -o jsonpath='{.spec.versions[*].schema.openAPIV3Schema}' 2>/dev/null \
+    | grep -q "resourceClaims"; then
+  pass "PyTorchJob CRD schema includes resourceClaims (DRA-capable)"
+else
+  fail "PyTorchJob CRD missing resourceClaims — apply the updated CRD (see helm NOTES.txt)"
+fi
+
+fi  # end INCLUDE_DRA
 
 # ── Section 5: Key Secrets / ConfigMaps ───────────────────────────────────────
 header "5. Secrets and ConfigMaps"
