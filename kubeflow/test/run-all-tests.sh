@@ -41,9 +41,7 @@ for arg in "$@"; do
     --skip-tier3)                      SKIP_TIER3=true ;;
     --release=*)                       RELEASE="${arg#*=}" ;;
     --namespace=*)                     NAMESPACE="${arg#*=}" ;;
-    --include-gpu-tests=true)          INCLUDE_GPU=true ;;
     --include-gpu-tests)               INCLUDE_GPU=true ;;
-    --include-dra-tests=true)          INCLUDE_DRA=true ;;
     --include-dra-tests)               INCLUDE_DRA=true ;;
     --additional-user-namespace=*)     ADDITIONAL_USER_NS="${arg#*=}" ;;
     --additional-user-email=*)         ADDITIONAL_USER_EMAIL="${arg#*=}" ;;
