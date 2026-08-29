@@ -9,7 +9,7 @@ global:
 image:
   registry: registry.suse.com
   repository: ai/containers/kubeflow/training-v1/training-operator
-  tag: v1-3f15cb8
+  tag: v1-4445c12
   pullPolicy: IfNotPresent
 
 replicaCount: 1
