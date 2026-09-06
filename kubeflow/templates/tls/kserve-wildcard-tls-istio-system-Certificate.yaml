@@ -1,14 +1,17 @@
+{{- if .Values.global.kserveExternalHttps }}
 {{- $kir := index .Values "kubeflow-istio-resources" }}
 {{- if and $kir.tls.source (ne $kir.tls.source "secret") }}
-{{- $host := $kir.hostname | default "kubeflow.local" }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: kubeflow-gateway-tls
+  name: kserve-wildcard-tls
   namespace: istio-system
 spec:
-  commonName: {{ $host | quote }}
-  secretName: {{ $kir.tls.credentialName | quote }}
+  {{- /* Wildcard covering KServe inference hosts so the dedicated
+         kserve-ingress-gateway can terminate TLS for them. Requires a DNS-01
+         solver. */}}
+  commonName: {{ printf "*.%s" .Values.global.kserveDomain | quote }}
+  secretName: kserve-wildcard-tls
   privateKey:
     rotationPolicy: Always
   issuerRef:
@@ -26,5 +29,6 @@ spec:
     kind: {{ $kir.tls.issuerRef.kind | default "ClusterIssuer" | quote }}
 {{- end }}
   dnsNames:
-  - {{ $host | quote }}
+  - {{ printf "*.%s" .Values.global.kserveDomain | quote }}
+{{- end }}
 {{- end }}

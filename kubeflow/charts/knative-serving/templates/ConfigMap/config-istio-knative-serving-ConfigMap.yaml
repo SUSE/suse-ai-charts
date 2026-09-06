@@ -1,6 +1,15 @@
 apiVersion: v1
 data:
-  gateway.kubeflow.kubeflow-gateway: istio.istio-system.svc.cluster.local
+  # KServe/Knative inference routes through the DEDICATED kserve-ingress-gateway
+  # (rendered by the kubeflow-istio-resources sub-chart), never the shared
+  # kubeflow-gateway. net-istio binds the Knative ingress VirtualService to the
+  # gateway named by this key, so the readiness prober only probes THAT gateway's
+  # ports — keeping inference readiness independent of the dashboard's :443 TLS.
+  # The key form is "gateway.<namespace>.<name>", derived from
+  # global.kserveGateway.name (single source of truth) so it stays in sync with
+  # the Gateway that kubeflow-istio-resources renders and kserve's
+  # inferenceservice-config "ingressGateway".
+  {{ printf "gateway.%s.%s" (include "knative-serving.kserveGatewayNamespace" .) (include "knative-serving.kserveGatewayName" .) }}: istio.istio-system.svc.cluster.local
   local-gateway.knative-local-gateway: knative-local-gateway.istio-system.svc.cluster.local
 kind: ConfigMap
 metadata:

@@ -10,8 +10,16 @@ metadata:
   namespace: knative-serving
 spec:
   selector:
+    {{- /* Overridable via .Values.localGateway.selector so upstream Istio
+           (istio: ingressgateway) works too. The fronting Service uses the same
+           value; fall back to the Rancher default rather than emit an empty
+           selector. */}}
+    {{- if and .Values.localGateway .Values.localGateway.selector }}
+    {{- toYaml .Values.localGateway.selector | nindent 4 }}
+    {{- else }}
     app: istio
     istio: istio
+    {{- end }}
   servers:
   - hosts:
     - '*'

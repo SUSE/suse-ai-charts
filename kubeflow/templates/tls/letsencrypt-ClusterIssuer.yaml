@@ -1,6 +1,12 @@
 {{- $kir := index .Values "kubeflow-istio-resources" }}
 {{- if eq $kir.tls.source "letsEncrypt" }}
-{{- $le := $kir.tls.letsEncrypt }}
+{{- /* `| default dict`: an explicit `tls.letsEncrypt: null` (or a value space
+       where coalesce doesn't backfill the default map) otherwise nil-derefs on
+       `$le.server`/`$le.solver` below with a raw Go panic instead of a schema
+       message. Keys read off the empty dict return nil → the prod server and the
+       cloudflare solver default (see the `| default "cloudflare"` below), matching
+       the documented values.yaml defaults. */}}
+{{- $le := $kir.tls.letsEncrypt | default dict }}
 {{- $server := "https://acme-v02.api.letsencrypt.org/directory" }}
 {{- if eq $le.server "staging" }}
 {{-   $server = "https://acme-staging-v02.api.letsencrypt.org/directory" }}
@@ -12,18 +18,71 @@ metadata:
 spec:
   acme:
     server: {{ $server }}
-    email: {{ $le.email | quote }}
+    {{- /* ACME contact email is OPTIONAL — Let's Encrypt issues without it (you just
+           forgo expiry-warning emails). Emit the field only when set so an empty
+           value doesn't need to be supplied on every letsEncrypt install/upgrade. */}}
+    {{- with $le.email }}
+    email: {{ . | quote }}
+    {{- end }}
     privateKeySecretRef:
       name: kubeflow-letsencrypt-key
+    {{- /*
+      Scope this ClusterIssuer's DNS-01 solver to the zones the chart issues for
+      (the dashboard host and, when enabled, the KServe wildcard domain). Note this
+      is a solver *selector*, not an authorization control. cert-manager just picks
+      this solver when a Certificate's DNS name equals or is a subdomain of a listed
+      dnsZone, so its only security effect is negative: a name OUTSIDE these zones
+      has no matching solver and cannot be issued by this token. Within the listed
+      zones it does NOT restrict issuance — anyone able to create a Certificate for
+      an in-zone name can still have it signed via this issuer, so gate Certificate
+      creation with RBAC. Without any selector the issuer is a full catch-all,
+      mintable for any name.
+
+      Use the dashboard FQDN verbatim, NOT its parent zone. Stripping a label
+      (e.g. "example.com" -> "com") would widen the reachable set to every name
+      under that parent. The KServe wildcard "*.<kserveDomain>" matches the
+      kserveDomain zone below, so that entry needs the base domain, not an FQDN.
+
+      Caveat: this selector also means an out-of-chart Certificate referencing
+      kubeflow-letsencrypt for a different zone will no longer be solved by this
+      issuer — that scoping is intentional.
+    */}}
+    {{- /*
+      Seed the zone list with the dashboard host (falling back to the same
+      "kubeflow.local" the dashboard Certificate uses) and add the KServe wildcard
+      domain when the opt-in is on. Seeding with the dashboard host guarantees the
+      list is NEVER empty, so BOTH solver branches always carry a selector — an
+      unselected solver is a catch-all mintable for any name, which we must never
+      emit.
+    */}}
+    {{- $zones := list ($kir.hostname | default "kubeflow.local") }}
+    {{- if and .Values.global .Values.global.kserveExternalHttps .Values.global.kserveDomain }}
+    {{-   $zones = append $zones .Values.global.kserveDomain }}
+    {{- end }}
     solvers:
-    {{- if eq $le.solver "cloudflare" }}
+    {{- /* Default an unset/empty solver to "cloudflare" (the documented values.yaml
+           default) rather than letting the {{- else }} silently pick http01 — an
+           explicit tls.letsEncrypt: null or an omitted solver otherwise downgrades
+           to http01, which cannot issue the wildcard the opt-in needs. http01 is
+           taken only when it is explicitly requested. */}}
+    {{- if eq ($le.solver | default "cloudflare") "cloudflare" }}
     - dns01:
         {{- with $kir.tls.cloudflare }}
         cloudflare: {{- toYaml . | nindent 10 }}
+        {{- end }}
+      selector:
+        dnsZones:
+        {{- range ($zones | uniq) }}
+        - {{ . | quote }}
         {{- end }}
     {{- else }}
     - http01:
         ingress:
           class: istio
+      selector:
+        dnsZones:
+        {{- range ($zones | uniq) }}
+        - {{ . | quote }}
+        {{- end }}
     {{- end }}
 {{- end }}

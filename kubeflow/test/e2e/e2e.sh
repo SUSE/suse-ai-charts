@@ -603,12 +603,19 @@ spec:
     numNodes: 1
     image: ${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7
     command: ["sh", "-c", "echo Trainer V2 OK; date"]
-  podTemplateOverrides:
-  - targetJobs:
-    - name: node
-    spec:
-      imagePullSecrets:
-      - name: application-collection
+  runtimePatches:
+  - manager: suse.com/e2e-test
+    trainingRuntimeSpec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    imagePullSecrets:
+                    - name: application-collection
 EOF
 
   info "Waiting 300s for TrainJob to complete..."

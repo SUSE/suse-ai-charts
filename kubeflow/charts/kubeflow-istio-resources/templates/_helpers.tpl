@@ -60,3 +60,29 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Dedicated KServe inference gateway reference ("<namespace>/<name>").
+Single source of truth is global.kserveGateway.name (umbrella parent); falls back
+to the chart-local default for standalone sub-chart installs. Consumed by the
+kserve-ingress-gateway Gateway template (split into name/namespace below), and
+mirrored by the knative-serving / kserve sub-charts.
+*/}}
+{{- define "kubeflow-istio-resources.kserveGatewayRef" -}}
+{{- $g := .Values.global | default dict -}}
+{{- if and $g.kserveGateway $g.kserveGateway.name -}}
+{{- $g.kserveGateway.name -}}
+{{- else -}}
+{{- "kubeflow/kserve-ingress-gateway" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Namespace part of the KServe gateway ref. */}}
+{{- define "kubeflow-istio-resources.kserveGatewayNamespace" -}}
+{{- (splitList "/" (include "kubeflow-istio-resources.kserveGatewayRef" .)) | first -}}
+{{- end -}}
+
+{{/* Name part of the KServe gateway ref. */}}
+{{- define "kubeflow-istio-resources.kserveGatewayName" -}}
+{{- (splitList "/" (include "kubeflow-istio-resources.kserveGatewayRef" .)) | last -}}
+{{- end -}}

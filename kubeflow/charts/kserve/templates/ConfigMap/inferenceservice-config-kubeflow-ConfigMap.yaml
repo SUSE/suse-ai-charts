@@ -36,7 +36,11 @@ data:
         }
     }
   ingress: |-
-    {{- mergeOverwrite (.Values.inferenceServiceConfig.ingress | fromJson) (dict "ingressDomain" .Values.ingressDomain) | toJson | nindent 4 }}
+    {{- /* domainTemplate stays as-is (KServe's default hyphen host = status.url,
+           unchanged by the opt-in); ingressDomain and urlScheme are derived from
+           the umbrella globals, and ingressGateway from global.kserveGateway.name
+           (single source of truth for the dedicated inference gateway). */}}
+    {{- mergeOverwrite (.Values.inferenceServiceConfig.ingress | fromJson) (dict "ingressDomain" (include "kserve.kserveDomain" .) "urlScheme" (include "kserve.kserveUrlScheme" .) "ingressGateway" (include "kserve.kserveGatewayRef" .)) | toJson | nindent 4 }}
   logger: |-
     {
         "image" : "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.loggerConfig.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.inferenceServiceConfig.loggerConfig.image.repository }}:{{ .Values.inferenceServiceConfig.loggerConfig.image.tag }}",
