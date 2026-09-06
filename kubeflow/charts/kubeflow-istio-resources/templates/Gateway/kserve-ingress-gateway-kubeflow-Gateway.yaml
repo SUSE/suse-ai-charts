@@ -1,0 +1,82 @@
+{{- /*
+  ── Dedicated KServe inference gateway ──────────────────────────────────────
+  KServe/Knative inference ALWAYS routes through this gateway, never the shared
+  kubeflow-gateway. That keeps inference readiness independent of the dashboard's
+  TLS: the Knative net-istio status prober probes each inference host on every
+  port THIS gateway defines, so with plain-HTTP inference
+  (global.kserveExternalHttps=false) it sees a :80-only gateway and never hits a
+  dashboard :443 server that has no cert for the inference wildcard — which would
+  fail the probe with a TLS EOF and strand the InferenceService at
+  READY=Unknown ("Waiting for load balancer to be ready") even though its pod is
+  healthy.
+
+  NAME/NAMESPACE COME FROM global.kserveGateway.name (single source of truth,
+  "<namespace>/<name>" slash form), consumed in THREE PLACES that stay in sync:
+    1. this template            → Gateway metadata (this file)
+    2. knative-serving          → config-istio key "gateway.<namespace>.<name>"
+    3. kserve                   → inferenceservice-config "ingressGateway"
+  net-istio binds the Knative ingress VirtualService to (2), and the KServe
+  controller binds the top-level VirtualService to (3); both must name THIS
+  Gateway or inference routing/readiness breaks.
+*/}}
+{{- $g := .Values.global | default dict }}
+{{- $kserveHttps := and (hasKey $g "kserveExternalHttps") $g.kserveExternalHttps }}
+{{- $kserveDomain := $g.kserveDomain | default "example.com" }}
+{{- $tlsSource := .Values.tls.source | default "" }}
+{{- $kserveHost := "*" }}
+{{- if $kserveDomain }}{{- $kserveHost = printf "*.%s" $kserveDomain }}{{- end }}
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: {{ include "kubeflow-istio-resources.kserveGatewayName" . }}
+  namespace: {{ include "kubeflow-istio-resources.kserveGatewayNamespace" . }}
+spec:
+  selector:
+    {{- /* Same selector guard as kubeflow-gateway so the two never diverge. */}}
+    {{- if and .Values.istioGateway .Values.istioGateway.selector }}
+    {{- toYaml .Values.istioGateway.selector | nindent 4 }}
+    {{- else }}
+    istio: istio
+    {{- end }}
+  servers:
+  {{- /* ── HTTPS mode: wildcard :443 + :80→:443 redirect ───────────────────────
+         Gated identically to the wildcard server that used to live on the shared
+         kubeflow-gateway (defense-in-depth for standalone sub-chart installs; the
+         umbrella + sub-chart validations.yaml fail fast on the same combinations).
+         The :443 wildcard here scopes hosts to "*.<kserveDomain>" — it is NOT on
+         the auth-bypass '*' listener — and reuses the same kserve-wildcard-tls /
+         tls.kserveExistingSecret credential the wildcard server previously
+         referenced on the shared kubeflow-gateway, so the umbrella cert-manager
+         Certificate is unchanged. */}}
+  {{- if and $kserveHttps $kserveDomain .Values.hostname $g.oauth2Proxy $g.oauth2Proxy.enabled }}
+  - hosts:
+    - {{ $kserveHost | quote }}
+    port:
+      name: https-kserve
+      number: 443
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      {{- if eq $tlsSource "secret" }}
+      credentialName: {{ .Values.tls.kserveExistingSecret | quote }}
+      {{- else }}
+      credentialName: "kserve-wildcard-tls"
+      {{- end }}
+      minProtocolVersion: TLSV1_2
+  - hosts:
+    - {{ $kserveHost | quote }}
+    port:
+      name: http-kserve
+      number: 80
+      protocol: HTTP
+    tls:
+      httpsRedirect: true
+  {{- else }}
+  {{- /* ── HTTP mode: plain :80 for inference hosts (no redirect) ─────────── */}}
+  - hosts:
+    - {{ $kserveHost | quote }}
+    port:
+      name: http-kserve
+      number: 80
+      protocol: HTTP
+  {{- end }}

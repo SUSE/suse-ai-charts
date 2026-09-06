@@ -7,7 +7,6 @@ on:
 permissions:
   contents: write
   packages: write
-  id-token: write
 
 jobs:
   release:
@@ -20,16 +19,33 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
-          version: v3.15.4
+          # Pin to the project's documented minimum (README Prerequisites /
+          # runMe.sh floor) so releases are packaged with the version installers use.
+          version: v4.0.1
 
-      - name: Install yq
+      - name: Install yq (pinned + checksum-verified)
         run: |
+          set -euo pipefail
           sudo apt-get update -y
           sudo apt-get install -y jq
-          YQ_BIN="/usr/local/bin/yq"
-          echo "Installing yq..."
-          sudo curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o $YQ_BIN
-          sudo chmod +x $YQ_BIN
+          # Pin to an exact version (never 'latest') and verify the download against
+          # the release's own checksums manifest, so a corrupted/substituted binary
+          # is rejected instead of silently packaging charts.
+          YQ_VERSION="v4.44.6"
+          base="https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}"
+          # -f: fail the step on any HTTP error (a 404 from a bad pin must not land an
+          # HTML error page as the "binary").
+          curl -fsSL "${base}/yq_linux_amd64"          -o yq
+          curl -fsSL "${base}/checksums"               -o yq_checksums
+          curl -fsSL "${base}/checksums_hashes_order"  -o yq_hashes_order
+          # yq's checksums file has one column per hash algorithm; the algorithm order
+          # is in checksums_hashes_order. Locate the SHA-256 column (+1 for the leading
+          # filename column) and verify our download against it.
+          col=$(( $(grep -n '^SHA-256$' yq_hashes_order | cut -d: -f1) + 1 ))
+          expected=$(awk -v c="$col" '$1=="yq_linux_amd64"{print $c}' yq_checksums)
+          echo "${expected}  yq" | sha256sum -c -
+          sudo install -m 0755 yq /usr/local/bin/yq
+          yq --version
 
       - name: Debug actor and repo
         run: |
@@ -43,14 +59,27 @@ jobs:
           echo "charts=$(echo $CHARTS | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Helm login to AppCo registry
+        env:
+          APPCO_REGISTRY: ${{ secrets.APPCO_REGISTRY }}
+          APPCO_USER: ${{ secrets.APPCO_USER }}
+          APPCO_TOKEN: ${{ secrets.APPCO_TOKEN }}
         run: |
-          helm registry login ${{ secrets.APPCO_REGISTRY }} -u ${{ secrets.APPCO_USER }} -p ${{ secrets.APPCO_TOKEN }}
+          # --password-stdin keeps the token out of the process argv (where `-p`
+          # leaves it visible to any process listing / CI trace).
+          printf '%s' "$APPCO_TOKEN" | helm registry login "$APPCO_REGISTRY" -u "$APPCO_USER" --password-stdin
 
       - name: Package charts
         if: ${{ steps.detect.outputs.charts != '' }}
+        env:
+          # Pass the step output through the environment (not interpolated straight
+          # into the script) and split it with read -ra, so the value can't break out
+          # of the loop or be glob-expanded.
+          CHARTS: ${{ steps.detect.outputs.charts }}
+          HELM_EXPERIMENTAL_OCI: 1
         run: |
           set -euo pipefail
-          for chart in ${{ steps.detect.outputs.charts }}; do
+          read -ra charts <<< "$CHARTS"
+          for chart in "${charts[@]}"; do
             echo "Packaging and pushing $chart"
             cd "$chart"
 
@@ -66,8 +95,6 @@ jobs:
             echo "chart_tag=$TAG" >> "$GITHUB_OUTPUT"
             cd ..
           done
-        env:
-          HELM_EXPERIMENTAL_OCI: 1
 
       # Disabling publishing helm charts to OCI
       # - name: Push charts to OCI
@@ -86,10 +113,14 @@ jobs:
 
       - name: Create GitHub Release for each chart
         if: ${{ steps.detect.outputs.charts != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHARTS: ${{ steps.detect.outputs.charts }}
         run: |
           set -euo pipefail
-          for chart in ${{ steps.detect.outputs.charts }}; do
-            VERSION=$(yq -r '.version' $chart/Chart.yaml)
+          read -ra charts <<< "$CHARTS"
+          for chart in "${charts[@]}"; do
+            VERSION=$(yq -r '.version' "$chart/Chart.yaml")
             NAME=$chart
             TAG="${NAME}-${VERSION}"
 
@@ -106,5 +137,3 @@ jobs:
               echo "Created GitHub release $TAG"
             fi
           done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,12 @@
 apiVersion: v1
 data:
+  {{- $template := include "knative-serving.domainTemplate" . }}
+  {{- if $template }}
+  {{- /* Golang template for the Knative route host. Set to a single label
+      ({name}-{namespace}.{domain}) when using wildcard TLS so *.{domain} covers
+      inference hosts; otherwise omit to keep Knative's dotted default. See values.yaml. */}}
+  domain-template: {{ $template | quote }}
+  {{- end }}
 kind: ConfigMap
 metadata:
   annotations:

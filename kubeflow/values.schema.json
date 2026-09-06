@@ -78,6 +78,15 @@
           "type": "string",
           "description": "Optional private registry prefix. When set, prepended to all image refs. E.g. 'my-registry.corp.com/kubeflow'"
         },
+        "kserveDomain": {
+          "type": "string",
+          "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$",
+          "description": "Base domain for KServe InferenceServices. Prefer a scoped subdomain (e.g. 'models.example.com') over a bare org-wide domain ('example.com'): with kserveExternalHttps the cert is a '*.<kserveDomain>' wildcard, so a bare domain widens its blast radius to your whole zone. Pushed automatically to the knative-serving and kserve subcharts. Empty = fall back to the subchart-local knativeServing.domain / kserve.ingressDomain. Must not include a leading '*.' (the chart forms '*.<kserveDomain>' itself)."
+        },
+        "kserveExternalHttps": {
+          "type": "boolean",
+          "description": "Enable external HTTPS to KServe inference on the dedicated kserve-ingress-gateway (global.kserveGateway.name), separate from the dashboard's kubeflow-gateway. When true, creates a wildcard cert (*.kserveDomain) and exposes it on :443, and flattens the route host to '{name}-{namespace}.{domain}' so the wildcard covers it. Requires a DNS-01 solver and global.kserveDomain."
+        },
         "oauth2Proxy": {
           "type": "object",
           "properties": {
@@ -87,7 +96,17 @@
         "gateway": {
           "type": "object",
           "properties": {
-            "name": { "type": "string", "description": "Istio gateway in namespace/name format" }
+            "name": { "type": "string", "description": "Istio Gateway (namespace/name) for the Kubeflow dashboard and app VirtualServices. KServe inference does not use this — see global.kserveGateway.name." }
+          }
+        },
+        "kserveGateway": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$",
+              "description": "Single source of truth (namespace/name) for the dedicated KServe/Knative inference gateway, separate from the dashboard's global.gateway.name. Threads through the Gateway CR rendered by kubeflow-istio-resources, the config-istio 'gateway.<namespace>.<name>' key net-istio binds inference to, and kserve's inferenceservice-config 'ingressGateway'. Keeping inference on its own gateway keeps the net-istio readiness prober off the dashboard's :443 TLS. Default 'kubeflow/kserve-ingress-gateway'."
+            }
           }
         }
       }
@@ -159,7 +178,9 @@
     "knativeServing": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean", "description": "Required for KServe" }
+        "enabled": { "type": "boolean", "description": "Required for KServe" },
+        "domain": { "type": "string", "description": "Knative Serving domain for InferenceService external URLs. Normally left unset — auto-derived from global.kserveDomain. Only set for a standalone knative-serving install without the umbrella globals." },
+        "domainTemplate": { "type": "string", "description": "Go template for the Knative route host. Normally left unset — auto-derived from global.kserveExternalHttps: empty uses Knative's upstream dotted form '{{ .Name }}.{{ .Namespace }}.{{ .Domain }}', and when external HTTPS is enabled the chart applies the flattened single-label form '{{ .Name }}-{{ .Namespace }}.{{ .Domain }}' so a single wildcard cert (*.<domain>) can cover inference hosts. Knative/KServe render this with Go's stdlib text/template (no Sprig), so the namespace cannot be hashed — name and namespace are joined by '-', which means two different (name, namespace) pairs can collide into the same host (see the README cross-tenant naming caveat). Set explicitly only to override; the flattened label must stay under 63 characters. Note '.Name' is the Knative Service name, so a serverless InferenceService component already carries its suffix here — a predictor renders as '{isvc}-predictor-{namespace}' (likewise '-transformer'/'-explainer'), so budget ~10 chars for that suffix against the 63-char limit." }
       }
     },
     "knativeEventing": {
@@ -216,7 +237,9 @@
     "kserve": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "ingressDomain": { "type": "string", "description": "Domain for InferenceService external URLs. Normally left unset — auto-derived from global.kserveDomain. Only set for a standalone kserve install without the umbrella globals." },
+        "urlScheme": { "type": "string", "enum": ["http", "https"], "description": "Scheme KServe reports in status.url. Normally left unset — auto-derived from global.kserveExternalHttps (https when enabled, otherwise http). Only set for a standalone kserve install without the umbrella globals." }
       }
     },
     "hub": {
@@ -360,7 +383,22 @@
       "properties": {
         "hostname": {
           "type": "string",
-          "description": "FQDN for the gateway. Leave empty for wildcard/IP+NodePort access. Independent of TLS."
+          "not": { "anyOf": [
+            { "pattern": "\\*" },
+            { "pattern": "(?i)^(com|org|net|edu|gov|mil|int|io|co|ai|app|dev|cloud|online|site|info|biz|xyz|me|tv|us|uk|de|fr|jp|cn|au|ca|eu|ru|in|br|nl|it|es|se|no|fi|ch|nz|za|kr|mx|pl|tr|id|sg|hk)$" }
+          ] },
+          "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$",
+          "description": "Host for the gateway. Leave empty ('') for wildcard/IP+NodePort access, or set a hostname: a dotted FQDN (kubeflow.example.com), a single-label name (kubeflow, localhost), or an IPv4 literal (10.43.1.7) are all accepted. Must not contain '*' — a literal wildcard hostname would make the auth-bypass filter trust every host. A bare public suffix (a single-label registry TLD such as 'com'/'io'/'co.uk') is ALSO rejected: hostname is seeded into the letsEncrypt ClusterIssuer's DNS-01 dnsZones (letsencrypt-ClusterIssuer.yaml), so 'com' would scope the ACME solver to the entire TLD — exactly what that template's comment warns against. The list is the common gTLD/ccTLD set, not the full Public Suffix List; the ClusterIssuer comment remains the backstop for the rest. The DNS charset is enforced (no whitespace/non-breaking-space/embedded-newline/trailing-dot/'_'/leading-'-'): the hostname is embedded verbatim into the authn EnvoyFilter's Lua, and an invalid character makes LuaJIT reject the inline_code so istiod NACKs the filter and the gateway falls open. Rejecting it here fails the install instead. Independent of TLS. Kept in sync with the sub-chart values.schema.json."
+        },
+        "istioGateway": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "object",
+              "minProperties": 1,
+              "description": "Workload label selector shared by the Gateway and the authn EnvoyFilter. Must be non-empty: an empty/null selector on the istio-system authn EnvoyFilter (patches are context: GATEWAY) would attach ext_authz to every gateway in the mesh. Rancher Istio: {istio: istio}; upstream: {istio: ingressgateway}."
+            }
+          }
         },
         "tls": {
           "type": "object",
@@ -369,7 +407,7 @@
             "source": {
               "type": "string",
               "enum": ["", "selfSigned", "letsEncrypt", "secret", "issuerRef"],
-              "description": "TLS mode: empty=HTTP only, selfSigned=cert-manager self-signed, letsEncrypt=ACME, secret=BYO cert, isserRef=existing cluster issuer"
+              "description": "TLS mode: empty=HTTP only, selfSigned=cert-manager self-signed, letsEncrypt=ACME, secret=BYO cert, issuerRef=existing cluster issuer"
             },
             "issuer": {
               "type": "string",
@@ -378,6 +416,10 @@
             "existingSecret": {
               "type": "string",
               "description": "Pre-existing Secret name in istio-system (required for source: secret)"
+            },
+            "kserveExistingSecret": {
+              "type": "string",
+              "description": "Pre-existing Secret in istio-system for the KServe wildcard server (source: secret + global.kserveExternalHttps). SAN must cover '*.<global.kserveDomain>'. Required in that mode."
             },
             "credentialName": {
               "type": "string",
@@ -393,7 +435,7 @@
               "properties": {
                 "email": {
                   "type": "string",
-                  "description": "ACME account email (required)"
+                  "description": "ACME account email — optional (recommended): Let's Encrypt issues without it; when empty the ClusterIssuer omits the field. Used for expiry-warning emails."
                 },
                 "server": {
                   "type": "string",

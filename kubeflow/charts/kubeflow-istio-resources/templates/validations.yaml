@@ -1,10 +1,14 @@
 {{/*
-Chart-level prerequisite validations. This file renders nothing but fails fast
-with a human-readable error when required dependencies are misconfigured.
+Sub-chart prerequisite validations. This file renders nothing but fails fast
+with a human-readable error when the gateway / KServe-external-HTTPS options are
+misconfigured.
+
+kubeflow-istio-resources is independently installable, so these guards must live
+here (not only in the umbrella templates/validations.yaml) — a standalone install
+sets .Values.hostname and global.kserveExternalHttps / global.kserveDomain
+directly, bypassing the umbrella checks. Keep the messages consistent with the
+umbrella copy.
 */}}
-{{- if and .Values.hub.enabled (not .Values.pipelines.enabled) }}
-{{- fail "hub.enabled=true requires pipelines.enabled=true (Kubeflow Hub shares KFP's MariaDB and mysql-secret)" }}
-{{- end }}
 
 {{- /*
   Reject a literal '*' as the gateway hostname. Leaving hostname empty already
@@ -16,27 +20,21 @@ with a human-readable error when required dependencies are misconfigured.
   unreachable. It is kept as defense-in-depth: it still catches '*' if the schema
   pattern is ever weakened or schema validation is skipped.
 */}}
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- if and $kir $kir.hostname (eq $kir.hostname "*") }}
+{{- if and .Values.hostname (eq .Values.hostname "*") }}
 {{- fail "kubeflow-istio-resources.hostname must not be '*'. Leave it empty (\"\") for wildcard / IP+NodePort access, or set a concrete FQDN to scope the gateway (and the auth bypass) to that host." }}
 {{- end }}
 
 {{- /*
   KServe external HTTPS: the dedicated kserve-ingress-gateway wildcard cert only
   works if a real gateway hostname is set and the ACME challenge can issue a
-  wildcard. These fail silently at runtime (readiness probe EOF / stuck cert
-  order), so fail fast here.
-
-  The companion knative/kserve settings (domainTemplate, urlScheme, ingressDomain)
-  are auto-derived from global.kserveExternalHttps / global.kserveDomain via chart
-  helpers, so the operator only needs the two globals plus a working TLS issuer —
-  no more hand-aligned sub-chart knobs, and no guards for them.
+  wildcard. Without a hostname the dashboard gateway serves the '*' listener with
+  is_trusted_host=true; the dedicated kserve-ingress-gateway template refuses to
+  render its "*.<domain>:443" wildcard server in that case, and we fail fast here
+  so the misconfiguration is explicit rather than silently dropped.
 */}}
-{{- if .Values.global.kserveExternalHttps }}
-{{-   $kir := index .Values "kubeflow-istio-resources" }}
-{{- /*
-      Collect every unmet opt-in prerequisite and fail once with the full list.
-    */}}
+{{- if and .Values.global .Values.global.kserveExternalHttps }}
+{{-   $g := .Values.global | default dict }}
+{{-   $tlsSource := .Values.tls.source | default "" }}
 {{-   $errs := list }}
 {{-   if not .Values.global.kserveDomain }}
 {{-     $errs = append $errs "global.kserveDomain must be set (a scoped subdomain such as \"models.example.com\" is recommended over a bare org-wide domain) to use global.kserveExternalHttps — it is the base domain for the '*.<kserveDomain>' wildcard cert and inference hosts." }}
@@ -44,27 +42,23 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   if not (and .Values.global.oauth2Proxy .Values.global.oauth2Proxy.enabled) }}
 {{-     $errs = append $errs "global.oauth2Proxy.enabled must be true to use global.kserveExternalHttps — the bundled ext_authz auth chain (authn-filter EnvoyFilter) is only rendered when oauth2-proxy is enabled, so with it disabled the '*.<kserveDomain>:443' wildcard server would perform no gateway auth. Because every app VirtualService binds hosts: ['*'], that exposes the ENTIRE Kubeflow surface (not just inference) unauthenticated. If you front Kubeflow with your own IdP at the gateway, do not enable the bundled global.kserveExternalHttps opt-in." }}
 {{-   end }}
-{{-   if not $kir.hostname }}
+{{-   if not .Values.hostname }}
 {{-     $errs = append $errs "kubeflow-istio-resources.hostname must be set to use global.kserveExternalHttps — otherwise the gateway serves the '*' listener with the auth-bypass filter trusting every host, and the KServe wildcard server is refused." }}
 {{-   end }}
-{{-   if not (has $kir.tls.source (list "letsEncrypt" "selfSigned" "secret" "issuerRef")) }}
+{{-   if not (has $tlsSource (list "letsEncrypt" "selfSigned" "secret" "issuerRef")) }}
 {{-     $errs = append $errs "kubeflow-istio-resources.tls.source must be one of {letsEncrypt, selfSigned, secret, issuerRef} to use global.kserveExternalHttps — with source \"\" there is no :443 server or wildcard cert, so advertised https:// inference URLs would be dead." }}
 {{-   end }}
-{{-   if and (eq $kir.tls.source "secret") (not $kir.tls.kserveExistingSecret) }}
+{{-   if and (eq $tlsSource "secret") (not .Values.tls.kserveExistingSecret) }}
 {{-     $errs = append $errs "kubeflow-istio-resources.tls.kserveExistingSecret must be set when tls.source is \"secret\" and global.kserveExternalHttps is true — the KServe wildcard server needs a Secret whose SAN covers \"*.<global.kserveDomain>\". Reusing the dashboard's tls.existingSecret silently fails the TLS handshake on inference hosts; point this at that Secret only if it is a multi-SAN/wildcard cert covering both hosts." }}
 {{-   end }}
-{{-   if eq $kir.tls.source "letsEncrypt" }}
+{{-   if eq $tlsSource "letsEncrypt" }}
 {{- /* `| default dict`: an explicit tls.letsEncrypt: null otherwise nil-derefs
       on `.solver` with a raw Go panic instead of reaching this validation. */}}
-{{-     $le := $kir.tls.letsEncrypt | default dict }}
+{{-     $le := .Values.tls.letsEncrypt | default dict }}
 {{-     if eq $le.solver "http01" }}
 {{-       $errs = append $errs "tls.letsEncrypt.solver must be a DNS-01 solver (e.g. cloudflare) — Let's Encrypt HTTP-01 cannot issue wildcard certificates." }}
 {{-     else if eq ($le.solver | default "cloudflare") "cloudflare" }}
-{{- /*
-          A cloudflare DNS-01 solver with an unpopulated cloudflare block renders a
-          bare "- dns01:" the ClusterIssuer can't use, so the wildcard order hangs.
-        */}}
-{{-       if not (and $kir.tls.cloudflare $kir.tls.cloudflare.apiTokenSecretRef $kir.tls.cloudflare.apiTokenSecretRef.name) }}
+{{-       if not (and .Values.tls.cloudflare .Values.tls.cloudflare.apiTokenSecretRef .Values.tls.cloudflare.apiTokenSecretRef.name) }}
 {{-         $errs = append $errs "kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name must be set for the cloudflare DNS-01 solver — the token Secret must exist in cert-manager's namespace (see values.yaml)." }}
 {{-       end }}
 {{-     end }}
@@ -72,28 +66,4 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   if $errs }}
 {{-     fail (printf "global.kserveExternalHttps is true, but the external-HTTPS-for-inference opt-in is incomplete. Fix all of the following:\n  - %s" (join "\n  - " $errs)) }}
 {{-   end }}
-{{- end }}
-
-{{- /*
-  Credential hygiene: fail fast if well-known demo defaults are still present
-  and the operator has not explicitly opted in via global.demoMode=true.
-*/}}
-{{- if not .Values.global.demoMode }}
-
-{{- if eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok" }}
-{{- fail "SECURITY: auth.oidc.clientSecret is the well-known demo value.\nGenerate a real secret: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
-{{- end }}
-
-{{- if eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" }}
-{{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
-{{- end }}
-
-{{- if eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow" }}
-{{- fail "SECURITY: pipelines.seaweedfs.accessKey is the well-known demo value.\nSet a real value or for development only: set global.demoMode=true in your values." }}
-{{- end }}
-
-{{- if eq (.Values.pipelines.seaweedfs.secretKey | default "") "kubeflow123" }}
-{{- fail "SECURITY: pipelines.seaweedfs.secretKey is the well-known demo value.\nGenerate: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
-{{- end }}
-
 {{- end }}

@@ -1,0 +1,504 @@
+name: Lint and template kubeflow chart
+
+# Renders the kubeflow umbrella chart with `helm lint` and `helm template` on each
+# PR and push to main. Three rounds of KServe-wildcard-TLS regressions were caught
+# only by manual `helm template`; this makes that check automatic. It exercises the
+# default path, the KServe external-HTTPS opt-in, and asserts the opt-in's security
+# guards still fail closed. Scoped to kubeflow only — other charts in the repo
+# (open-webui-mcpo, pytorch) are intentionally out of scope.
+
+on:
+  pull_request:
+    paths:
+      - 'kubeflow/**'
+      - '.github/workflows/lint.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'kubeflow/**'
+      - '.github/workflows/lint.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch) so
+# only the newest render is spent.
+concurrency:
+  group: lint-template-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-template:
+    runs-on: ubuntu-latest
+    env:
+      # AppCo registry hosts the OCI dependencies (oauth2-proxy, dex, cert-manager,
+      # …) that the umbrella chart pulls. Same secrets the release workflow uses.
+      APPCO_REGISTRY: ${{ secrets.APPCO_REGISTRY }}
+      APPCO_USER: ${{ secrets.APPCO_USER }}
+      APPCO_TOKEN: ${{ secrets.APPCO_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        with:
+          # Pin the Helm CLI to the project's documented minimum (README
+          # Prerequisites / runMe.sh floor) so CI renders on the version real
+          # installers use.
+          version: v4.0.1
+
+      - name: Helm login to AppCo registry
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          # --password-stdin keeps the token out of the process argv (where `-p`
+          # would leave it visible to any process listing / CI trace).
+          printf '%s' "$APPCO_TOKEN" | helm registry login "$APPCO_REGISTRY" -u "$APPCO_USER" --password-stdin
+
+      - name: Note if AppCo credentials are missing (fork PR)
+        if: ${{ env.APPCO_TOKEN == '' }}
+        run: |
+          # Fork PRs cannot read the AppCo secrets, so the umbrella chart's OCI
+          # dependencies can't be pulled. Rather than hard-fail (which paints every
+          # fork PR red), the umbrella steps below are gated on APPCO_TOKEN and skip;
+          # the standalone kubeflow-istio-resources render (no OCI deps) still runs,
+          # so the sub-chart guards are always exercised. A maintainer re-running
+          # from a same-repo branch gets the full umbrella coverage.
+          echo "APPCO_TOKEN not available (fork PR / missing secret): skipping umbrella steps, running standalone sub-chart render only."
+
+      - name: Build chart dependencies
+        if: ${{ env.APPCO_TOKEN != '' }}
+        # `dependency build` installs the versions pinned in the committed
+        # kubeflow/Chart.lock and FAILS if Chart.yaml has drifted from it, whereas
+        # `dependency update` would silently rewrite the lock — so this also validates
+        # the lock is in sync.
+        run: helm dependency build ./kubeflow
+
+      - name: helm template (standalone kubeflow-istio-resources sub-chart)
+        # Runs unconditionally (even on fork PRs): this sub-chart has no OCI
+        # dependencies, so no registry login is needed. It is independently
+        # installable and carries its own validations.yaml/values.schema.json guards
+        # (hostname FQDN, kserveExternalHttps prerequisites, gateway selector), so
+        # render it on its own to prove those guards hold outside the umbrella.
+        run: helm template ci ./kubeflow/charts/kubeflow-istio-resources --set global.demoMode=true >/dev/null
+
+      - name: helm lint
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          # global.demoMode=true suppresses the demo-credential fail() guard so
+          # lint reaches the templates.
+          helm lint ./kubeflow --set global.demoMode=true
+
+      - name: helm template (default values)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # A plain `>/dev/null` only proves helm exits 0. It would stay green if the
+          # wildcard-TLS flattening became UNCONDITIONAL — i.e. the
+          # `if global.kserveExternalHttps` guard on the knative-serving
+          # domainTemplate helper were dropped. That single-label
+          # ({name}-{namespace}.{domain}) route host is only correct under the opt-in;
+          # on the default path it changes every Knative route's host and breaks
+          # net-istio readiness for installs that never asked for wildcard TLS. So
+          # render with DEFAULT values (no opt-in) and assert the flattened form is
+          # ABSENT — the guard must keep it opt-in only.
+          out="$(helm template ci ./kubeflow --set global.demoMode=true)"
+          if grep -Fq '{{ .Name }}-{{ .Namespace }}.{{ .Domain }}' <<<"$out"; then
+            echo "FAIL: default (non-opt-in) render contains the flattened Knative domainTemplate — the wildcard-TLS flattening is applied unconditionally instead of being gated on global.kserveExternalHttps." >&2
+            exit 1
+          fi
+          # config-network should omit domain-template entirely on the default path
+          # (Knative's dotted upstream default), not carry an empty/flattened one.
+          if grep -Fq 'domain-template:' <<<"$out"; then
+            echo "FAIL: default render sets a Knative 'domain-template' — it must be omitted (upstream dotted default) unless the opt-in is enabled." >&2
+            exit 1
+          fi
+          echo "OK: default render succeeds and leaves the Knative domainTemplate un-flattened (flattening stays gated on the opt-in)."
+
+      - name: helm template (KServe external-HTTPS opt-in)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # Render to a file and assert the opt-in actually produced the pieces it
+          # is supposed to — a plain `>/dev/null` only proves helm exited 0, which
+          # would still pass if the wildcard server silently stopped rendering.
+          out="$(helm template ci ./kubeflow \
+            --set global.demoMode=true \
+            --set global.kserveExternalHttps=true \
+            --set global.kserveDomain=kubeflow.example.com \
+            --set kubeflow-istio-resources.hostname=kf.example.com \
+            --set kubeflow-istio-resources.tls.source=letsEncrypt \
+            --set kubeflow-istio-resources.tls.letsEncrypt.solver=cloudflare \
+            --set kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name=cf-token)"
+
+          # Isolate the kserve-ingress-gateway document for scoped assertions.
+          kserve_gw="$(awk 'BEGIN{RS="---\n"} /kind: Gateway/ && /name: kserve-ingress-gateway/{print}' <<<"$out")"
+          [ -n "$kserve_gw" ] \
+            || { echo "FAIL: could not isolate the kserve-ingress-gateway document." >&2; exit 1; }
+
+          # Assert via here-strings, NOT `echo "$out" | grep -q`: grep -q closes the
+          # pipe on first match, which makes echo take a SIGPIPE; under `pipefail`
+          # that surfaces as a false pipeline failure ("write error: broken pipe").
+          # grep -F (fixed strings), here-strings only — no `echo | grep`.
+          # 1. The wildcard :443 server must be present on the gateway.
+          grep -Fq '*.kubeflow.example.com' <<<"$kserve_gw" \
+            || { echo "FAIL: wildcard host '*.kubeflow.example.com' not rendered on kserve-ingress-gateway" >&2; exit 1; }
+          grep -Fq 'name: https-kserve' <<<"$kserve_gw" \
+            || { echo "FAIL: https-kserve gateway server not rendered on kserve-ingress-gateway" >&2; exit 1; }
+          # 2a. The Knative route host (config-network) must be flattened to the
+          #     single-label form — this is the net-istio readiness-probe target.
+          grep -Fq '{{ .Name }}-{{ .Namespace }}.{{ .Domain }}' <<<"$out" \
+            || { echo "FAIL: knative-serving flattened domainTemplate ({.Domain}) not applied" >&2; exit 1; }
+          # 2b. The KServe inferenceservice-config domainTemplate (a SEPARATE blob
+          #     keyed on .IngressDomain, not .Domain) must ALSO be the hyphen form.
+          #     Reverting kserve/values.yaml to the dotted "{Name}.{Namespace}" bug
+          #     leaves 2a green, so this second assertion is what actually guards it.
+          grep -Fq '{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}' <<<"$out" \
+            || { echo "FAIL: kserve inferenceservice-config domainTemplate ({.IngressDomain}) not the hyphen form" >&2; exit 1; }
+          # 3. The authn EnvoyFilter (ext_authz Lua chain) must render. Selector
+          #    AGREEMENT with the Gateway is asserted in the dedicated step below.
+          grep -Fq 'is_trusted_host' <<<"$out" \
+            || { echo "FAIL: authn EnvoyFilter (ext_authz Lua) not rendered" >&2; exit 1; }
+          # 4. KServe inferenceservice-config urlScheme must flip to https — advertised
+          #    status.url is what clients hit; http here means the wildcard TLS server
+          #    is up but every InferenceService still publishes an http:// URL.
+          grep -Fq '"urlScheme":"https"' <<<"$out" \
+            || { echo "FAIL: kserve urlScheme is not https under the opt-in" >&2; exit 1; }
+          # 5. BOTH ends of the wildcard-cert credential link must be asserted, not
+          #    just the Certificate. Checking only `secretName: kserve-wildcard-tls`
+          #    (the Certificate) leaves CI green if the https-kserve server's
+          #    credentialName is pointed at the DASHBOARD secret instead — every
+          #    inference host would then present a cert with no matching '*.<domain>'
+          #    SAN. So assert (5a) the Certificate renders, (5b) the https-kserve
+          #    server references that SAME secret, and (5c) it is NOT the dashboard
+          #    server's secret (an agreeing-but-wrong pair — both servers renamed to
+          #    the dashboard secret — is caught by 5c even though 5b would pass).
+          # Bound each server block: stop at the next server sibling ('  - ') OR at
+          # any dedent to column 0 ('---' doc separator / top-level key). Without the
+          # column-0 guard the awk runs to EOF when its server is the LAST one in the
+          # Gateway (e.g. httpsRedirect=false leaves https-kserve last), swallowing
+          # every following document — latent today only because nothing else in the
+          # render carries these fields.
+          kserve_srv="$(awk '/^      name: https-kserve/{f=1} f&&/^[^ ]/{exit} f&&/^  - /&&!/name: https-kserve/{exit} f{print}' <<<"$out")"
+          dash_srv="$(awk '/^      name: https$/{f=1} f&&/^[^ ]/{exit} f&&/^  - /&&!/name: https$/{exit} f{print}' <<<"$out")"
+          kserve_cred="$(grep -F 'credentialName:' <<<"$kserve_srv" | head -1 | sed 's/.*credentialName: *//; s/"//g')"
+          dash_cred="$(grep -F 'credentialName:' <<<"$dash_srv" | head -1 | sed 's/.*credentialName: *//; s/"//g')"
+          # 5a. Certificate side.
+          grep -Fq 'secretName: kserve-wildcard-tls' <<<"$out" \
+            || { echo "FAIL: kserve-wildcard-tls Certificate not rendered (Gateway credentialName would dangle)" >&2; exit 1; }
+          # 5b. Gateway side: the https-kserve server must consume that same secret.
+          [ "$kserve_cred" = "kserve-wildcard-tls" ] \
+            || { echo "FAIL: https-kserve server credentialName is '$kserve_cred', not 'kserve-wildcard-tls' — inference hosts would present a cert with no matching SAN." >&2; exit 1; }
+          # 5c. The two servers must NOT share a secret: the dashboard secret rarely
+          #     carries the '*.<domain>' wildcard SAN.
+          [ -n "$dash_cred" ] \
+            || { echo "FAIL: could not extract the dashboard (https) server credentialName." >&2; exit 1; }
+          [ "$kserve_cred" != "$dash_cred" ] \
+            || { echo "FAIL: https-kserve and dashboard servers share credentialName '$kserve_cred' — the wildcard server is reusing the dashboard cert (no matching SAN on inference hosts)." >&2; exit 1; }
+          # 6. The https-kserve server must pin minProtocolVersion. Scope the check to
+          #    that server's block (extracted above) so dropping it there can't hide
+          #    behind the dashboard server's copy.
+          grep -Fq 'minProtocolVersion: TLSV1_2' <<<"$kserve_srv" \
+            || { echo "FAIL: https-kserve server does not pin minProtocolVersion: TLSV1_2" >&2; exit 1; }
+          # 7. The :80 httpsRedirect server must render so plaintext inference hosts
+          #    are bounced to https rather than served cleartext.
+          grep -Fq 'httpsRedirect: true' <<<"$kserve_gw" \
+            || { echo "FAIL: :80 httpsRedirect server not rendered on kserve-ingress-gateway" >&2; exit 1; }
+          # 8. BOTH HTTPS servers must terminate TLS at the gateway (mode: SIMPLE).
+          #    Flipping either to PASSTHROUGH stops Istio terminating TLS, so the
+          #    authn EnvoyFilter (which inspects the decrypted HTTP request) never
+          #    sees the traffic and the auth chain is bypassed wholesale. Scope to
+          #    each server block so a downgrade can't hide behind the other's copy.
+          grep -Fq 'mode: SIMPLE' <<<"$kserve_srv" \
+            || { echo "FAIL: https-kserve server is not 'mode: SIMPLE' — TLS not terminated at the gateway, auth EnvoyFilter bypassed." >&2; exit 1; }
+          grep -Fq 'mode: SIMPLE' <<<"$dash_srv" \
+            || { echo "FAIL: dashboard (https) server is not 'mode: SIMPLE'." >&2; exit 1; }
+          if grep -Fq 'PASSTHROUGH' <<<"$out"; then
+            echo "FAIL: a gateway server uses TLS mode PASSTHROUGH — Istio no longer terminates TLS, so the authn EnvoyFilter is bypassed." >&2; exit 1
+          fi
+          # 9. The dashboard (https) server must ALSO pin minProtocolVersion. Check 6
+          #    scopes the floor to https-kserve; assert it here for the dashboard
+          #    server too so dropping it there can't slip through.
+          grep -Fq 'minProtocolVersion: TLSV1_2' <<<"$dash_srv" \
+            || { echo "FAIL: dashboard (https) server does not pin minProtocolVersion: TLSV1_2" >&2; exit 1; }
+          # 10. The kserve-wildcard-tls Certificate is a LEAF serving cert and must
+          #     NOT be minted as a CA. isCA: true would make cert-manager issue a
+          #     CA-capable key usable to sign other certs. Scope to that Certificate's
+          #     own document (RS='---\n') — the bundled webhook self-signed certs
+          #     legitimately carry isCA: true, so a blanket check would false-positive.
+          wildcard_cert="$(awk 'BEGIN{RS="---\n"} /kind: Certificate/ && /secretName: kserve-wildcard-tls/{print}' <<<"$out")"
+          [ -n "$wildcard_cert" ] \
+            || { echo "FAIL: could not isolate the kserve-wildcard-tls Certificate document." >&2; exit 1; }
+          if grep -Fq 'isCA: true' <<<"$wildcard_cert"; then
+            echo "FAIL: kserve-wildcard-tls Certificate has isCA: true — a leaf serving cert must not be a CA." >&2; exit 1
+          fi
+          echo "OK: opt-in rendered wildcard server, both flattened hosts, auth filter, https scheme, wildcard Certificate (leaf, not CA), TLS termination + floor on both servers, and http->https redirect."
+
+      - name: gateway/authn-filter selector agreement
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # The authn EnvoyFilter's workloadSelector MUST match the Gateway's
+          # selector. If they drift, ext_authz attaches to a different workload
+          # than the one serving the gateway listeners: the wildcard :443 server
+          # still renders but with no auth chain in front. Both templates read the
+          # SAME istioGateway.selector; render each with a sentinel value and prove
+          # (a) the EnvoyFilter selector is non-empty, (b) it carries the sentinel
+          # (so it is templated, not hard-coded), and (c) it EQUALS both Gateways'.
+          probe=e2e-selector-probe
+          common=(--set global.demoMode=true
+                  --set global.kserveDomain=kubeflow.example.com
+                  --set kubeflow-istio-resources.istioGateway.selector.istio="$probe")
+          gw="$(helm template ci ./kubeflow "${common[@]}" \
+            --show-only charts/kubeflow-istio-resources/templates/Gateway/kubeflow-gateway-kubeflow-Gateway.yaml)"
+          kgw="$(helm template ci ./kubeflow "${common[@]}" \
+            --show-only charts/kubeflow-istio-resources/templates/Gateway/kserve-ingress-gateway-kubeflow-Gateway.yaml)"
+          ef="$(helm template ci ./kubeflow "${common[@]}" \
+            --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
+          # Gateways: children of `  selector:` (2-space key, 4-space children).
+          gw_sel="$(awk '/^  selector:/{g=1;next} g&&/^    /{sub(/^ +/,"");print;next} g{exit}' <<<"$gw" | sort)"
+          kgw_sel="$(awk '/^  selector:/{g=1;next} g&&/^    /{sub(/^ +/,"");print;next} g{exit}' <<<"$kgw" | sort)"
+          # EnvoyFilter: children of `    labels:` under workloadSelector (6-space).
+          ef_sel="$(awk '/^    labels:/{g=1;next} g&&/^      /{sub(/^ +/,"");print;next} g{exit}' <<<"$ef" | sort)"
+          [ -n "$ef_sel" ] \
+            || { echo "FAIL: authn EnvoyFilter rendered an EMPTY workloadSelector (would attach ext_authz to every gateway in the mesh)." >&2; exit 1; }
+          grep -Fq "$probe" <<<"$ef_sel" \
+            || { echo "FAIL: authn EnvoyFilter selector does not carry the sentinel — it is hard-coded, not templated from istioGateway.selector. Got: $ef_sel" >&2; exit 1; }
+          [ "$ef_sel" = "$gw_sel" ] \
+            || { echo "FAIL: selector drift. Gateway=[$gw_sel] EnvoyFilter=[$ef_sel]" >&2; exit 1; }
+          [ "$ef_sel" = "$kgw_sel" ] \
+            || { echo "FAIL: selector drift. KServe Gateway=[$kgw_sel] EnvoyFilter=[$ef_sel]" >&2; exit 1; }
+
+          # Second render with an explicit null selector — this is what actually
+          # exercises the {{- else }} fallback branch. The sentinel render above
+          # always SUPPLIES a selector, so it stays green even if the EnvoyFilter
+          # guard is reverted to a bare `{{- toYaml … }}` (the round-6 unguarded
+          # form): a supplied value renders either way. Only null makes an unguarded
+          # EnvoyFilter emit `labels:\n null` (empty → matches every gateway in the
+          # mesh) while the Gateway still falls back to a concrete label. Assert the
+          # EnvoyFilter fallback is non-empty AND equals both Gateways'.
+          gwn="$(helm template ci ./kubeflow --set global.demoMode=true \
+            --set global.kserveDomain=kubeflow.example.com \
+            --set-json 'kubeflow-istio-resources.istioGateway.selector=null' \
+            --show-only charts/kubeflow-istio-resources/templates/Gateway/kubeflow-gateway-kubeflow-Gateway.yaml)"
+          kgwn="$(helm template ci ./kubeflow --set global.demoMode=true \
+            --set global.kserveDomain=kubeflow.example.com \
+            --set-json 'kubeflow-istio-resources.istioGateway.selector=null' \
+            --show-only charts/kubeflow-istio-resources/templates/Gateway/kserve-ingress-gateway-kubeflow-Gateway.yaml)"
+          efn="$(helm template ci ./kubeflow --set global.demoMode=true \
+            --set global.kserveDomain=kubeflow.example.com \
+            --set-json 'kubeflow-istio-resources.istioGateway.selector=null' \
+            --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
+          gwn_sel="$(awk '/^  selector:/{g=1;next} g&&/^    /{sub(/^ +/,"");print;next} g{exit}' <<<"$gwn" | sort)"
+          kgwn_sel="$(awk '/^  selector:/{g=1;next} g&&/^    /{sub(/^ +/,"");print;next} g{exit}' <<<"$kgwn" | sort)"
+          efn_sel="$(awk '/^    labels:/{g=1;next} g&&/^      /{sub(/^ +/,"");print;next} g{exit}' <<<"$efn" | sort)"
+          # A plain non-empty check is VACUOUS: `toYaml nil` renders the literal
+          # string `null`, which is non-empty and identical on both sides. Drop the
+          # guard on BOTH templates and each emits `labels:\n null` — the -n test and
+          # the equality test both pass while ext_authz now matches every gateway in
+          # the mesh. Assert instead that the fallback is a CONCRETE label
+          # (`key: value`, not `null`) — this is what proves the guard fired.
+          grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*: .+' <<<"$efn_sel" \
+            || { echo "FAIL: with selector=null the authn EnvoyFilter did not fall back to a concrete label (guard reverted → attaches ext_authz to every gateway in the mesh). Got: [$efn_sel]" >&2; exit 1; }
+          [ "$efn_sel" = "$gwn_sel" ] \
+            || { echo "FAIL: with selector=null the EnvoyFilter fallback [$efn_sel] does not match the Gateway fallback [$gwn_sel]." >&2; exit 1; }
+          [ "$efn_sel" = "$kgwn_sel" ] \
+            || { echo "FAIL: with selector=null the EnvoyFilter fallback [$efn_sel] does not match the KServe Gateway fallback [$kgwn_sel]." >&2; exit 1; }
+          echo "OK: selector is templated, matches both Gateways, and the null fallback is a concrete label ($efn_sel)."
+
+      - name: helm template (authn EnvoyFilter security invariants)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # The `is_trusted_host` render check elsewhere only proves the EnvoyFilter
+          # EXISTS. It does not prove the auth chain still AUTHENTICATES: a one-line
+          # downgrade (drop `invert`, flip failure_mode_allow, delete a header strip,
+          # force is_trusted_host) is a real render delta that leaves that grep green
+          # while opening the gate. Assert the security-critical invariants directly.
+          # Render on the NAMED-host path (hostname set) so is_trusted_host is a real
+          # host comparison, not the wildcard-listener `true` — that lets us also
+          # assert it was NOT hard-forced to true.
+          ef="$(helm template ci ./kubeflow --set global.demoMode=true \
+            --set kubeflow-istio-resources.hostname=kf.example.com \
+            --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
+
+          # 1. Patch 1 must strip EVERY client-supplied identity header. Deleting any
+          #    one lets a caller spoof it: on the skip-auth path ext_authz never runs,
+          #    so a client-sent x-auth-request-email survives and Patch 3 mints
+          #    kubeflow-userid from it. grep -F: these are literal Lua calls.
+          for h in kubeflow-userid x-auth-request-email x-auth-request-user \
+                   x-auth-request-groups x-auth-request-preferred-username; do
+            grep -Fq "remove(\"$h\")" <<<"$ef" \
+              || { echo "FAIL: Patch 1 no longer strips client-supplied '$h' — it can be spoofed into kubeflow-userid." >&2; exit 1; }
+          done
+
+          # 2. ext_authz must fail CLOSED. failure_mode_allow: true serves every
+          #    request unauthenticated during any oauth2-proxy outage.
+          grep -Fq 'failure_mode_allow: false' <<<"$ef" \
+            || { echo "FAIL: ext_authz failure_mode_allow is not 'false' — auth fails OPEN on an oauth2-proxy outage." >&2; exit 1; }
+          if grep -Fq 'failure_mode_allow: true' <<<"$ef"; then
+            echo "FAIL: ext_authz failure_mode_allow is 'true' — auth fails OPEN on an oauth2-proxy outage." >&2; exit 1
+          fi
+
+          # 3. The ext_authz gate must be INVERTED: run auth UNLESS skip_auth=true.
+          #    Without `invert: true` the sense flips — ext_authz runs ONLY on
+          #    /dex/ and /oauth2/ and is skipped everywhere else, including all
+          #    inference hosts. (invert: appears only on filter_enabled_metadata.)
+          grep -Fq 'invert: true' <<<"$ef" \
+            || { echo "FAIL: ext_authz filter_enabled_metadata is missing 'invert: true' — the auth gate is inverted, skipping auth on every non-/dex,/oauth2 path." >&2; exit 1; }
+
+          # 4. The unauthenticated bypass must stay scoped to /dex/ and /oauth2/ AND
+          #    be gated on the trusted host. Widening ^/dex/ to ^/ (or dropping the
+          #    is_trusted_host gate) opens the whole surface unauthenticated.
+          grep -Fq 'if is_trusted_host then' <<<"$ef" \
+            || { echo "FAIL: the /dex/,/oauth2/ bypass is no longer gated on is_trusted_host." >&2; exit 1; }
+          grep -Fq 'path:find("^/dex/")' <<<"$ef" \
+            || { echo "FAIL: the auth bypass no longer scopes to '^/dex/' (widened path opens unauthenticated access)." >&2; exit 1; }
+          grep -Fq 'path:find("^/oauth2/")' <<<"$ef" \
+            || { echo "FAIL: the auth bypass no longer scopes to '^/oauth2/'." >&2; exit 1; }
+
+          # 5. On a named host is_trusted_host MUST be a real host comparison, never
+          #    hard-forced true (which would trust every Host header and reinstate the
+          #    wildcard-host bypass on the internet-facing named listener). The
+          #    forced-true form is only legitimate on the wildcard branch, which this
+          #    named-host render does not emit — so it must be absent here.
+          #    Use line-anchored regex matching to ensure exact line matching and prevent suffix bypasses.
+          grep -Eq '^[[:space:]]*local is_trusted_host = \(host == dashboard_host\)[[:space:]]*$' <<<"$ef" \
+            || { echo "FAIL: is_trusted_host is not exactly 'local is_trusted_host = (host == dashboard_host)' on the named-host path." >&2; exit 1; }
+          if grep -Fq 'is_trusted_host = true' <<<"$ef"; then
+            echo "FAIL: is_trusted_host is hard-forced true on the named-host path — trusts every Host header." >&2; exit 1
+          fi
+
+          # 6. Every patch must apply at the GATEWAY, not SIDECAR_INBOUND. The
+          #    workloadSelector targets the ingress gateway; flipping context to
+          #    SIDECAR_INBOUND makes istiod skip the gateway listener entirely, so
+          #    the auth chain silently never attaches and the wildcard :443 server
+          #    serves unauthenticated. Assert GATEWAY is present and SIDECAR_INBOUND
+          #    is wholly absent.
+          #    Count context declarations to ensure ALL patches apply at context: GATEWAY.
+          total_contexts="$(grep -c 'context: ' <<<"$ef" || true)"
+          gateway_contexts="$(grep -c 'context: GATEWAY' <<<"$ef" || true)"
+          [ "$total_contexts" -gt 0 ] \
+            || { echo "FAIL: no context defined in authn EnvoyFilter patches." >&2; exit 1; }
+          [ "$total_contexts" -eq "$gateway_contexts" ] \
+            || { echo "FAIL: some authn EnvoyFilter patches do not apply at context: GATEWAY (got $gateway_contexts/$total_contexts GATEWAY)." >&2; exit 1; }
+          if grep -Fq 'SIDECAR_INBOUND' <<<"$ef"; then
+            echo "FAIL: authn EnvoyFilter has a SIDECAR_INBOUND patch — a GATEWAY patch was retargeted and no longer attaches to the ingress gateway (auth chain never runs)." >&2; exit 1
+          fi
+
+          # 7. ext_authz must fail CLOSED on an error talking to oauth2-proxy:
+          #    status_on_error must be an error code (ServiceUnavailable), never OK.
+          #    status_on_error: OK turns any auth-service error into an allow — the
+          #    same open-gate failure mode as failure_mode_allow, via a different key.
+          grep -Fq 'code: ServiceUnavailable' <<<"$ef" \
+            || { echo "FAIL: ext_authz status_on_error is not 'ServiceUnavailable' — an auth-service error would not fail closed." >&2; exit 1; }
+          if grep -Eq 'status_on_error:[[:space:]]*$' <<<"$ef" && grep -Eq 'code:[[:space:]]*OK' <<<"$ef"; then
+            echo "FAIL: ext_authz status_on_error code is 'OK' — auth-service errors are treated as allow (fails OPEN)." >&2; exit 1
+          fi
+          echo "OK: authn chain strips all identity headers, fails closed (failure_mode_allow + status_on_error), inverts the gate, applies at GATEWAY, and scopes the bypass to trusted-host /dex,/oauth2."
+
+      - name: helm template (assert kserveGateway.name consumers stay in sync)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # Assert that when global.kserveGateway.name is overridden, all three consumers
+          # (kubeflow-istio-resources, knative-serving, and kserve) receive the same overridden values.
+          custom_ns="custom-namespace"
+          custom_name="custom-gateway-name"
+          out="$(helm template ci ./kubeflow \
+            --set global.demoMode=true \
+            --set global.kserveDomain=kubeflow.example.com \
+            --set global.kserveGateway.name="${custom_ns}/${custom_name}")"
+
+          # 1. kubeflow-istio-resources Gateway CRD metadata
+          # Extract metadata from the Gateway document named custom-name in custom-namespace
+          gw_doc="$(awk 'BEGIN{RS="---\n"} /kind: Gateway/ && /name: '"$custom_name"'/{print}' <<<"$out")"
+          [ -n "$gw_doc" ] \
+            || { echo "FAIL: Gateway CRD with name '$custom_name' was not rendered." >&2; exit 1; }
+          grep -Eq 'namespace:[[:space:]]*'"$custom_ns" <<<"$gw_doc" \
+            || { echo "FAIL: Gateway CRD namespace does not match overridden namespace '$custom_ns'." >&2; exit 1; }
+
+          # 2. knative-serving config-istio key "gateway.<namespace>.<name>"
+          grep -Fq "gateway.${custom_ns}.${custom_name}" <<<"$out" \
+            || { echo "FAIL: knative-serving config-istio key is not 'gateway.${custom_ns}.${custom_name}'." >&2; exit 1; }
+
+          # 3. kserve inferenceservice-config "ingressGateway": "<namespace>/<name>"
+          grep -Fq "\"ingressGateway\":\"${custom_ns}/${custom_name}\"" <<<"$out" \
+            || { echo "FAIL: kserve inferenceservice-config ingressGateway is not '${custom_ns}/${custom_name}'." >&2; exit 1; }
+
+          echo "OK: all three consumers of kserveGateway.name are in sync under override ($custom_ns/$custom_name)."
+
+      - name: helm template (opt-in security guards fail closed)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # The external-HTTPS opt-in must be refused when the bundled oauth2-proxy
+          # (the gateway auth chain) is disabled — otherwise the wildcard server
+          # publishes the whole Kubeflow surface unauthenticated. Assert it FAILS,
+          # and that it fails for the RIGHT reason (the oauth2Proxy guard message),
+          # not some unrelated template error that would mask a regression.
+          if err="$(helm template ci ./kubeflow \
+              --set global.demoMode=true \
+              --set global.kserveExternalHttps=true \
+              --set global.kserveDomain=kubeflow.example.com \
+              --set global.oauth2Proxy.enabled=false \
+              --set kubeflow-istio-resources.hostname=kf.example.com \
+              --set kubeflow-istio-resources.tls.source=letsEncrypt \
+              --set kubeflow-istio-resources.tls.letsEncrypt.solver=cloudflare \
+              --set kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name=cf-token \
+              2>&1)"; then
+            echo "FAIL: kserveExternalHttps with oauth2Proxy.enabled=false rendered" \
+                 "instead of failing closed." >&2
+            exit 1
+          fi
+          # here-string (not `echo | grep -q`) to avoid a SIGPIPE/broken-pipe false
+          # failure under pipefail when grep -q short-circuits on the first match.
+          grep -q 'global.oauth2Proxy.enabled must be true' <<<"$err" \
+            || { echo "FAIL: opt-in failed, but not on the oauth2Proxy guard. Got:" >&2
+                 echo "$err" >&2; exit 1; }
+          echo "OK: opt-in fails closed on the oauth2-proxy guard when it is disabled."
+
+      - name: helm template (hostname schema rejects bare public suffixes)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # hostname is seeded verbatim into the letsEncrypt ClusterIssuer's DNS-01
+          # dnsZones, so a bare public suffix ('com') would scope the ACME solver to
+          # the ENTIRE TLD — the exact widening letsencrypt-ClusterIssuer.yaml's own
+          # comment warns against. The schema `not` clause must reject bare TLDs and
+          # '*' while still accepting single-label names, IPv4 literals, and FQDNs.
+          # A plain "does it render" check would not notice the pattern regressing to
+          # re-admit 'com', so assert the reject cases FAIL (and fail on the hostname
+          # schema, not some unrelated error) and the accept cases still render.
+          # Check BOTH entry points: the umbrella (validates parent + sub-chart
+          # schema together) AND the sub-chart standalone (it is independently
+          # installable, and the standalone path is the only one that guards the
+          # sub-chart schema on its own — in the umbrella either schema's guard
+          # masks a regression in the other).
+          for bad in com COM io '*'; do
+            if err="$(helm template ci ./kubeflow --set global.demoMode=true \
+                --set kubeflow-istio-resources.hostname="$bad" 2>&1)"; then
+              echo "FAIL: umbrella accepted hostname='$bad' — a bare public suffix / wildcard must be rejected (it would widen the ACME solver scope / re-enable the auth bypass)." >&2
+              exit 1
+            fi
+            grep -q 'hostname' <<<"$err" \
+              || { echo "FAIL: umbrella rejected hostname='$bad', but not on the hostname schema — a different error is masking the guard. Got:" >&2
+                   echo "$err" >&2; exit 1; }
+            if err="$(helm template ci ./kubeflow/charts/kubeflow-istio-resources \
+                --set global.demoMode=true --set hostname="$bad" 2>&1)"; then
+              echo "FAIL: sub-chart accepted hostname='$bad' standalone — the sub-chart schema guard has regressed." >&2
+              exit 1
+            fi
+            grep -q 'hostname' <<<"$err" \
+              || { echo "FAIL: sub-chart rejected hostname='$bad', but not on the hostname schema. Got:" >&2
+                   echo "$err" >&2; exit 1; }
+          done
+          for good in kubeflow localhost 10.43.1.7 kf.example.com; do
+            helm template ci ./kubeflow --set global.demoMode=true \
+              --set kubeflow-istio-resources.hostname="$good" >/dev/null 2>&1 \
+              || { echo "FAIL: umbrella rejected hostname='$good' — a legit single-label name / IPv4 literal / FQDN must be accepted." >&2; exit 1; }
+            helm template ci ./kubeflow/charts/kubeflow-istio-resources \
+              --set global.demoMode=true --set hostname="$good" >/dev/null 2>&1 \
+              || { echo "FAIL: sub-chart rejected hostname='$good' standalone — a legit hostname must be accepted." >&2; exit 1; }
+          done
+          echo "OK: hostname schema (umbrella + sub-chart) rejects bare public suffixes and '*', accepts single-label / IPv4 / FQDN."

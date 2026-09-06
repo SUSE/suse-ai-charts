@@ -1,6 +1,15 @@
 {{- if and .Values.externalDNSEnabled .Values.hostname }}
 {{- $_ := set .Values.gateway.annotations "external-dns.alpha.kubernetes.io/hostname" .Values.hostname}}
 {{- end }}
+{{- $tlsSource := .Values.tls.source | default "" }}
+{{- /*
+  ── Dashboard gateway ───────────────────────────────────────────────────────
+  This gateway serves ONLY the Kubeflow dashboard host (.Values.hostname, or the
+  '*' wildcard listener for IP/NodePort access). KServe/Knative inference has its
+  own dedicated gateway (kserve-ingress-gateway-kubeflow-Gateway.yaml) — all the
+  "*.<kserveDomain>" wildcard / plain-HTTP inference server logic lives there, so
+  the net-istio status prober never probes this gateway's dashboard :443 server.
+*/}}
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:
@@ -12,14 +21,18 @@ metadata:
   {{- end }}
 spec:
   selector:
-    {{- if .Values.istioGateway }}
+    {{- /* Guard .selector (not just the istioGateway map): an explicit
+           istioGateway.selector: null must fall back to a concrete label, never
+           render an empty/null selector. The EnvoyFilter uses this identical
+           guard so the two can never diverge. */}}
+    {{- if and .Values.istioGateway .Values.istioGateway.selector }}
     {{- toYaml .Values.istioGateway.selector | nindent 4 }}
     {{- else }}
     istio: istio
     {{- end }}
   servers:
   {{- $host := .Values.hostname | default "*" }}
-  {{- if ne .Values.tls.source "" }}
+  {{- if ne $tlsSource "" }}
   - hosts:
     - {{ $host | quote }}
     port:
@@ -28,10 +41,14 @@ spec:
       protocol: HTTPS
     tls:
       mode: SIMPLE
-      credentialName: {{ .Values.tls.existingSecret | default .Values.tls.credentialName }}
+      credentialName: {{ .Values.tls.existingSecret | default .Values.tls.credentialName | quote }}
+      minProtocolVersion: TLSV1_2
   {{- if .Values.tls.httpsRedirect }}
+  {{- /* :80 HTTP→HTTPS redirect, scoped to the dashboard host. Never '*' unless
+         hostname is unset (wildcard/IP access), so it cannot hijack the plain-HTTP
+         inference hosts served by the dedicated kserve-ingress-gateway. */}}
   - hosts:
-    - '*'
+    - {{ $host | quote }}
     port:
       name: http
       number: 80
