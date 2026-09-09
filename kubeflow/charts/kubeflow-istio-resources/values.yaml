@@ -1,5 +1,35 @@
 # Default values for kubeflow-istio-resources
 
+# Global defaults for standalone sub-chart installs. When this chart is installed
+# as a dependency of the umbrella `kubeflow` chart, the parent's globals override
+# these. They must exist here so a standalone `helm install`/`template` does not
+# nil-pointer: several templates dereference nested global fields directly —
+# .Values.global.gateway.name (dex / oauth2-proxy VirtualServices) and
+# .Values.global.oauth2Proxy.enabled (authn EnvoyFilter, oauth2-proxy resources) —
+# where an absent parent map errors before any `| default` can apply.
+global:
+  # Master switch for the oauth2-proxy auth layer (ext_authz chain).
+  # Default false for a STANDALONE sub-chart install: this chart does not ship
+  # oauth2-proxy itself (the umbrella `kubeflow` chart does), so defaulting to
+  # true here would render the authn EnvoyFilter pointing ext_authz at an
+  # oauth2-proxy service that doesn't exist — every request through the gateway
+  # would then 503. The umbrella overrides this to true (parent globals win), so
+  # the bundled auth chain is still enabled for the normal umbrella install.
+  oauth2Proxy:
+    enabled: false
+  # Istio Gateway reference used by the VirtualServices in this chart.
+  gateway:
+    name: "kubeflow/kubeflow-gateway"
+  # Dedicated KServe/Knative inference gateway ("<namespace>/<name>"). Single
+  # source of truth; the umbrella parent overrides this. The Gateway template
+  # below renders a Gateway of this name/namespace, and knative-serving/kserve
+  # reference the same value. Use the "<namespace>/<name>" slash form.
+  kserveGateway:
+    name: "kubeflow/kserve-ingress-gateway"
+  # KServe external-HTTPS opt-in (see tls block + validations.yaml). Off by default.
+  kserveExternalHttps: false
+  kserveDomain: ""
+
 # Istio Gateway selector
 # For Rancher Istio, use: istio: istio
 # For standard Istio, use: istio: ingressgateway
@@ -35,12 +65,57 @@ tls:
   #   "selfSigned"  — cert-manager self-signed ClusterIssuer
   #   "letsEncrypt" — cert-manager Let's Encrypt (needs public DNS + internet)
   #   "secret"      — BYO: reference a pre-existing Secret in istio-system
+  #
+  # STANDALONE-INSTALL NOTE: the cert-manager Certificate and ClusterIssuer that
+  # actually ISSUE the cert (including the "kserve-wildcard-tls" Certificate and the
+  # "kubeflow-letsencrypt" ClusterIssuer) live in the UMBRELLA chart
+  # (kubeflow/templates/tls/), not here. This sub-chart only emits the Gateway that
+  # references the resulting Secret by credentialName. So installing this sub-chart
+  # on its own with source: selfSigned/letsEncrypt produces a Gateway pointing at a
+  # Secret that nothing creates (the wildcard server references "kserve-wildcard-tls"
+  # with no Certificate behind it → TLS never comes up). For a standalone install use
+  # source: "secret" and pre-create the Secret(s) yourself (existingSecret, and
+  # kserveExistingSecret when the KServe wildcard opt-in is on).
   source: ""
   # ClusterIssuer name (required when source: selfSigned or letsEncrypt)
   issuer: ""
   # Pre-existing Secret name in istio-system (required when source: secret)
   existingSecret: ""
+  # Pre-existing Secret in istio-system for the KServe wildcard server, used only
+  # when source: secret AND global.kserveExternalHttps=true. Its SAN MUST cover
+  # "*.<global.kserveDomain>". Set it to the same value as existingSecret only if
+  # that secret is a multi-SAN/wildcard cert covering both hosts. Left empty the
+  # umbrella chart fails fast (rather than a silent TLS handshake error on
+  # inference hosts).
+  kserveExistingSecret: ""
   # Secret name cert-manager will write to (selfSigned / letsEncrypt)
   credentialName: kubeflow-gateway-tls
   # Redirect HTTP → HTTPS when TLS is active
   httpsRedirect: true
+  # Let's Encrypt ACME configuration (used when source: letsEncrypt).
+  # These defaults must exist even for standalone sub-chart installs: the
+  # validations.yaml wildcard guard reads .Values.tls.letsEncrypt.solver directly,
+  # so an absent block nil-pointers before the "HTTP-01 can't issue wildcards"
+  # check can fire. A DNS-01 solver (cloudflare) is required for the wildcard cert.
+  letsEncrypt:
+    email: ""               # Optional (recommended): ACME account email for expiry
+                            # notices (e.g. admin@example.com). Let's Encrypt issues
+                            # without it; when empty the ClusterIssuer omits the field.
+    server: prod            # prod | staging
+    solver: cloudflare      # cloudflare (dns01) | http01
+  # Cloudflare DNS-01 solver block. Required when source: letsEncrypt +
+  # solver: cloudflare AND global.kserveExternalHttps=true. The apiTokenSecretRef
+  # Secret must exist in cert-manager's own namespace (a ClusterIssuer resolves
+  # DNS-01 solver secretRefs there, not in the release namespace). Left as a
+  # commented example — the validations.yaml guard is nil-safe when it is absent.
+  # cloudflare:
+  #   email: your-email@example.com
+  #   apiTokenSecretRef:
+  #     name: cloudflare-api-token-secret
+  #     key: api-token
+  # External HTTPS for KServe inference is opt-in via the umbrella-chart globals
+  # global.kserveExternalHttps / global.kserveDomain (single source of truth). When
+  # enabled, the gateway serves "*.<global.kserveDomain>" on :443 from a dedicated
+  # "kserve-wildcard-tls" cert (a DNS-01 solver is required for the wildcard) and the
+  # Knative route host is flattened to a single "{name}-{namespace}.<domain>" label so
+  # the wildcard covers it. See the umbrella values.yaml and README for the naming caveat.

@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "kubeflow-istio-resources values",
+  "type": "object",
+  "properties": {
+    "hostname": {
+      "type": "string",
+      "not": { "anyOf": [
+        { "pattern": "\\*" },
+        { "pattern": "(?i)^(com|org|net|edu|gov|mil|int|io|co|ai|app|dev|cloud|online|site|info|biz|xyz|me|tv|us|uk|de|fr|jp|cn|au|ca|eu|ru|in|br|nl|it|es|se|no|fi|ch|nz|za|kr|mx|pl|tr|id|sg|hk)$" }
+      ] },
+      "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$",
+      "description": "Host for the gateway. Leave empty ('') for wildcard/IP+NodePort access, or set a hostname: a dotted FQDN (kubeflow.example.com), a single-label name (kubeflow, localhost), or an IPv4 literal (10.43.1.7) are all accepted. Must not contain '*' — a literal wildcard hostname would make the auth-bypass filter trust every host on an internet-facing named listener. A bare public suffix (a single-label registry TLD such as 'com'/'io') is ALSO rejected: hostname seeds the letsEncrypt ClusterIssuer's DNS-01 dnsZones, so a bare TLD would scope the ACME solver to the entire TLD. The list is the common gTLD/ccTLD set, not the full Public Suffix List. The DNS charset is enforced (no whitespace, non-breaking space, embedded newlines, trailing dot, leading '-', or '_'): the hostname is embedded verbatim into the authn EnvoyFilter's Lua, and an invalid character makes LuaJIT reject the inline_code, so istiod NACKs the whole filter and the gateway falls open (no auth). Rejecting it here fails the install instead. Independent of TLS. Kept in sync with the umbrella values.schema.json."
+    },
+    "istioGateway": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Workload label selector shared by the Gateway and the authn EnvoyFilter. Must be non-empty: an empty/null selector on the istio-system authn EnvoyFilter (whose patches are context: GATEWAY) would attach ext_authz to every gateway in the mesh. Rancher Istio: {istio: istio}; upstream: {istio: ingressgateway}."
+        }
+      }
+    },
+    "global": {
+      "type": "object",
+      "properties": {
+        "kserveDomain": {
+          "type": "string",
+          "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$",
+          "description": "Base domain for the KServe wildcard cert/listener. Must be a bare FQDN with no leading '*.' — the chart forms '*.<kserveDomain>' itself, so a value like '*.example.com' would produce a '*.*.example.com' host (unissuable, and a malformed listener). Kept in sync with the umbrella values.schema.json constraint."
+        },
+        "kserveGateway": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$",
+              "description": "Dedicated KServe/Knative inference gateway (namespace/name). This sub-chart renders a Gateway CR of this name/namespace; kept in sync with the umbrella global.kserveGateway.name (parent overrides). Default 'kubeflow/kserve-ingress-gateway'."
+            }
+          }
+        }
+      }
+    }
+  }
+}

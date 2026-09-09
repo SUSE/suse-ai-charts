@@ -68,10 +68,43 @@ spec:
                 # Pipes stdin because weed shell 4.x does not support -run flag.
                 # -actions=Admin (no -buckets) gives full S3 admin access to all buckets,
                 # matching S3 admin access so KFP and KServe can create buckets freely.
-                until printf '%s\n%s\n' \
-                  "s3.bucket.create -name mlpipeline" \
-                  "s3.configure -access_key=${accesskey} -secret_key=${secretkey} -user=kubeflow-admin -actions=Admin -apply" \
-                  | weed shell -master 127.0.0.1:9333 2>&1 | grep -q "kubeflow-admin"; do
+                #
+                # Loop until the identity is actually PERSISTED. During early startup
+                # the filer can echo the applied config (satisfying a naive grep of the
+                # apply output) before the write lands, leaving S3 with no identity and
+                # every signed request rejected. So we apply, then verify with a fresh
+                # read-back (bare s3.configure prints the stored config) and only exit
+                # once the user is present in the persisted config; a raced/lost write
+                # is retried on the next iteration.
+                #
+                # The verify grep is whitespace-tolerant ("name"<ws>:<ws>"kubeflow-admin")
+                # so a change in SeaweedFS's JSON marshalling (compact vs indented) does
+                # not silently break the match. The loop is also BOUNDED: an unbounded
+                # "until" here would hang postStart forever with stderr discarded, so a
+                # default install could wedge with nothing in the logs. After max_attempts
+                # we log the failure (WITHOUT dumping the stored config, which contains
+                # the S3 access/secret keys in cleartext) and exit non-zero, surfacing a
+                # FailedPostStartHook event instead of a silent hang.
+                attempt=0
+                max_attempts=60
+                until \
+                  printf '%s\n%s\n' \
+                    "s3.bucket.create -name mlpipeline" \
+                    "s3.configure -access_key=${accesskey} -secret_key=${secretkey} -user=kubeflow-admin -actions=Admin -apply" \
+                    | weed shell -master 127.0.0.1:9333 >/dev/null 2>&1; \
+                  printf 's3.configure\n' \
+                    | weed shell -master 127.0.0.1:9333 2>/dev/null \
+                    | grep -Eq '"name"[[:space:]]*:[[:space:]]*"kubeflow-admin"'; do
+                  attempt=$((attempt + 1))
+                  if [ "$attempt" -ge "$max_attempts" ]; then
+                    # Do NOT dump the stored s3.configure output here: it prints
+                    # accessKey/secretKey in cleartext, which would leak the S3
+                    # credentials into `kubectl logs`. Report only whether the
+                    # identity was found; the FailedPostStartHook event surfaces
+                    # the failure without exposing secrets.
+                    echo "seaweedfs postStart: kubeflow-admin S3 identity not persisted after ${max_attempts} attempts (${max_attempts}x3s). Check master/filer readiness on 127.0.0.1:9333." >&2
+                    exit 1
+                  fi
                   sleep 3
                 done
           preStop:
