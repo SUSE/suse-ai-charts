@@ -1,53 +1,382 @@
-# {{ template "chart.name" . }}
+{{/*
+  helm-docs template for README.md (chart: {{ template "chart.name" . }}).
 
-{{ template "chart.description" . }}
+  This landing page (components, prerequisites, and both installation modes) is
+  hand-maintained, alongside focused guides under docs/. The full values
+  documentation lives in docs/values-reference.md, so this template intentionally
+  does NOT emit {{`{{ template "chart.valuesSection" . }}`}} — regenerating with
+  helm-docs must not dump the raw values table back into the landing page.
 
-## Image Registry and Pull Secrets
+  Keep this template and README.md in sync; running `helm-docs` should reproduce
+  the page below verbatim.
+*/ -}}
+# Kubeflow Helm Chart
 
-All sub-charts follow the [SUSE Application Collection](https://dp.apps.rancher.io) standardization
-for `global.imageRegistry` and `global.imagePullSecrets`.
+End-to-end Machine Learning platform on Kubernetes, packaged as a single Helm umbrella chart.
+Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 
-### global.imageRegistry
+> **Note:** This chart requires an active [SUSE AI](https://www.suse.com/products/ai/) subscription
+> to pull images from `dp.apps.rancher.io` and `registry.suse.com`. The chart source code itself is Apache 2.0.
 
-Override the container registry for **every** component image in one place:
+---
 
-```yaml
-global:
-  imageRegistry: "my-registry.example.com"
-```
+## Components
 
-Precedence: `global.imageRegistry` → per-component `image.registry` → no prefix.
+| Component | Chart source | Namespace | Purpose |
+|-----------|-------------|-----------|---------|
+| Dex | SUSE Application Collection `dex-idp` 0.23.0 (0.24.0 incompatible — see [Known Limitations](docs/troubleshooting.md#known-limitations)) | kubeflow | OIDC identity provider |
+| oauth2-proxy | SUSE Application Collection `oauth2-proxy` 10.1.4 | kubeflow | OIDC login broker / session cookie |
+| Central Dashboard | local | kubeflow | Web UI shell |
+| Kubeflow Pipelines | local | kubeflow | ML workflow engine (KFP v2) |
+| Notebook Controller | local | kubeflow | Jupyter Notebook CRD controller |
+| Jupyter Web App | local | kubeflow | Notebook creation UI |
+| Katib | local | kubeflow | Hyperparameter tuning |
+| KServe | local | kubeflow | Model serving |
+| Training Operator V1 | local | kubeflow | TFJob / PyTorchJob / etc. (`kubeflow.org` API) |
+| Trainer V2 | local | kubeflow | TrainJob / TrainingRuntime / ClusterTrainingRuntime (`trainer.kubeflow.org` API) |
+| Profiles & KFAM | local | kubeflow | Multi-tenancy / namespace management |
+| Volumes Web App | local | kubeflow | PVC management UI (co-enabled with PVCViewer Controller via `volumesWebApp.enabled`) |
+| PVCViewer Controller | local | kubeflow | File browser for PVCs (co-enabled with Volumes Web App) |
+| Tensorboard Controller | local | kubeflow | TensorBoard CRD controller |
+| Tensorboards Web App | local | kubeflow | TensorBoard UI |
+| Models Web App | local | kubeflow | Model serving UI (co-enabled with KServe via `kserve.enabled`) |
+| Model Registry | local | kubeflow | Model versioning and metadata |
+| Admission Webhook | local | kubeflow | PodDefault mutating webhook (always installed — no condition) |
+| Knative Serving | local | knative-serving | Serverless layer required by KServe |
+| Knative Eventing | local | knative-eventing | Optional event-driven pipeline triggers (disabled by default) |
+| MariaDB (KFP) | SUSE Application Collection `mariadb` 0.1.7 | kubeflow | Pipeline + MLMD metadata DB |
+| MariaDB (Katib) | inline | kubeflow | Katib experiment DB |
+| SeaweedFS | inline | kubeflow | Pipeline artifact store (S3-compatible, Docker Hub image — requires internet access) |
+| external-dns | SUSE Application Collection `external-dns` 1.20.0 | kubeflow | Automatic DNS record management for Cloudflare (disabled by default) |
+| NetworkPolicies | local | kubeflow / knative-serving | Deny-all + explicit allow NetworkPolicies (disabled by default) |
+| Monitoring | local | kubeflow | ServiceMonitors + PrometheusRules for Rancher Monitoring (disabled by default) |
 
-### global.imagePullSecrets
+---
 
-Inject pull secrets into every pod. Accepts both string and object formats:
+## Prerequisites
 
-```yaml
-global:
-  imagePullSecrets:
-    - name: my-pull-secret
-```
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Kubernetes | >= 1.31 | Tested on RKE2 / K3s |
+| Helm | >= 4.0.1 | Required for OCI chart support |
+| cert-manager | 1.20.2 | Installed by `runMe.sh`; or pre-install manually |
+| Istio | mesh ≥ 1.9 (chart 1.3.0) | `1.3.0` is the SUSE AppCo **chart** version installed by `runMe.sh` (or pre-install manually); it ships a mesh well past the floor. The **mesh** floor is Istio ≥ 1.9 / Envoy ≥ 1.17 — the auth EnvoyFilter uses ext_authz `filter_enabled_metadata` `invert`, added in Envoy 1.17.0 (Istio 1.9). On an older proxy istiod NACKs the filter and auth can **fail open**. Any currently-supported Istio (≥ 1.16) satisfies this. |
+| Load Balancer (i.e. metallb) | - | Required when used in conjunction with external-dns and cert-manager. Tested with MetalLB v0.15.3 |
+| Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
+| SUSE Application Collection credentials | — | Username + token for `dp.apps.rancher.io` (application-collection secret) |
+| SUSE Registry credentials | — | Username + token for `registry.suse.com` (suse-ai-registry secret) |
 
-Chart-level `imagePullSecrets` (under a sub-chart's values root) act as a fallback when
-`global.imagePullSecrets` is empty.
+**Storage class:** All PVCs use the cluster default StorageClass unless `global.storageClass` is set.
+For single-node clusters the Local Path Provisioner is sufficient for development; for production,
+Longhorn is recommended.
 
-## Installing the Chart
+> **Note:** make sure a default StorageClass is set for the cluster before installing. Run
+> `kubectl get storageclass` and confirm one has the `(default)` designation next to its name.
+> Otherwise designate one, e.g.:
+> ```bash
+> kubectl patch storageclass local-path \
+>   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+> ```
+
+**Cloudflare API token:** Only required for automatic DNS record management via `external-dns`.
+When using Let's Encrypt as the issuer for the Gateway TLS certificate, `external-dns` is required
+for DNS-01 challenges.
+
+---
+
+## Installation
+
+There are two installation modes; both end up running the same `helm upgrade --install`, so `runMe.sh`
+simply automates the steps before it.
+
+| Mode | When to use |
+|------|------------|
+| [`runMe.sh`](#mode-1--automated-via-runmesh) | Fastest path — automates all prerequisite steps. Good for dev, demos, and CI. |
+| [Manual Helm (OCI)](#mode-2--manual-helm-install-oci-recommended-for-production) | **Recommended for production.** Install directly from the OCI registry — no source checkout or `helm dependency update` required. |
+
+Prerequisite for either mode: a RKE2 cluster with a default StorageClass configured (see
+[Prerequisites](#prerequisites)).
+
+### Mode 1 — Automated via `runMe.sh`
+
+`runMe.sh` runs the prerequisite steps and then installs the Kubeflow chart:
+
+1. Performs Helm registry logins for `dp.apps.rancher.io` and `registry.suse.com`
+2. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `knative-serving`
+3. Creates `application-collection` and `suse-ai-registry` image pull secrets in `istio-system`, `kubeflow`, `knative-serving`, and `cert-manager`. User namespaces (`kubeflow-user-example-com`, profile namespaces) receive these secrets automatically via the External Secrets Operator (ESO), installed as part of the chart.
+4. Labels the `kubeflow` and `knative-serving` namespaces for Helm ownership
+5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
+6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled
+7. Installs External Secrets Operator and waits for CRDs to be established
+8. Packages sub-charts via `helm dependency update`
+9. Installs the Kubeflow umbrella chart
+
+Fastest path for dev/demo — the basic invocation installs the chart with NodePort access:
 
 ```bash
-helm install kubeflow oci://dp.apps.rancher.io/charts/kubeflow \
-  --namespace kubeflow \
-  --set global.imagePullSecrets[0].name=application-collection
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token>
 ```
 
-To mirror all images through a private registry:
+The script prints the access URL when it finishes. Log in with the demo credentials:
+
+```
+Email:    user@example.com
+Password: 12341234
+```
+
+> **These are demo defaults — change them before any production or networked use.** See
+> [Production Hardening](docs/production-and-tenancy.md#production-hardening).
+
+To apply a values override file (see
+[Configuration Scenarios](docs/access-and-tls.md#configuration-scenarios)), pass `-f`:
 
 ```bash
-helm install kubeflow oci://dp.apps.rancher.io/charts/kubeflow \
-  --namespace kubeflow \
-  --set global.imageRegistry=my-registry.example.com \
-  --set global.imagePullSecrets[0].name=my-pull-secret
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f my-values.yaml
 ```
 
-## Values
+The repo ships an example `demo-overrides.yaml`. **Never use `demo-overrides.yaml` in production.**
 
-{{ template "chart.valuesSection" . }}
+<details>
+<summary><strong>Full argument reference</strong></summary>
+
+```bash
+./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
+  [--kubeconfig <path-to-kubeconfig>] \
+  [--cloudflare-api-key <CF-API-KEY>] \
+  [-f <path-to-values-override.yaml>]
+```
+
+| Argument | Env var alternative | Description |
+|----------|---------------------|-------------|
+| `<appco-registry-username>` | `APPCO_REGISTRY_USER` | SUSE Application Collection username (for `dp.apps.rancher.io`) |
+| `<appco-registry-token>` | `APPCO_REGISTRY_TOKEN` | SUSE Application Collection token / password (for `dp.apps.rancher.io`) |
+| `<suse-ai-registry-username>` | `SUSE_REGISTRY_USER` | SUSE Registry username (default: `regcode`) |
+| `<suse-ai-registry-token>` | `SUSE_REGISTRY_TOKEN` | SUSE Registry token / password (for `registry.suse.com`) SCC_REG_CODE for AI |
+| `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
+| `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
+| `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
+| `--disable-cert-manager` | — | Do not upgrade/install cert-manager, use an existing one instead |
+| `--suse-registry=<mirror>` | `SUSE_REGISTRY` | SUSE AI registry mirror (default: `registry.suse.com`); redirects all `registry.suse.com/*` image pulls and the registry login |
+| `--suse-app-collection=<mirror>` | `SUSE_APP_COLLECTION` | Application Collection mirror (default: `dp.apps.rancher.io`); redirects all `dp.apps.rancher.io/*` image pulls, the registry login, and the cert-manager / Istio / ESO OCI chart URLs |
+
+</details>
+
+<details>
+<summary><strong>Mirror / air-gapped registry usage</strong></summary>
+
+To redirect images through an internal mirror registry, pass both flags:
+
+```bash
+./runMe.sh <appco-username> <appco-token> regcode <suse-ai-token> \
+  --suse-registry=<mirror> \
+  --suse-app-collection=<mirror>
+```
+
+`--suse-app-collection` redirects: the `dp.apps.rancher.io` registry login, the `application-collection`
+pull secret, the cert-manager / Istio / ESO OCI chart installs, and sets
+`global.suseApplicationCollectionRegistry` on the Kubeflow helm install so all pod images resolve from
+the mirror.
+`--suse-registry` redirects: the `registry.suse.com` registry login, the `suse-ai-registry` pull secret,
+and sets `global.suseRegistry` on the Kubeflow helm install.
+
+See [Registry Overrides](docs/values-reference.md#registry-overrides) for the full precedence model.
+
+</details>
+
+### Mode 2 — Manual Helm install (OCI, recommended for production)
+
+The chart is published to the SUSE Registry OCI endpoint — no source checkout or `helm dependency
+update` required.
+
+> **Note:** using the latest versions of the helm charts is recommended.
+
+#### Step 1 — Helm registry login
+
+```bash
+# SUSE Application Collection registry
+helm registry login dp.apps.rancher.io \
+  --username=<appco-registry-username> \
+  --password=<appco-registry-token>
+
+# SUSE Registry
+helm registry login registry.suse.com \
+  --username=regcode \
+  --password=<suse-ai-registry-token>
+```
+
+#### Step 2 — Create namespaces
+
+```bash
+for ns in cert-manager istio-system kubeflow knative-serving; do
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+done
+```
+
+> **Note:** `kubeflow-user-example-com` and all other user namespaces are created by the Kubeflow chart
+> and receive registry pull secrets automatically via ESO — no manual creation needed.
+
+#### Step 3 — Create image pull secrets
+
+Create secrets only in the static system namespaces. ESO propagates them to user namespaces
+automatically — it copies `suse-ai-registry` and `application-collection` from the `kubeflow`
+namespace into every user namespace labelled `app.kubernetes.io/part-of: kubeflow-profile`, including
+namespaces created dynamically by the profiles controller at runtime.
+
+```bash
+# application-collection pull secret (SUSE Application Collection — dp.apps.rancher.io)
+for ns in cert-manager istio-system kubeflow knative-serving; do
+  kubectl create secret docker-registry application-collection \
+    --docker-server=dp.apps.rancher.io \
+    --docker-username=<appco-registry-username> \
+    --docker-password=<appco-registry-token> \
+    -n "$ns" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+
+# suse-ai-registry pull secret (SUSE Registry — registry.suse.com)
+for ns in cert-manager istio-system kubeflow knative-serving; do
+  kubectl create secret docker-registry suse-ai-registry \
+    --docker-server=registry.suse.com \
+    --docker-username=regcode \
+    --docker-password=<suse-ai-registry-token> \
+    -n "$ns" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+```
+
+#### Step 4 — Label namespaces for Helm
+
+```bash
+for ns in kubeflow kubeflow-user-example-com knative-serving; do
+  kubectl label namespace "$ns" app.kubernetes.io/managed-by=Helm --overwrite
+  kubectl annotate namespace "$ns" \
+    meta.helm.sh/release-name=kubeflow \
+    meta.helm.sh/release-namespace=kubeflow \
+    --overwrite
+done
+```
+
+#### Step 5 — Install cert-manager
+
+```bash
+helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
+  --version 1.20.2 \
+  --namespace cert-manager \
+  --set crds.enabled=true \
+  --set crds.keep=true \
+  --set global.imagePullSecrets[0].name=application-collection \
+  --wait --timeout 5m
+```
+
+#### Step 6 — Install Istio
+
+```bash
+helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
+  --version 1.3.0 \
+  --namespace istio-system \
+  --set global.imagePullSecrets[0].name=application-collection \
+  --set gateway.enabled=true \
+  --force-conflicts \
+  --server-side=true \
+  --wait --timeout 5m
+```
+
+#### Step 7 — Install External Secrets Operator
+
+ESO must be installed before the Kubeflow chart so its CRDs are present when Helm applies the
+`ClusterSecretStore` and `ClusterExternalSecret` resources.
+
+```bash
+helm upgrade --install external-secrets-operator oci://dp.apps.rancher.io/charts/external-secrets-operator \
+  --version 2.3.0 \
+  --namespace kubeflow \
+  --set installCRDs=true \
+  --set global.imagePullSecrets[0].name=application-collection \
+  --wait --timeout 5m
+```
+
+#### Step 8 — Install Kubeflow
+
+Install directly from the OCI registry (add `-f <values>.yaml` to apply an override file):
+
+```bash
+helm upgrade --install kubeflow \
+  oci://registry.suse.com/ai/charts/kubeflow \
+  --version 0.4.0 \
+  -n kubeflow \
+  --force-conflicts \
+  --server-side=true \
+  --wait --timeout 15m
+```
+
+> <a id="force-conflicts"></a>**Why `--force-conflicts`?** cert-manager-cainjector, istiod
+> (pilot-discovery), and the clusterrole-aggregation-controller modify fields (caBundle, webhook
+> failurePolicy, aggregated RBAC rules) that Helm tracks. This flag lets Helm reclaim ownership of
+> those fields on each install/upgrade, so **always pass it** (and `--server-side=true`) for both
+> install and upgrade.
+
+<details>
+<summary><strong>Using a mirror / air-gapped registry (Mode 2)</strong></summary>
+
+Substitute the mirror hostname in each `oci://` URL, update the `--docker-server` in the pull secrets,
+and pass the `global.suseApplicationCollectionRegistry` / `global.suseRegistry` values to the Kubeflow
+chart (see [Registry Overrides](docs/values-reference.md#registry-overrides)):
+
+```bash
+MIRROR=mirror.corp.example.com
+
+helm registry login "${MIRROR}" --username=<username> --password=<token>
+
+# cert-manager, Istio, ESO from mirror
+helm upgrade --install cert-manager oci://${MIRROR}/charts/cert-manager ...
+helm upgrade --install istio oci://${MIRROR}/charts/istio ...
+helm upgrade --install external-secrets-operator oci://${MIRROR}/charts/external-secrets-operator ...
+
+# Pull secrets pointing at mirror
+kubectl create secret docker-registry application-collection --docker-server="${MIRROR}" ...
+kubectl create secret docker-registry suse-ai-registry       --docker-server="${MIRROR}" ...
+
+# Kubeflow chart + images from mirror
+helm upgrade --install kubeflow oci://${MIRROR}/ai/charts/kubeflow \
+  --version 0.4.0 -n kubeflow \
+  --set global.suseApplicationCollectionRegistry="${MIRROR}" \
+  --set global.suseRegistry="${MIRROR}" \
+  --force-conflicts --server-side=true --wait --timeout 15m
+```
+
+</details>
+
+<details>
+<summary><strong>Installing from source (development / contributing only)</strong></summary>
+
+If you are developing the chart from a local checkout, run `helm dependency update` first, then
+install from the local path:
+
+```bash
+helm dependency update charts/kubeflow
+helm upgrade --install kubeflow charts/kubeflow \
+  -n kubeflow \
+  --force-conflicts \
+  --server-side=true \
+  --wait --timeout 15m \
+  -f demo-overrides.yaml
+```
+
+</details>
+
+After installing, work through
+[Production Hardening](docs/production-and-tenancy.md#production-hardening) before any production or
+networked use.
+
+---
+
+## Additional documentation
+
+| Guide | Contents |
+|-------|----------|
+| [Accessing & TLS / Configuration Scenarios](docs/access-and-tls.md) | Port-forward / NodePort / LoadBalancer access, hostname + TLS scenarios (self-signed, Let's Encrypt, BYO cert, existing external-dns/cert-manager), external HTTPS for KServe inference |
+| [Values Reference](docs/values-reference.md) | Every configurable value — globals, credentials, component toggles, storage, networking, registry overrides |
+| [Production Hardening & Multi-tenancy](docs/production-and-tenancy.md) | Credential rotation, external IdP, NetworkPolicies, backups, HA, resource quotas, adding users / profiles |
+| [Upgrade Notes](docs/upgrade-notes.md) | Version migrations, breaking changes, and required manual steps per release |
+| [Testing, Troubleshooting & Known Limitations](docs/troubleshooting.md) | Smoke / e2e / helm tests, common failure fixes, and known constraints |
+
