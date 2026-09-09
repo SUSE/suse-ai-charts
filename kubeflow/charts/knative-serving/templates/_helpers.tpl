@@ -125,3 +125,62 @@ Usage: {{ include "knative-serving.suseImageRegistry" (dict "ctx" . "registry" .
   {{- .registry -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Dedicated KServe inference gateway reference ("<namespace>/<name>").
+Single source of truth is global.kserveGateway.name (umbrella parent); falls back
+to the chart-local default for standalone installs. config-istio derives its
+"gateway.<namespace>.<name>" key from the namespace/name parts below.
+*/}}
+{{- define "knative-serving.kserveGatewayRef" -}}
+{{- $g := .Values.global | default dict -}}
+{{- if and $g.kserveGateway $g.kserveGateway.name -}}
+{{- $g.kserveGateway.name -}}
+{{- else -}}
+{{- "kubeflow/kserve-ingress-gateway" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "knative-serving.kserveGatewayNamespace" -}}
+{{- (splitList "/" (include "knative-serving.kserveGatewayRef" .)) | first -}}
+{{- end -}}
+
+{{- define "knative-serving.kserveGatewayName" -}}
+{{- (splitList "/" (include "knative-serving.kserveGatewayRef" .)) | last -}}
+{{- end -}}
+
+{{/*
+Return the proper Knative domain template.
+If global.kserveExternalHttps is enabled, it returns the flattened single-label
+template so a shared "*.{Domain}" wildcard cert covers the route host (Let's
+Encrypt cannot issue "*.*.domain"). Otherwise it returns the user-supplied
+.Values.domainTemplate (empty = Knative's dotted upstream default).
+
+The template is rendered at runtime by Knative's controller with Go's stdlib
+text/template (checkDomainTemplate validates it at ConfigMap load) — NO Sprig —
+so we cannot hash here; only .Name/.Namespace/.Domain and stdlib built-ins are
+available. We join name and namespace with "-". See the umbrella README for the
+cross-tenant naming caveat this single-label form implies.
+*/}}
+{{- define "knative-serving.domainTemplate" -}}
+{{- $template := .Values.domainTemplate -}}
+{{- if not $template -}}
+  {{- if and .Values.global (hasKey .Values.global "kserveExternalHttps") .Values.global.kserveExternalHttps -}}
+    {{- $template = `{{ .Name }}-{{ .Namespace }}.{{ .Domain }}` -}}
+  {{- end -}}
+{{- end -}}
+{{- $template -}}
+{{- end -}}
+
+{{/*
+Return the Knative Serving base domain (the key of the config-domain ConfigMap).
+Driven by global.kserveDomain when set (umbrella single source of truth), falling
+back to the chart-local .Values.domain for standalone installs.
+*/}}
+{{- define "knative-serving.domain" -}}
+{{- if and .Values.global .Values.global.kserveDomain -}}
+  {{- .Values.global.kserveDomain -}}
+{{- else -}}
+  {{- .Values.domain -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,15 @@
+{{- $kir := index .Values "kubeflow-istio-resources" | default dict }}
+{{- $tlsSource := "" }}
+{{- if and $kir $kir.tls }}
+{{-   $tlsSource = $kir.tls.source | default "" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oauth2-proxy-dynamic-config
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: oauth2-proxy
+    app.kubernetes.io/component: oauth2-proxy
+data:
+  cookie-secure: {{ if or .Values.global.kserveExternalHttps (ne $tlsSource "") }}"true"{{ else }}"false"{{ end }}

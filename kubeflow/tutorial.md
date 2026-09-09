@@ -1059,6 +1059,14 @@ kubectl get inferenceservice gpt2 -n kubeflow-user-example-com -w
 # "Application startup complete" appears in the kserve-container log.
 ```
 
+> If you enabled external HTTPS for inference (`global.kserveExternalHttps: true`),
+> the reported URL is `https://gpt2-kubeflow-user-example-com.example.com` — KServe's
+> usual `{name}-{namespace}.{domain}` host, now over `https` on your `global.kserveDomain`
+> — and clients must call it over `https` (the `http` endpoint is 301-redirected).
+>
+> **Note:** this `status.url` is KServe's top-level InferenceService URL.
+> For production access from external clients, see [Part 8.3 External Access (Bearer Token)](#programmatic--external-access-bearer-token).
+
 Check the predictor pod is up:
 
 ```bash
@@ -1078,7 +1086,7 @@ kubectl logs -n kubeflow-user-example-com \
 ### 9.3 Generate Text (curl)
 
 > **Production access:** For external clients (scripts, CI pipelines) that cannot use
-> a browser cookie, use the **Dex Bearer token** pattern described in [section 7.4
+> a browser cookie, use the **Dex Bearer token** pattern described in [Part 8.3
 > Programmatic / External Access (Bearer Token)](#programmatic--external-access-bearer-token).
 > Replace the sklearn-iris URL with the GPT-2 InferenceService URL and the predict
 > path with `/openai/v1/completions`.  The `-private` service pattern below is

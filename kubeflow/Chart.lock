@@ -7,7 +7,7 @@ dependencies:
   version: 0.1.0
 - name: knative-serving
   repository: file://./charts/knative-serving
-  version: 0.2.1
+  version: 0.2.3
 - name: knative-eventing
   repository: file://./charts/knative-eventing
   version: 0.2.1
@@ -19,7 +19,7 @@ dependencies:
   version: 10.7.0
 - name: kubeflow-istio-resources
   repository: file://./charts/kubeflow-istio-resources
-  version: 0.2.0
+  version: 0.2.2
 - name: kubeflow-roles
   repository: file://./charts/kubeflow-roles
   version: 0.1.0
@@ -28,7 +28,7 @@ dependencies:
   version: 0.2.1
 - name: kubeflow-pipelines
   repository: file://./charts/kubeflow-pipelines
-  version: 0.2.4
+  version: 0.2.5
 - name: notebook-controller
   repository: file://./charts/notebook-controller
   version: 0.2.1
@@ -40,13 +40,13 @@ dependencies:
   version: 0.2.1
 - name: kserve
   repository: file://./charts/kserve
-  version: 0.2.1
+  version: 0.2.3
 - name: training-operator
   repository: file://./charts/training-operator
   version: 0.3.0
 - name: trainer
   repository: file://./charts/trainer
-  version: 0.1.1
+  version: 0.2.0
 - name: profiles-and-kfam
   repository: file://./charts/profiles-and-kfam
   version: 0.2.1
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:864c0fd73ce19043d6ead4349a0cbb7f2ef976fcd591811e41479dea3c0a51f6
-generated: "2026-08-26T09:32:10.920003049-03:00"
+digest: sha256:e81faa9f09ce72678ef3b423e05a8fe9ba57b67db450f0a1a00ef9e3035f2d33
+generated: "2026-09-03T20:43:19.117684813Z"

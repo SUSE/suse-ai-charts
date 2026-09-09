@@ -120,3 +120,53 @@ Usage: {{ include "kserve.suseApplicationCollectionRegistry" (dict "ctx" . "regi
   {{- .registry -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the proper KServe inference domain.
+Usage: {{ include "kserve.kserveDomain" . }}
+*/}}
+{{- define "kserve.kserveDomain" -}}
+{{- if and .Values.global .Values.global.kserveDomain -}}
+  {{- .Values.global.kserveDomain -}}
+{{- else -}}
+  {{- .Values.ingressDomain -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the dedicated KServe inference gateway reference ("<namespace>/<name>").
+Single source of truth is global.kserveGateway.name (umbrella parent); falls back
+to the ingressGateway already set in .Values.inferenceServiceConfig.ingress for
+standalone installs. Written into inferenceservice-config's "ingressGateway".
+Usage: {{ include "kserve.kserveGatewayRef" . }}
+*/}}
+{{- define "kserve.kserveGatewayRef" -}}
+{{- $g := .Values.global | default dict -}}
+{{- if and $g.kserveGateway $g.kserveGateway.name -}}
+  {{- $g.kserveGateway.name -}}
+{{- else -}}
+  {{- (.Values.inferenceServiceConfig.ingress | fromJson).ingressGateway -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the proper KServe URL scheme.
+Usage: {{ include "kserve.kserveUrlScheme" . }}
+*/}}
+{{- define "kserve.kserveUrlScheme" -}}
+{{- if and .Values.global (hasKey .Values.global "kserveExternalHttps") .Values.global.kserveExternalHttps -}}
+  {{- "https" -}}
+{{- else -}}
+  {{- .Values.urlScheme | default "http" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+NOTE: There is intentionally no kserveDomainTemplate helper. KServe's default
+domainTemplate is the single-label "{name}-{namespace}.{domain}" form
+(GenerateDomainName), which is both what status.url advertises AND already flat
+enough for a "*.{domain}" wildcard cert — so the wildcard-TLS opt-in does not
+change it. It stays the static value in values.yaml. Only Knative's route host
+(dotted by default) needs flattening for the opt-in; see the knative-serving
+"knative-serving.domainTemplate" helper.
+*/}}

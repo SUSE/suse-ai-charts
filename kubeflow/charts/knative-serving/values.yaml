@@ -10,6 +10,12 @@ global:
   imagePullSecrets: []
   # -- Global override for image pull policy
   imagePullPolicy: IfNotPresent
+  # Dedicated KServe/Knative inference gateway ("<namespace>/<name>"). Single
+  # source of truth (umbrella parent overrides this); config-istio derives its
+  # "gateway.<namespace>.<name>" key from it so net-istio binds Knative ingress
+  # to the same Gateway the kubeflow-istio-resources sub-chart renders.
+  kserveGateway:
+    name: "kubeflow/kserve-ingress-gateway"
 
 controller:
   image:
@@ -127,3 +133,41 @@ registriesSkippingTagResolving: ""
 # Domain for InferenceService external URLs.
 # Override with <node-ip>.nip.io or your real domain.
 domain: "example.com"
+
+# Knative route domain template — controls the host generated for each Knative
+# Service/Route (this is the host net-istio probes for readiness).
+# Empty = Knative's upstream default dotted form ({name}.{namespace}.{domain}),
+# UNLESS global.kserveExternalHttps is set: the "knative-serving.domainTemplate"
+# helper then auto-derives the flattened single-label form
+#   "{{ .Name }}-{{ .Namespace }}.{{ .Domain }}"
+# so a single wildcard cert (*.{domain}) can cover inference hosts — Let's Encrypt
+# cannot issue a *.*.{domain} wildcard. Knative renders this with Go's stdlib
+# text/template (no Sprig), so we cannot hash the namespace here; joining name and
+# namespace with "-" means a namespace that is a dash-suffix of another's
+# {name}-{namespace} can collide — see the umbrella README caveat. Note {{ .Name }}
+# is the Knative Service name, so a serverless InferenceService component already
+# includes its suffix: a predictor renders as "{isvc}-predictor-{namespace}"
+# (likewise "-transformer"/"-explainer"), so budget ~10 chars for that suffix
+# against the 63-char DNS label limit. Set an explicit value here only to override
+# that auto-derivation.
+domainTemplate: ""
+
+# Workload label selector for the knative-local-gateway — the CLUSTER-LOCAL gateway
+# net-istio uses for in-cluster routing (distinct from the external kubeflow-gateway
+# in the kubeflow-istio-resources sub-chart). Both the Gateway's spec.selector and
+# the fronting istio-system Service's spec.selector use this value, so they cannot
+# drift. The default matches Rancher's bundled Istio (its ingress gateway Pods carry
+# `app: istio` and `istio: istio`). On UPSTREAM Istio the gateway is labelled
+# `istio: ingressgateway` (and has no `app: istio`), so cluster-local routing (and
+# thus KServe/Knative readiness) breaks unless you override this to whichever gateway
+# Deployment serves it. NOTE: Helm MERGES override maps onto this default, so setting
+# only `istio:` leaves the `app: istio` default in place — the merged selector then
+# matches nothing on upstream. Null the unwanted key explicitly to drop it:
+#   localGateway:
+#     selector:
+#       app: null              # remove the Rancher-only label
+#       istio: ingressgateway
+localGateway:
+  selector:
+    app: istio
+    istio: istio

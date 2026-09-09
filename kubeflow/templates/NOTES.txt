@@ -42,9 +42,10 @@ GETTING STARTED
 2. Get the Kubeflow dashboard URL:
 
 {{- $kir := index .Values "kubeflow-istio-resources" }}
+{{- $tls := $kir.tls | default dict }}
 {{- if $kir.hostname }}
    Hostname: {{ $kir.hostname }}
-{{- if ne $kir.tls.source "" }}
+{{- if ne ($tls.source | default "") "" }}
    Dashboard URL: https://{{ $kir.hostname }}
 {{- else }}
    Dashboard URL: http://{{ $kir.hostname }}

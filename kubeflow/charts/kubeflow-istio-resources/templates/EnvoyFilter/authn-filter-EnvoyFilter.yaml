@@ -6,8 +6,21 @@ metadata:
   namespace: istio-system
 spec:
   workloadSelector:
+    # MUST match the Gateway's istioGateway.selector (Gateway template uses the
+    # same value with the IDENTICAL guard below). If these drift, ext_authz
+    # attaches to a different workload than the one serving the gateway listeners —
+    # the wildcard :443 server would still render but with no auth chain in front.
+    # The guard falls back to a concrete label so an absent/null selector NEVER
+    # renders an empty workloadSelector: this EnvoyFilter lives in the root
+    # namespace (istio-system) with all patches context: GATEWAY, so an empty
+    # selector would attach ext_authz to EVERY gateway in the mesh (all namespaces),
+    # pointing unrelated tenants at Kubeflow's oauth2-proxy.
     labels:
+      {{- if and .Values.istioGateway .Values.istioGateway.selector }}
+      {{- toYaml .Values.istioGateway.selector | nindent 6 }}
+      {{- else }}
       istio: istio
+      {{- end }}
   configPatches:
 
   # ── Patch 1 ──────────────────────────────────────────────────────────────────
@@ -32,10 +45,65 @@ spec:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
           inline_code: |
             function envoy_on_request(request_handle)
+              -- Trust boundary: strip EVERY client-supplied identity header so a
+              -- caller cannot spoof their Kubeflow identity. On the normal path
+              -- ext_authz re-adds the authenticated x-auth-request-* values (via
+              -- allowed_upstream_headers) and Patch 3 derives kubeflow-userid from
+              -- x-auth-request-email. On the skip-auth path (trusted host + /dex/
+              -- or /oauth2/) ext_authz is inverted OFF, so allowed_upstream_headers
+              -- never runs — if we only stripped kubeflow-userid a client-sent
+              -- x-auth-request-email would survive and Patch 3 would mint
+              -- kubeflow-userid from it. Strip the whole family here so neither
+              -- kubeflow-userid nor the headers Patch 3 reads can be spoofed.
+              request_handle:headers():remove("kubeflow-userid")
+              request_handle:headers():remove("x-auth-request-email")
+              request_handle:headers():remove("x-auth-request-user")
+              request_handle:headers():remove("x-auth-request-groups")
+              request_handle:headers():remove("x-auth-request-preferred-username")
+
               -- Save original path so after login oauth2-proxy redirects back here
               local path = request_handle:headers():get(":path")
               request_handle:streamInfo():dynamicMetadata():set(
                 "envoy.filters.http.lua", "original_path", path)
+
+              -- ── Host-scoped Auth Bypass ─────────────────────────────────────
+              -- Only allow unauthenticated access to /dex/ and /oauth2/ paths
+              -- when they are requested on the TRUSTED dashboard host.
+              -- This prevents attackers from bypassing auth on tenant wildcard hosts.
+              {{- if .Values.hostname }}
+              -- A dashboard hostname is set, so the gateway has a dedicated listener
+              -- for it. Scope the bypass strictly to that host; strip any :port from
+              -- :authority first so named-host installs on non-443 ports still match.
+              -- Lower-case both sides: Host is case-insensitive (RFC 4343), so an
+              -- upper-case Host must still match or it falls through to auth and
+              -- reintroduces the /oauth2/ login loop on the dashboard.
+              local host = (request_handle:headers():get(":authority") or ""):gsub(":%d+$", ""):lower()
+              local dashboard_host = ({{ .Values.hostname | quote }}):lower()
+              local is_trusted_host = (host == dashboard_host)
+              {{- else }}
+              -- No hostname set: the gateway serves the '*' wildcard listener, so
+              -- every request already reaches the dashboard (IP / NodePort /
+              -- port-forward access). Trust all hosts, matching the Gateway '*'
+              -- default. Note: '*' is rejected as an explicit hostname value
+              -- (validations.yaml + schema) so it cannot re-enable a wildcard
+              -- bypass on an internet-facing named listener.
+              local is_trusted_host = true
+              {{- end }}
+
+              -- Carry the trust decision into envoy_on_response. Only a 403 on the
+              -- trusted dashboard host should be rewritten into a login redirect;
+              -- on an untrusted inference host (*.<kserveDomain>) the
+              -- /oauth2/sign_in target is itself behind ext_authz, so a browser
+              -- would loop 403 → 302 → 403 and pile up CSRF cookies.
+              request_handle:streamInfo():dynamicMetadata():set(
+                "envoy.filters.http.lua", "is_trusted_host", tostring(is_trusted_host))
+
+              if is_trusted_host then
+                if path:find("^/dex/") or path:find("^/oauth2/") then
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "envoy.filters.http.lua", "skip_auth", "true")
+                end
+              end
             end
             function envoy_on_response(response_handle)
               local status = response_handle:headers():get(":status")
@@ -51,6 +119,14 @@ spec:
                 end
                 local md = response_handle:streamInfo():dynamicMetadata():get(
                   "envoy.filters.http.lua")
+                -- Only rewrite the login redirect on the trusted dashboard host.
+                -- On an untrusted inference host (*.<kserveDomain>) /oauth2/sign_in
+                -- is itself ext_authz'd, so redirecting a browser there loops
+                -- 403 → 302 → 403 and accumulates CSRF cookies. Let the raw 403
+                -- through instead — curl clients pass a pasted cookie and never 403.
+                if not (md and md["is_trusted_host"] == "true") then
+                  return
+                end
                 local rd = "/"
                 if md and md["original_path"] then
                   rd = md["original_path"]
@@ -95,9 +171,13 @@ spec:
                   - exact: "x-auth-request-redirect"
                   - prefix: "x-forwarded-"
             authorization_response:
+              {{- /* kubeflow-userid is NOT listed here: oauth2-proxy never returns it,
+                     so an allowlist entry would be dead config (it cannot strip a
+                     client-sent header). It is derived from x-auth-request-email and
+                     set by the Patch 3 Lua filter; client-sent copies are stripped in
+                     Patch 1. */}}
               allowed_upstream_headers:
                 patterns:
-                  - exact: "kubeflow-userid"
                   - exact: "x-auth-request-user"
                   - exact: "x-auth-request-email"
                   - exact: "x-auth-request-groups"
@@ -112,6 +192,27 @@ spec:
           failure_mode_allow: false
           status_on_error:
             code: ServiceUnavailable
+          {{- /*
+            Run ext_authz UNLESS the Lua filter set skip_auth="true" (trusted
+            dashboard host + /dex/ or /oauth2/ path). `invert` lives on the
+            MetadataMatcher itself — StringMatcher has no invert field.
+
+            MINIMUM MESH VERSION: this relies on ext_authz `filter_enabled_metadata`
+            (a type.matcher.v3.MetadataMatcher, incl. its `invert` field), which was
+            added in Envoy 1.17.0 (envoyproxy/envoy#13404) — shipped in Istio 1.9.
+            On an older proxy istiod NACKs this EnvoyFilter: the gateway keeps its
+            last-good config or drops the filter, so auth silently breaks or (if the
+            filter is dropped) fails open. Any currently-supported Istio (>= 1.16)
+            is well past this floor; see the README Prerequisites table.
+          */}}
+          filter_enabled_metadata:
+            filter: envoy.filters.http.lua
+            invert: true
+            path:
+              - key: skip_auth
+            value:
+              string_match:
+                exact: "true"
 
   # ── Patch 3 ──────────────────────────────────────────────────────────────────
   # Lua header-copy filter: runs AFTER ext_authz on the request path.
@@ -137,7 +238,9 @@ spec:
             function envoy_on_request(request_handle)
               local email = request_handle:headers():get("x-auth-request-email")
               if email then
-                request_handle:headers():add("kubeflow-userid", email)
+                -- replace(), not add(): guarantees a single authoritative value
+                -- even if a client-supplied header somehow reached this point.
+                request_handle:headers():replace("kubeflow-userid", email)
               end
             end
             function envoy_on_response(response_handle)
