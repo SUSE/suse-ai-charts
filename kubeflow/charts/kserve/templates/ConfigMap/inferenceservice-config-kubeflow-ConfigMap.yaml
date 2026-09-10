@@ -21,20 +21,7 @@ data:
   deploy: |-
     {{- .Values.inferenceServiceConfig.deploy | nindent 4 }}
   explainers: |-
-    {
-        "alibi": {
-            "image" : "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.explainersConfig.alibi.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.repository }}",
-            "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.alibi.image.tag }}"
-        },
-        "aix": {
-            "image" : "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.explainersConfig.aix.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.repository }}",
-            "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.aix.image.tag }}"
-        },
-        "art": {
-            "image" : "{{- $registry := include "kserve.suseImageRegistry" (dict "ctx" . "registry" .Values.inferenceServiceConfig.explainersConfig.art.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.inferenceServiceConfig.explainersConfig.art.image.repository }}",
-            "defaultImageVersion": "{{ .Values.inferenceServiceConfig.explainersConfig.art.image.tag }}"
-        }
-    }
+    {}
   ingress: |-
     {{- /* domainTemplate stays as-is (KServe's default hyphen host = status.url,
            unchanged by the opt-in); ingressDomain and urlScheme are derived from
