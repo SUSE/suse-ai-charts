@@ -40,7 +40,7 @@ dependencies:
   version: 0.2.1
 - name: kserve
   repository: file://./charts/kserve
-  version: 0.2.3
+  version: 0.2.4
 - name: training-operator
   repository: file://./charts/training-operator
   version: 0.3.0
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:e81faa9f09ce72678ef3b423e05a8fe9ba57b67db450f0a1a00ef9e3035f2d33
-generated: "2026-09-03T20:43:19.117684813Z"
+digest: sha256:9ba4d3386511970626f5bc328104b7864fb82c6caa87ad5b1eed092eeb8debfd
+generated: "2026-09-10T14:55:50.488072705-07:00"

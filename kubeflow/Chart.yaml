@@ -115,7 +115,7 @@ dependencies:
     condition: katib.enabled
 
   - name: kserve
-    version: "0.2.3"
+    version: "0.2.4"
     repository: "file://./charts/kserve"
     condition: kserve.enabled
 

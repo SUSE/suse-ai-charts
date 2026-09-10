@@ -169,23 +169,6 @@ inferenceServiceConfig:
       "defaultDeploymentMode": "Serverless"
     }
 
-  explainersConfig:
-    alibi:
-      image:
-        registry: registry.suse.com
-        repository: ai/containers/kserve/alibi-explainer
-        tag: v0.19.0
-    aix:
-      image:
-        registry: registry.suse.com
-        repository: ai/containers/kserve/aix-explainer
-        tag: v0.19.0
-    art:
-      image:
-        registry: registry.suse.com
-        repository: ai/containers/kserve/art-explainer
-        tag: v0.19.0
-
   # NOTE: ingressGateway is the DEDICATED KServe gateway (rendered by the
   # kubeflow-istio-resources sub-chart), not the shared kubeflow-gateway — so the
   # Knative net-istio readiness prober only probes that gateway's ports and stays
