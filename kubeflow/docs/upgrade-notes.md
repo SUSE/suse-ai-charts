@@ -75,6 +75,31 @@ native mode adds a `RequestAuthentication` (Dex JWT) plus a `CUSTOM` ext_authz a
 **No action required** for installs that do not expose unauthenticated external inference on the shared
 gateway. To stay on the previous behaviour, select the legacy EnvoyFilter mode as above.
 
+## Behaviour change — OIDC credentials in one Secret, mismatched credential copies fail the render
+
+_Applies to chart version `0.4.2` and later._
+
+`auth.oidc.clientSecret` and `auth.oidc.cookieSecret` previously reached Dex and oauth2-proxy through
+YAML anchors in `values.yaml`, which `-f`/`--set` overrides do not follow, so an override changed only
+`auth.oidc.*` and both components kept the demo values. The chart now writes them to a
+`kubeflow-oidc-client` Secret (keys `client-id`, `client-secret`, `cookie-secret`) that Dex and
+oauth2-proxy both read, so overrides reach both. This Secret replaces the `kubeflow-oauth2-proxy` Secret
+that the oauth2-proxy sub-chart used to create; set `auth.oidc.existingSecret: true` to supply
+`kubeflow-oidc-client` yourself.
+
+The render now also fails, instead of deploying a broken login or pipeline storage, when:
+- a component-level copy set directly (`oauth2-proxy.config.clientSecret` / `cookieSecret`,
+  `dex.oidcClientSecret`, a Dex static-client `secret`) differs from `auth.oidc.*`;
+- `pipelines.seaweedfs.accessKey` / `secretKey` is overridden without the matching
+  `user-namespace.pipelines.seaweedfs.*` value (previously the user-namespace copy silently kept the
+  demo credentials);
+- `auth.oidc.cookieSecret` is not 16, 24 or 32 bytes (raw or URL-safe base64), which oauth2-proxy
+  rejects at start-up.
+
+**Action:** if you override these credentials, set them in `auth.oidc.*` (and both SeaweedFS keys), and
+remove any direct `oauth2-proxy.config.clientSecret` / `cookieSecret` overrides. After an upgrade that
+changes the OIDC secrets, restart Dex and oauth2-proxy so they pick up the new Secret.
+
 ## Migration — Model Registry consolidated into Kubeflow Hub
 
 _Applies to chart version `0.4.0-alpha.2` and later._

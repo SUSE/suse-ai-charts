@@ -22,7 +22,7 @@ The credentials that trigger the render-time security check:
 auth:
   oidc:
     clientSecret: "<STRONG-RANDOM-SECRET>"
-    cookieSecret: "<STRONG-RANDOM-32-BYTE-BASE64>"  # generate: openssl rand -base64 32
+    cookieSecret: "<STRONG-RANDOM-32-BYTE-BASE64>"  # generate: openssl rand -base64 32 | tr -- '+/' '-_'
 
 dex:
   config:
@@ -31,7 +31,7 @@ dex:
         redirectURIs:
           - /oauth2/callback
         name: kubeflow-oidc-authservice
-        secret: "<STRONG-RANDOM-SECRET>"   # must match auth.oidc.clientSecret above
+        secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET   # read from the kubeflow-oidc-client Secret; set auth.oidc.clientSecret, not this
     staticPasswords:
       - email: "admin@yourcompany.com"
         # Generate: htpasswd -nbBC 12 "" 'YourPassword' | tr -d ':\n' | sed 's/$2y/$2a/'
@@ -51,6 +51,14 @@ user-namespace:
       accessKey: "<STRONG-ACCESS-KEY>"    # must match pipelines.seaweedfs.accessKey
       secretKey: "<STRONG-SECRET-KEY>"    # must match pipelines.seaweedfs.secretKey
 ```
+
+> **Rotating the OIDC secrets:** `auth.oidc.clientSecret` and `auth.oidc.cookieSecret` are stored
+> in the `kubeflow-oidc-client` Secret, which Dex and oauth2-proxy read at start-up. After changing
+> them on an existing installation, restart both so they load the new values together (this also
+> signs every user out):
+> ```bash
+> kubectl -n kubeflow rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy
+> ```
 
 > **MariaDB root passwords:** Both the KFP and Katib MySQL secrets are **auto-generated** (24-char
 > random password) on first install and preserved across upgrades — no action required. To rotate,
