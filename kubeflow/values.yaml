@@ -212,14 +212,19 @@ global:
 # Chart-managed credentials with lookup-idempotent patterns (random on first
 # install, preserved on upgrade). Override with pre-created secrets for production.
 auth:
-  # OIDC client secret shared between Dex (staticClients) and oauth2-proxy.
-  # Both components MUST use the same value.
+  # OIDC client credentials shared by Dex (staticClients) and oauth2-proxy.
   # DEMO DEFAULT — CHANGE IN PRODUCTION.
-  # This is the single source of truth: it is referenced by dex.config.staticClients[0].secret
-  # and passed to the oauth2-proxy sub-chart below.
+  # This is the single source of truth: the chart writes these values to the
+  # kubeflow-oidc-client Secret, and Dex and oauth2-proxy both read that Secret,
+  # so overrides set here with -f/--set reach both components.
   oidc:
-    clientSecret: &oidcClientSecret "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok"  # DEMO DEFAULT
-    cookieSecret: &oidcCookieSecret "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" # DEMO DEFAULT
+    clientId: "kubeflow-oidc-authservice"
+    clientSecret: "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok"  # DEMO DEFAULT
+    cookieSecret: "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" # DEMO DEFAULT
+    # true: don't create the kubeflow-oidc-client Secret; provide a Secret with that
+    # name and the keys client-id, client-secret and cookie-secret yourself (e.g. with
+    # External Secrets). clientSecret/cookieSecret are then unused.
+    existingSecret: false
 
   # Initial admin user for Dex login.
   # WARNING: Change these credentials immediately after first login.
@@ -271,11 +276,18 @@ knativeEventing:
 # Dex OIDC provider (official dexidp chart)
 dex:
   enabled: true
-  # OIDC client credentials — wired from auth.oidc.clientSecret anchor above.
-  # Override oidcClientSecret here or set existingOidcClientSecret to skip chart-managed secret.
+  # The OIDC client secret reaches Dex through the kubeflow-oidc-client Secret
+  # (envVars + staticClients[].secretEnv below). oidcClientSecret and
+  # existingOidcClientSecret are not read by this chart; use auth.oidc.* instead.
   oidcClientId: "kubeflow-oidc-authservice"
-  oidcClientSecret: *oidcClientSecret
-  existingOidcClientSecret: ""  # set to a pre-existing Secret name to skip chart creation
+  oidcClientSecret: ""
+  existingOidcClientSecret: ""
+  envVars:
+    - name: KUBEFLOW_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: kubeflow-oidc-client  # created from auth.oidc.* (templates/secrets)
+          key: client-secret
   config:
     issuer: "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex"
     oauth2:
@@ -291,8 +303,9 @@ dex:
         redirectURIs:
           - /oauth2/callback
         name: kubeflow-oidc-authservice
-        # References auth.oidc.clientSecret — change it there, not here.
-        secret: *oidcClientSecret
+        # Read from the kubeflow-oidc-client Secret via the env var above;
+        # change auth.oidc.clientSecret, not this.
+        secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET
     staticPasswords:
       # Default credentials (Email: user@example.com / Password: 12341234)
       # DEMO DEFAULT — CHANGE IN PRODUCTION.
@@ -350,8 +363,9 @@ oauth2-proxy:
     unhealthyPodEvictionPolicy: ""
   config:
     clientID: "kubeflow-oidc-authservice"
-    clientSecret: *oidcClientSecret
-    cookieSecret: *oidcCookieSecret
+    # client-id, client-secret and cookie-secret come from the kubeflow-oidc-client
+    # Secret; change auth.oidc.* rather than setting them here.
+    existingSecret: kubeflow-oidc-client
     # NOTE: the oauth2-proxy chart renders this whole string through `tpl`
     # (charts/oauth2-proxy templates/_helpers.tpl: `tpl .Values.config.configFile $`),
     # so Helm directives below are evaluated with the chart root context and can read

@@ -168,6 +168,7 @@ externaldns:
 auth:
   oidc:
     clientSecret: "<STRONG-RANDOM-32-CHAR-SECRET>"
+    cookieSecret: "<STRONG-RANDOM-32-BYTE-BASE64>"  # generate: openssl rand -base64 32 | tr -- '+/' '-_'
   initialUser:
     email: "admin@example.com"
 
@@ -178,7 +179,7 @@ dex:
         redirectURIs:
           - /oauth2/callback
         name: kubeflow-oidc-authservice
-        secret: "<STRONG-RANDOM-32-CHAR-SECRET>"   # must match auth.oidc.clientSecret
+        secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET   # read from the kubeflow-oidc-client Secret; set auth.oidc.clientSecret, not this
     staticPasswords:
       - email: "admin@example.com"
         # Generate: htpasswd -nbBC 12 "" 'YourPassword' | tr -d ':\n' | sed 's/$2y/$2a/'
