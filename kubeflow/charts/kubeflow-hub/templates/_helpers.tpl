@@ -104,3 +104,17 @@ Usage: {{ include "kubeflow-hub.suseApplicationCollectionRegistry" (dict "ctx" .
   {{- .registry -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Ingress-gateway ServiceAccount principal — single source of truth (umbrella parent
+overrides via global.istio.ingressGateway.principal). Nil-guarded the same way as
+kubeflow-istio-resources.ingressGatewaySelector so a partially overridden or absent
+global.istio never errors the strict AuthorizationPolicies; falls back to the
+Rancher/AppCo default. Upstream Istio: override to the upstream SA principal.
+*/}}
+{{- define "kubeflow-hub.ingressGatewayPrincipal" -}}
+{{- $g := .Values.global | default dict -}}
+{{- $istio := $g.istio | default dict -}}
+{{- $ig := $istio.ingressGateway | default dict -}}
+{{- $ig.principal | default "cluster.local/ns/istio-system/sa/istio" -}}
+{{- end -}}

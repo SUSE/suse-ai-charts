@@ -164,10 +164,14 @@ jobs:
           #     leaves 2a green, so this second assertion is what actually guards it.
           grep -Fq '{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}' <<<"$out" \
             || { echo "FAIL: kserve inferenceservice-config domainTemplate ({.IngressDomain}) not the hyphen form" >&2; exit 1; }
-          # 3. The authn EnvoyFilter (ext_authz Lua chain) must render. Selector
-          #    AGREEMENT with the Gateway is asserted in the dedicated step below.
-          grep -Fq 'is_trusted_host' <<<"$out" \
-            || { echo "FAIL: authn EnvoyFilter (ext_authz Lua) not rendered" >&2; exit 1; }
+          # 3. The DEFAULT native ext_authz auth chain must front the gateway: the
+          #    dex-jwt RequestAuthentication plus the require-jwt DENY AuthorizationPolicy.
+          #    (The legacy EnvoyFilter mode and its Lua/selector invariants are covered
+          #    by the dedicated gatewayAuthMode=envoyfilter steps below.)
+          grep -Fq 'kind: RequestAuthentication' <<<"$out" \
+            || { echo "FAIL: native dex-jwt RequestAuthentication not rendered — gateway has no JWT auth" >&2; exit 1; }
+          grep -Fq 'name: istio-ingressgateway-require-jwt' <<<"$out" \
+            || { echo "FAIL: native require-jwt DENY AuthorizationPolicy not rendered" >&2; exit 1; }
           # 4. KServe inferenceservice-config urlScheme must flip to https — advertised
           #    status.url is what clients hit; http here means the wildcard TLS server
           #    is up but every InferenceService still publishes an http:// URL.
@@ -215,15 +219,16 @@ jobs:
             || { echo "FAIL: :80 httpsRedirect server not rendered on kserve-ingress-gateway" >&2; exit 1; }
           # 8. BOTH HTTPS servers must terminate TLS at the gateway (mode: SIMPLE).
           #    Flipping either to PASSTHROUGH stops Istio terminating TLS, so the
-          #    authn EnvoyFilter (which inspects the decrypted HTTP request) never
-          #    sees the traffic and the auth chain is bypassed wholesale. Scope to
-          #    each server block so a downgrade can't hide behind the other's copy.
+          #    L7 auth chain (native ext_authz or legacy EnvoyFilter, which inspect the
+          #    decrypted HTTP request) never sees the traffic and auth is bypassed
+          #    wholesale. Scope to each server block so a downgrade can't hide behind
+          #    the other's copy.
           grep -Fq 'mode: SIMPLE' <<<"$kserve_srv" \
-            || { echo "FAIL: https-kserve server is not 'mode: SIMPLE' — TLS not terminated at the gateway, auth EnvoyFilter bypassed." >&2; exit 1; }
+            || { echo "FAIL: https-kserve server is not 'mode: SIMPLE' — TLS not terminated at the gateway, L7 auth bypassed." >&2; exit 1; }
           grep -Fq 'mode: SIMPLE' <<<"$dash_srv" \
             || { echo "FAIL: dashboard (https) server is not 'mode: SIMPLE'." >&2; exit 1; }
           if grep -Fq 'PASSTHROUGH' <<<"$out"; then
-            echo "FAIL: a gateway server uses TLS mode PASSTHROUGH — Istio no longer terminates TLS, so the authn EnvoyFilter is bypassed." >&2; exit 1
+            echo "FAIL: a gateway server uses TLS mode PASSTHROUGH — Istio no longer terminates TLS, so the L7 auth chain is bypassed." >&2; exit 1
           fi
           # 9. The dashboard (https) server must ALSO pin minProtocolVersion. Check 6
           #    scopes the floor to https-kserve; assert it here for the dashboard
@@ -241,7 +246,7 @@ jobs:
           if grep -Fq 'isCA: true' <<<"$wildcard_cert"; then
             echo "FAIL: kserve-wildcard-tls Certificate has isCA: true — a leaf serving cert must not be a CA." >&2; exit 1
           fi
-          echo "OK: opt-in rendered wildcard server, both flattened hosts, auth filter, https scheme, wildcard Certificate (leaf, not CA), TLS termination + floor on both servers, and http->https redirect."
+          echo "OK: opt-in rendered wildcard server, both flattened hosts, native auth chain, https scheme, wildcard Certificate (leaf, not CA), TLS termination + floor on both servers, and http->https redirect."
 
       - name: gateway/authn-filter selector agreement
         if: ${{ env.APPCO_TOKEN != '' }}
@@ -251,13 +256,17 @@ jobs:
           # selector. If they drift, ext_authz attaches to a different workload
           # than the one serving the gateway listeners: the wildcard :443 server
           # still renders but with no auth chain in front. Both templates read the
-          # SAME istioGateway.selector; render each with a sentinel value and prove
-          # (a) the EnvoyFilter selector is non-empty, (b) it carries the sentinel
-          # (so it is templated, not hard-coded), and (c) it EQUALS both Gateways'.
+          # SAME global.istio.ingressGateway.selector; render each with a sentinel
+          # value and prove (a) the EnvoyFilter selector is non-empty, (b) it carries
+          # the sentinel (so it is templated, not hard-coded), and (c) it EQUALS both
+          # Gateways'. The EnvoyFilter renders only in legacy mode, so pin
+          # gatewayAuthMode=envoyfilter here (native mode's CRs share the SAME selector
+          # helper as the Gateways, so they cannot drift by construction).
           probe=e2e-selector-probe
           common=(--set global.demoMode=true
                   --set global.kserveDomain=kubeflow.example.com
-                  --set kubeflow-istio-resources.istioGateway.selector.istio="$probe")
+                  --set global.oauth2Proxy.gatewayAuthMode=envoyfilter
+                  --set global.istio.ingressGateway.selector.istio="$probe")
           gw="$(helm template ci ./kubeflow "${common[@]}" \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kubeflow-gateway-kubeflow-Gateway.yaml)"
           kgw="$(helm template ci ./kubeflow "${common[@]}" \
@@ -272,7 +281,7 @@ jobs:
           [ -n "$ef_sel" ] \
             || { echo "FAIL: authn EnvoyFilter rendered an EMPTY workloadSelector (would attach ext_authz to every gateway in the mesh)." >&2; exit 1; }
           grep -Fq "$probe" <<<"$ef_sel" \
-            || { echo "FAIL: authn EnvoyFilter selector does not carry the sentinel — it is hard-coded, not templated from istioGateway.selector. Got: $ef_sel" >&2; exit 1; }
+            || { echo "FAIL: authn EnvoyFilter selector does not carry the sentinel — it is hard-coded, not templated from global.istio.ingressGateway.selector. Got: $ef_sel" >&2; exit 1; }
           [ "$ef_sel" = "$gw_sel" ] \
             || { echo "FAIL: selector drift. Gateway=[$gw_sel] EnvoyFilter=[$ef_sel]" >&2; exit 1; }
           [ "$ef_sel" = "$kgw_sel" ] \
@@ -288,15 +297,16 @@ jobs:
           # EnvoyFilter fallback is non-empty AND equals both Gateways'.
           gwn="$(helm template ci ./kubeflow --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
-            --set-json 'kubeflow-istio-resources.istioGateway.selector=null' \
+            --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kubeflow-gateway-kubeflow-Gateway.yaml)"
           kgwn="$(helm template ci ./kubeflow --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
-            --set-json 'kubeflow-istio-resources.istioGateway.selector=null' \
+            --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kserve-ingress-gateway-kubeflow-Gateway.yaml)"
           efn="$(helm template ci ./kubeflow --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
-            --set-json 'kubeflow-istio-resources.istioGateway.selector=null' \
+            --set global.oauth2Proxy.gatewayAuthMode=envoyfilter \
+            --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
           gwn_sel="$(awk '/^  selector:/{g=1;next} g&&/^    /{sub(/^ +/,"");print;next} g{exit}' <<<"$gwn" | sort)"
           kgwn_sel="$(awk '/^  selector:/{g=1;next} g&&/^    /{sub(/^ +/,"");print;next} g{exit}' <<<"$kgwn" | sort)"
@@ -328,6 +338,7 @@ jobs:
           # host comparison, not the wildcard-listener `true` — that lets us also
           # assert it was NOT hard-forced to true.
           ef="$(helm template ci ./kubeflow --set global.demoMode=true \
+            --set global.oauth2Proxy.gatewayAuthMode=envoyfilter \
             --set kubeflow-istio-resources.hostname=kf.example.com \
             --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
 

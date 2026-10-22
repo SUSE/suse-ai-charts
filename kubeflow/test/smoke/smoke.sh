@@ -59,6 +59,17 @@ check_resource() {
   fail "$kind/$name missing in $ns"
 }
 
+# Assert a resource does NOT exist (inverse of check_resource). Used by the
+# gateway-auth-mode exclusivity check: the inactive mode's resources must be absent.
+check_absent() {
+  local kind="$1" name="$2" ns="${3:-$NS}"
+  if kubectl get "$kind" "$name" -n "$ns" &>/dev/null; then
+    fail "$kind/$name should be ABSENT in $ns (both auth modes active?)"
+  else
+    pass "$kind/$name correctly absent in $ns"
+  fi
+}
+
 # Check that a CRD exists
 check_crd() {
   local crd="$1"
@@ -408,6 +419,50 @@ header "9. PodDisruptionBudgets"
 check_resource pdb ml-pipeline
 check_resource pdb metadata-grpc-deployment
 check_resource pdb workflow-controller
+
+# ── Section 10: Ingress gateway auth mode (native vs envoyfilter — exclusive) ──
+# The chart renders EXACTLY ONE ingress-auth implementation, driven by
+# global.oauth2Proxy.gatewayAuthMode:
+#   native      -> RequestAuthentication/dex-jwt + two AuthorizationPolicies on the
+#                  ingress gateway, and NO legacy EnvoyFilter; istiod's MeshConfig must
+#                  carry the oauth2-proxy ext_authz extensionProvider.
+#   envoyfilter -> the self-contained authn-filter EnvoyFilter, and NONE of the native CRs.
+# This section auto-detects the live mode and asserts the OTHER mode is fully absent,
+# so a mis-layered install (both, or neither) fails loudly.
+header "10. Ingress gateway auth mode"
+
+NATIVE_RA=$(kubectl get requestauthentication dex-jwt -n istio-system --ignore-not-found -o name 2>/dev/null)
+ENVOY_EF=$(kubectl get envoyfilter authn-filter -n istio-system --ignore-not-found -o name 2>/dev/null)
+
+if [[ -n "$NATIVE_RA" && -z "$ENVOY_EF" ]]; then
+  pass "Detected NATIVE mode (RequestAuthentication/dex-jwt present, no legacy EnvoyFilter)"
+  check_resource authorizationpolicy istio-ingressgateway-oauth2-proxy istio-system
+  check_resource authorizationpolicy istio-ingressgateway-require-jwt istio-system
+  check_absent   envoyfilter authn-filter istio-system
+  # istiod MeshConfig must register the oauth2-proxy ext_authz provider or native mode
+  # denies all ingress (this is exactly what the chart's native-authz-guard enforces).
+  # Match a real extensionProviders list entry — a `name:` KEY line equal to
+  # oauth2-proxy (not an arbitrary substring in a comment/value) — AND confirm an
+  # envoyExtAuthzHttp ext_authz block exists, so a stray mention cannot pass this.
+  MESH_YAML=$(kubectl -n istio-system get cm \
+    -o jsonpath='{range .items[*]}{.data.mesh}{"\n"}{end}' 2>/dev/null)
+  if printf '%s\n' "$MESH_YAML" \
+       | grep -Eq "^[[:space:]]*-?[[:space:]]*name:[[:space:]]*[\"']?oauth2-proxy[\"']?[[:space:]]*$" \
+     && printf '%s\n' "$MESH_YAML" | grep -q 'envoyExtAuthzHttp'; then
+    pass "istiod MeshConfig registers the oauth2-proxy ext_authz extensionProvider"
+  else
+    fail "istiod MeshConfig missing the oauth2-proxy ext_authz extensionProvider (native mode denies all ingress)"
+  fi
+elif [[ -z "$NATIVE_RA" && -n "$ENVOY_EF" ]]; then
+  pass "Detected ENVOYFILTER mode (authn-filter EnvoyFilter present, no native CRs)"
+  check_absent requestauthentication dex-jwt istio-system
+  check_absent authorizationpolicy  istio-ingressgateway-oauth2-proxy istio-system
+  check_absent authorizationpolicy  istio-ingressgateway-require-jwt  istio-system
+elif [[ -n "$NATIVE_RA" && -n "$ENVOY_EF" ]]; then
+  fail "BOTH auth modes present: native CRs AND the legacy EnvoyFilter (mode exclusivity violated)"
+else
+  fail "NEITHER auth mode present: no native CRs and no legacy EnvoyFilter (ingress unauthenticated)"
+fi
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 header "━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

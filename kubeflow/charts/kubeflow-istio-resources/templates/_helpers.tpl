@@ -86,3 +86,33 @@ mirrored by the knative-serving / kserve sub-charts.
 {{- define "kubeflow-istio-resources.kserveGatewayName" -}}
 {{- (splitList "/" (include "kubeflow-istio-resources.kserveGatewayRef" .)) | last -}}
 {{- end -}}
+
+{{/*
+Ingress-gateway workload label selector — SINGLE SOURCE OF TRUTH.
+Reads global.istio.ingressGateway.selector (umbrella parent) and falls back to a
+concrete {istio: istio} so an absent/null selector NEVER renders empty: this value
+drives the istio-system authn EnvoyFilter workloadSelector and the native CUSTOM /
+require-jwt AuthorizationPolicies + dex-jwt RequestAuthentication (all patches /
+selectors are context: GATEWAY), where an empty selector would attach the auth
+chain to EVERY gateway in the mesh. Emit as a YAML map; callers nindent the include.
+*/}}
+{{- define "kubeflow-istio-resources.ingressGatewaySelector" -}}
+{{- $g := .Values.global | default dict -}}
+{{- $istio := $g.istio | default dict -}}
+{{- $ig := $istio.ingressGateway | default dict -}}
+{{- if $ig.selector -}}
+{{- toYaml $ig.selector -}}
+{{- else -}}
+istio: istio
+{{- end -}}
+{{- end -}}
+
+{{/*
+Ingress-gateway authentication mode: "native" (default) or
+"envoyfilter". Single source of truth is global.oauth2Proxy.gatewayAuthMode.
+*/}}
+{{- define "kubeflow-istio-resources.gatewayAuthMode" -}}
+{{- $g := .Values.global | default dict -}}
+{{- $o := $g.oauth2Proxy | default dict -}}
+{{- $o.gatewayAuthMode | default "native" -}}
+{{- end -}}

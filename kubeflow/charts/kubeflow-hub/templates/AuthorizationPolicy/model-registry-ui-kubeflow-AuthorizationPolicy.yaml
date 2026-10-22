@@ -19,7 +19,7 @@ spec:
   - from:
     - source:
         principals:
-        - {{ .Values.authorizationPolicy.ingressGatewayPrincipal }}
+        - {{ include "kubeflow-hub.ingressGatewayPrincipal" . }}
   {{- else }}
   # LOOSE (authorizationPolicy.strict=false): namespace-scoped fallback.
   - from:

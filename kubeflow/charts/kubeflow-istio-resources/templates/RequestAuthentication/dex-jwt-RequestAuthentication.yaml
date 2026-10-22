@@ -1,0 +1,51 @@
+{{- /*
+  Native ingress-auth mode — dex-jwt RequestAuthentication.
+  Verifies the Dex-issued JWT that oauth2-proxy injects (set_authorization_header)
+  and projects its claims into the identity headers Kubeflow apps trust:
+    kubeflow-userid <- email, kubeflow-groups <- groups.
+  outputClaimToHeaders OVERWRITES these headers on every request (and clears them
+  when the claim is absent), which is the anti-impersonation guarantee — a client
+  cannot smuggle a forged kubeflow-userid/kubeflow-groups past a verified token.
+  Rendered ONLY in native mode.
+*/}}
+{{- if and .Values.global.oauth2Proxy.enabled (eq (include "kubeflow-istio-resources.gatewayAuthMode" .) "native") }}
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: dex-jwt
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 6 }}
+  jwtRules:
+    {{- /*
+      The issuer MUST byte-for-byte match the `iss` claim Dex actually mints, and
+      jwksUri MUST resolve to the live Dex Service. Both are hardcoded to the
+      `kubeflow` namespace to match every other dex reference in the chart
+      (oauth2-proxy oidc_issuer_url / redeem_url / oidc_jwks_url, Dex's own issuer,
+      and the dex VirtualService host). Deriving these from .Release.Namespace would
+      make a non-`kubeflow` install mint iss=...kubeflow.svc... while this expects
+      iss=...<release-ns>.svc..., so istiod rejects every token ("Jwt verification
+      fails") -> total ingress lockout in native mode.
+    */}}
+  - issuer: "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex"
+    {{- /*
+      CRITICAL (validated on the live RKE2 cluster): jwksUri MUST be pinned. With
+      only `issuer`, istiod resolves keys via OIDC discovery
+      ({issuer}/.well-known/openid-configuration), which silently failed against
+      in-cluster Dex — istiod logged "using a fake JWKS for now" and inlined a fake
+      placeholder key, so every real Dex token failed with "Jwt verification fails"
+      at the gateway. Pinning /dex/keys also auto-refreshes on Dex key rotation.
+    */}}
+    jwksUri: "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex/keys"
+    forwardOriginalToken: true
+    outputClaimToHeaders:
+    - header: kubeflow-userid
+      claim: email
+    - header: kubeflow-groups
+      claim: groups
+    fromHeaders:
+    - name: Authorization
+      prefix: "Bearer "
+{{- end }}

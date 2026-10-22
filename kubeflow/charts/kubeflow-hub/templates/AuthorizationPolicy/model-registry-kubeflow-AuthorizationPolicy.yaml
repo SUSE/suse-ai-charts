@@ -20,7 +20,7 @@ spec:
   - from:
     - source:
         principals:
-        - {{ .Values.authorizationPolicy.ingressGatewayPrincipal }}
+        - {{ include "kubeflow-hub.ingressGatewayPrincipal" . }}
   # Allow in-cluster requests bearing a valid Kubernetes JWT (authorization header) but block
   # any that also carry a kubeflow-userid header, preventing identity spoofing from within.
   - when:

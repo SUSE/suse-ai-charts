@@ -17,6 +17,19 @@ global:
   # the bundled auth chain is still enabled for the normal umbrella install.
   oauth2Proxy:
     enabled: false
+    # Ingress-gateway auth mode: "native" (upstream Istio-native ext_authz) or
+    # "envoyfilter" (self-contained EnvoyFilter). See umbrella values.yaml. The
+    # native CRs / authn EnvoyFilter render per this value; umbrella parent overrides.
+    gatewayAuthMode: native
+  # Istio ingress-gateway identity — single source of truth.
+  # Standalone default reproduces the Rancher literals; umbrella parent overrides.
+  # Rancher/AppCo Istio: SA 'istio', selector {istio: istio}.
+  # Upstream Istio: 'istio-ingressgateway-service-account', {istio: ingressgateway}.
+  istio:
+    ingressGateway:
+      principal: "cluster.local/ns/istio-system/sa/istio"
+      selector:
+        istio: istio
   # Istio Gateway reference used by the VirtualServices in this chart.
   gateway:
     name: "kubeflow/kubeflow-gateway"
@@ -29,13 +42,6 @@ global:
   # KServe external-HTTPS opt-in (see tls block + validations.yaml). Off by default.
   kserveExternalHttps: false
   kserveDomain: ""
-
-# Istio Gateway selector
-# For Rancher Istio, use: istio: istio
-# For standard Istio, use: istio: ingressgateway
-istioGateway:
-  selector:
-    istio: istio
 
 # Gateway server configuration
 gateway:
