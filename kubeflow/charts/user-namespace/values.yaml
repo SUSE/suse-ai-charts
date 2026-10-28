@@ -8,17 +8,20 @@ global:
   # -- Global override for container image pull secrets
   imagePullSecrets: []
 
+  # Istio ingress-gateway identity (single source of truth; umbrella parent overrides).
+  # The per-profile ingress-gateway access AuthorizationPolicies use .principal.
+  # Rancher/AppCo Istio: SA 'istio'. Upstream: 'istio-ingressgateway-service-account'.
+  # The profiles controller hardcodes the upstream name, so we add a supplementary policy.
+  istio:
+    ingressGateway:
+      principal: "cluster.local/ns/istio-system/sa/istio"
+      selector:
+        istio: istio
+
 profile:
   owner:
     kind: User
     name: user@example.com
-
-# The Istio ingress gateway service account principal used in AuthorizationPolicies.
-# Rancher Istio uses 'istio' (not the upstream 'istio-ingressgateway-service-account').
-# The profiles controller hardcodes the upstream name, so we add a supplementary policy.
-istio:
-  ingressGateway:
-    principal: "cluster.local/ns/istio-system/sa/istio"
 
 # Header name that carries the authenticated user identity (must match profiles-config)
 userIdHeader: "kubeflow-userid"

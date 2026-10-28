@@ -20,7 +20,7 @@ spec:
   - from:
     - source:
         principals:
-        - {{ .Values.authorizationPolicy.ingressGatewayPrincipal }}
+        - {{ include "kubeflow-hub.ingressGatewayPrincipal" . }}
   - when:
     - key: request.headers[authorization]
       values:

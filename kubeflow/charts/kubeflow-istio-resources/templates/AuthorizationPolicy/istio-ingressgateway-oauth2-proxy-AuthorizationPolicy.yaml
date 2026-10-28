@@ -1,0 +1,35 @@
+{{- /*
+  Native ingress-auth mode — CUSTOM ext_authz AuthorizationPolicy.
+  Upstream-parity port of kubeflow/community-distribution
+  common/oauth2-proxy/components/istio-external-auth. Rendered ONLY in the default
+  native mode; in envoyfilter mode the self-contained authn EnvoyFilter is used instead.
+
+  Requests WITHOUT an Authorization header (and not on the /dex or /oauth2 login
+  paths) are sent to the oauth2-proxy ext_authz provider, which redirects the browser
+  to Dex. Requests that already carry a Bearer token skip this and are verified by the
+  dex-jwt RequestAuthentication + require-jwt DENY policy instead. The `provider.name`
+  MUST match the istiod MeshConfig extensionProviders entry runMe.sh adds.
+*/}}
+{{- if and .Values.global.oauth2Proxy.enabled (eq (include "kubeflow-istio-resources.gatewayAuthMode" .) "native") }}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: istio-ingressgateway-oauth2-proxy
+  namespace: istio-system
+spec:
+  action: CUSTOM
+  provider:
+    name: oauth2-proxy
+  selector:
+    matchLabels:
+      {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 6 }}
+  rules:
+  - when:
+    - key: request.headers[authorization]
+      notValues: ["*"]
+    to:
+    - operation:
+        notPaths:
+        - /dex/*
+        - /oauth2/*
+{{- end }}

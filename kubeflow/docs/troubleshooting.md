@@ -9,7 +9,10 @@
 ### Connectivity smoke tests
 
 Runs outside the cluster using `kubectl`. Checks pod health, Deployment readiness, CRDs, Secrets, TCP
-service connectivity, SeaweedFS bucket presence, and HTTP health endpoints.
+service connectivity, SeaweedFS bucket presence, HTTP health endpoints, and the active
+[ingress gateway auth mode](../README.md#ingress-gateway-authentication-mode) (asserts the native
+CRs and the legacy EnvoyFilter are never both present, and that native mode's istiod extension
+provider is registered).
 
 ```bash
 chmod +x test/smoke/smoke.sh
@@ -18,8 +21,9 @@ chmod +x test/smoke/smoke.sh
 
 ### End-to-end tests
 
-Tests a full KFP pipeline run, a Notebook lifecycle, a PyTorchJob, and a KServe InferenceService
-prediction. Requires `kubectl` and `curl`.
+Tests a full KFP pipeline run, a Notebook lifecycle, a PyTorchJob, a KServe InferenceService
+prediction, and the ingress gateway auth deny path (an unauthenticated request through the shared
+gateway is denied while `/dex/` stays allowlisted). Requires `kubectl` and `curl`.
 
 ```bash
 chmod +x test/e2e/e2e.sh
@@ -206,3 +210,12 @@ kubectl get authorizationpolicy -A
 - **SeaweedFS image is pulled from Docker Hub** (`chrislusf/seaweedfs:4.00`). Air-gapped clusters or
   environments with Docker Hub pull-rate limits will fail to start Kubeflow Pipelines. Mirror the image
   to a private registry and set `global.imageRegistry` (or `global.suseRegistry`) to override.
+- **Native ingress-auth denies cookie-less external KServe inference on the shared gateway.** In the
+  default native mode (`global.oauth2Proxy.gatewayAuthMode: native`), the `require-jwt` `DENY` policy
+  denies any request without a verified JWT request-principal on all paths except `/dex/*` and
+  `/oauth2/*`, so an unauthenticated external inference `POST` to a KServe `InferenceService` on the
+  **shared** ingress gateway returns `403`. KServe in-cluster traffic (dedicated `kserve-ingress-gateway`)
+  is unaffected. Serve external inference via the dedicated KServe gateway / wildcard-TLS opt-in, or use
+  the legacy EnvoyFilter mode (`--legacy-authz` / `-f values-envoyfilter-authz.yaml`). See
+  [Upgrade Notes](upgrade-notes.md) and
+  [Ingress gateway authentication mode](../README.md#ingress-gateway-authentication-mode).

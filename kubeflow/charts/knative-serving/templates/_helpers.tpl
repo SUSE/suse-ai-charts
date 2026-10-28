@@ -184,3 +184,39 @@ back to the chart-local .Values.domain for standalone installs.
   {{- .Values.domain -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Workload label selector for the knative-local-gateway (Gateway spec.selector and
+the fronting istio-system Service spec.selector — they MUST stay identical).
+
+Single source of truth is global.istio.ingressGateway.selector (umbrella parent),
+so the local gateway can never drift from the external kubeflow-gateway rendered by
+kubeflow-istio-resources. This emits the SAME selector as that chart's
+kubeflow-istio-resources.ingressGatewaySelector helper (no extra labels merged on
+top), falling back to {istio: istio} when the global value is unset:
+  Rancher/AppCo Istio -> {istio: istio}
+  Upstream Istio      -> override global.istio.ingressGateway.selector.istio to
+                         "ingressgateway" -> {istio: ingressgateway}
+
+NOTE: we deliberately do NOT inject a residual `app: istio`. Upstream ingress-gateway
+pods are labeled `app: istio-ingressgateway`, so merging `app: istio` would select
+zero pods there and break cluster-local routing — the exact drift this single source
+is meant to prevent.
+
+An explicit .Values.localGateway.selector still wins verbatim, preserving the
+standalone escape hatch for a fully custom gateway workload label set.
+*/}}
+{{- define "knative-serving.localGatewaySelector" -}}
+{{- if and .Values.localGateway .Values.localGateway.selector -}}
+{{- toYaml .Values.localGateway.selector -}}
+{{- else -}}
+{{- $g := .Values.global | default dict -}}
+{{- $istio := $g.istio | default dict -}}
+{{- $ig := $istio.ingressGateway | default dict -}}
+{{- if $ig.selector -}}
+{{- toYaml $ig.selector -}}
+{{- else -}}
+istio: istio
+{{- end -}}
+{{- end -}}
+{{- end -}}

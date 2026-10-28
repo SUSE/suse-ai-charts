@@ -22,15 +22,11 @@ metadata:
   {{- end }}
 spec:
   selector:
-    {{- /* Guard .selector (not just the istioGateway map): an explicit
-           istioGateway.selector: null must fall back to a concrete label, never
-           render an empty/null selector. The EnvoyFilter uses this identical
-           guard so the two can never diverge. */}}
-    {{- if and .Values.istioGateway .Values.istioGateway.selector }}
-    {{- toYaml .Values.istioGateway.selector | nindent 4 }}
-    {{- else }}
-    istio: istio
-    {{- end }}
+    {{- /* Single source of truth: global.istio.ingressGateway.selector.
+           The shared helper falls back to a concrete {istio: istio} so an explicit
+           selector: null never renders empty. The EnvoyFilter and the native auth
+           CRs use the SAME helper so the gateway and its auth chain can never diverge. */}}
+    {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 4 }}
   servers:
   {{- $host := .Values.hostname | default "*" }}
   {{- if ne $tlsSource "" }}

@@ -15,12 +15,7 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    {{- /* Same selector as the knative-local-gateway Gateway (.Values.localGateway.selector);
-           keep them identical so this Service always fronts the gateway workload. */}}
-    {{- if and .Values.localGateway .Values.localGateway.selector }}
-    {{- toYaml .Values.localGateway.selector | nindent 4 }}
-    {{- else }}
-    app: istio
-    istio: istio
-    {{- end }}
+    {{- /* Same helper as the knative-local-gateway Gateway spec.selector; keep
+           them identical so this Service always fronts the gateway workload. */}}
+    {{- include "knative-serving.localGatewaySelector" . | nindent 4 }}
   type: ClusterIP

@@ -75,6 +75,12 @@ dependencies:
     alias: dex
     condition: dex.enabled
 
+  # Rancher oauth2-proxy chart (OCI). Pinned exactly: native ingress-auth mode embeds a
+  # Helm `{{- if }}` directive inside `oauth2-proxy.config.configFile` (see values.yaml),
+  # which only renders correctly because this chart version passes configFile through `tpl`
+  # with the root context. Do NOT bump without re-verifying that _helpers.tpl still tpl-renders
+  # configFile — otherwise the directive leaks literally into the proxy config and ingress
+  # locks out. e2e test 12 (/dex/ returns 200) guards this at runtime.
   - name: oauth2-proxy
     version: "10.7.0"
     repository: "oci://dp.apps.rancher.io/charts"

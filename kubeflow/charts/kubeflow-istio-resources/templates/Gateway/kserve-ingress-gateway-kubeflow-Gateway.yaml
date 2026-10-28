@@ -33,12 +33,8 @@ metadata:
   namespace: {{ include "kubeflow-istio-resources.kserveGatewayNamespace" . }}
 spec:
   selector:
-    {{- /* Same selector guard as kubeflow-gateway so the two never diverge. */}}
-    {{- if and .Values.istioGateway .Values.istioGateway.selector }}
-    {{- toYaml .Values.istioGateway.selector | nindent 4 }}
-    {{- else }}
-    istio: istio
-    {{- end }}
+    {{- /* Same shared selector helper as kubeflow-gateway so the two never diverge. */}}
+    {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 4 }}
   servers:
   {{- /* ── HTTPS mode: wildcard :443 + :80→:443 redirect ───────────────────────
          Gated identically to the wildcard server that used to live on the shared
