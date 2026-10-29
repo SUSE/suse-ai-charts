@@ -28,7 +28,7 @@ dependencies:
   version: 0.2.1
 - name: kubeflow-pipelines
   repository: file://./charts/kubeflow-pipelines
-  version: 0.2.5
+  version: 0.2.6
 - name: notebook-controller
   repository: file://./charts/notebook-controller
   version: 0.2.1
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:9ba4d3386511970626f5bc328104b7864fb82c6caa87ad5b1eed092eeb8debfd
-generated: "2026-09-10T14:55:50.488072705-07:00"
+digest: sha256:c8613537c2b8e8e1fc34da3f6e0cfb89f0ed2aa42afe7be700997977162873f9
+generated: "2026-10-29T10:00:15.331120775-07:00"
