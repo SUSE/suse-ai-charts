@@ -127,16 +127,79 @@ with a human-readable error when required dependencies are misconfigured.
 {{- end }}
 
 {{- /*
+  Credential consistency: values.yaml copies auth.oidc.* and pipelines.seaweedfs.*
+  into the Dex, oauth2-proxy and user-namespace values with YAML anchors. Anchors
+  are resolved when values.yaml is parsed, so an override supplied with -f or --set
+  changes only the source key and the copies keep the demo defaults. Fail if any
+  copy the components actually use differs from its source.
+*/}}
+{{- $credErrs := list }}
+{{- $clientSecret := .Values.auth.oidc.clientSecret | default "" }}
+{{- $cookieSecret := .Values.auth.oidc.cookieSecret | default "" }}
+{{- if and .Values.dex.enabled (not .Values.dex.existingOidcClientSecret) }}
+{{-   if and .Values.dex.oidcClientSecret (ne .Values.dex.oidcClientSecret $clientSecret) }}
+{{-     $credErrs = append $credErrs "dex.oidcClientSecret differs from auth.oidc.clientSecret" }}
+{{-   end }}
+{{-   range (.Values.dex.config.staticClients | default list) }}
+{{-     if and (eq .id "kubeflow-oidc-authservice") (not .secretEnv) (ne (.secret | default "") $clientSecret) }}
+{{-       $credErrs = append $credErrs "dex.config.staticClients[kubeflow-oidc-authservice].secret differs from auth.oidc.clientSecret" }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+{{- $o2 := index .Values "oauth2-proxy" | default dict }}
+{{- $o2cfg := $o2.config | default dict }}
+{{- if and .Values.global.oauth2Proxy.enabled (not $o2cfg.existingSecret) }}
+{{-   if ne ($o2cfg.clientSecret | default "") $clientSecret }}
+{{-     $credErrs = append $credErrs "oauth2-proxy.config.clientSecret differs from auth.oidc.clientSecret" }}
+{{-   end }}
+{{-   if ne ($o2cfg.cookieSecret | default "") $cookieSecret }}
+{{-     $credErrs = append $credErrs "oauth2-proxy.config.cookieSecret differs from auth.oidc.cookieSecret" }}
+{{-   end }}
+{{- end }}
+{{- $uns := dig "pipelines" "seaweedfs" dict (index .Values "user-namespace" | default dict) }}
+{{- if and .Values.pipelines.enabled .Values.pipelines.seaweedfs }}
+{{-   if ne ($uns.accessKey | default "") (.Values.pipelines.seaweedfs.accessKey | default "") }}
+{{-     $credErrs = append $credErrs "user-namespace.pipelines.seaweedfs.accessKey differs from pipelines.seaweedfs.accessKey" }}
+{{-   end }}
+{{-   if ne ($uns.secretKey | default "") (.Values.pipelines.seaweedfs.secretKey | default "") }}
+{{-     $credErrs = append $credErrs "user-namespace.pipelines.seaweedfs.secretKey differs from pipelines.seaweedfs.secretKey" }}
+{{-   end }}
+{{- end }}
+{{- /* oauth2-proxy refuses to start unless the cookie secret is 16, 24 or 32 bytes. It first
+       strips trailing "=", decodes the rest as unpadded URL-safe base64 and uses the result if
+       that is 16/24/32 bytes; otherwise it uses the raw string (encryption.SecretBytes). Mirror
+       that here so a bad value fails at render time instead of crash-looping the pod. Note that
+       standard base64 with "+" or "/" is NOT decoded by oauth2-proxy. */}}
+{{- if and .Values.global.oauth2Proxy.enabled (not .Values.auth.oidc.existingSecret) }}
+{{-   $trimmed := regexReplaceAll "=+$" $cookieSecret "" }}
+{{-   $decLen := 0 }}
+{{-   if and (regexMatch "^[A-Za-z0-9_-]+$" $trimmed) (ne (mod (len $trimmed) 4) 1) }}
+{{-     $std := $trimmed | replace "-" "+" | replace "_" "/" }}
+{{-     $std = printf "%s%s" $std (repeat (mod (sub 4 (mod (len $trimmed) 4)) 4 | int) "=") }}
+{{-     $decLen = len (b64dec $std) }}
+{{-   end }}
+{{-   if not (or (has $decLen (list 16 24 32)) (has (len $cookieSecret) (list 16 24 32))) }}
+{{-     fail "auth.oidc.cookieSecret must be 16, 24 or 32 bytes, raw or as URL-safe base64 (oauth2-proxy will not start otherwise).\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'" }}
+{{-   end }}
+{{- end }}
+
+{{- if $credErrs }}
+{{-   fail (printf "Credential mismatch. Values set with -f/--set do not follow the YAML anchors in values.yaml, so these copies still hold their old values. Set each one to the same value as its source (or use the existing-secret options):\n  - %s" (join "\n  - " $credErrs)) }}
+{{- end }}
+
+{{- /*
   Credential hygiene: fail fast if well-known demo defaults are still present
   and the operator has not explicitly opted in via global.demoMode=true.
 */}}
 {{- if not .Values.global.demoMode }}
 
-{{- if eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok" }}
+{{- /* With auth.oidc.existingSecret the operator supplies kubeflow-oidc-client and the
+       auth.oidc secrets below are not used, so don't require changing them. */}}
+{{- if and (not .Values.auth.oidc.existingSecret) (eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok") }}
 {{- fail "SECURITY: auth.oidc.clientSecret is the well-known demo value.\nGenerate a real secret: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" }}
+{{- if and (not .Values.auth.oidc.existingSecret) (eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=") }}
 {{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 

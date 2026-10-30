@@ -28,6 +28,8 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 |-----|---------|-------------|
 | `auth.oidc.clientSecret` | `pUBnBOY80Sn...` | **DEMO DEFAULT** — OIDC client secret shared between Dex and oauth2-proxy |
 | `auth.oidc.cookieSecret` | (demo value, 32-byte base64) | **DEMO DEFAULT** — oauth2-proxy cookie encryption key |
+| `auth.oidc.clientId` | `kubeflow-oidc-authservice` | OIDC client ID written to the shared Secret |
+| `auth.oidc.existingSecret` | `false` | `true` = don't create the `kubeflow-oidc-client` Secret (keys `client-id`, `client-secret`, `cookie-secret`) that Dex and oauth2-proxy both read; provide it yourself (e.g. with External Secrets) |
 | `auth.initialUser.email` | `user@example.com` | **DEMO DEFAULT** — Default Dex login email |
 | `auth.initialUser.passwordHash` | bcrypt of `12341234` | **DEMO DEFAULT** — Change via `dex.config.staticPasswords` |
 | `pipelines.seaweedfs.accessKey` | `kubeflow` | **DEMO DEFAULT** — SeaweedFS S3 access key |
@@ -118,10 +120,10 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 | Key | Default | Description |
 |-----|---------|-------------|
 | `global.kserveDomain` | `""` | Root domain for KServe InferenceService ingress — the **enforced single source of truth** and the recommended single place to set the inference domain. When set, it overrides and auto-wires the legacy `knativeServing.domain` / `kserve.ingressDomain`. Setting those subchart keys alone (without `global.kserveDomain`) **fails fast** — they feed the Knative/KServe configs but not the dedicated `kserve-ingress-gateway`'s hosts, so the chart rejects the divergence rather than silently stranding inference at `READY=Unknown`. Empty = the whole stack stays on `example.com` (the subchart-local defaults). With `global.kserveExternalHttps: true` it is also the wildcard cert/gateway base and is **required** |
-| `dex.existingOidcClientSecret` | `""` | Name of a pre-existing Secret containing the OIDC client secret; overrides `auth.oidc.clientSecret` |
+| `dex.existingOidcClientSecret` | `""` | Not read by this chart. To supply the OIDC credentials yourself, set `auth.oidc.existingSecret: true` |
 | `dex.resources` | `{requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}` | CPU/memory for the Dex container |
-| `user-namespace.pipelines.seaweedfs.accessKey` | (wired from `pipelines.seaweedfs.accessKey`) | SeaweedFS S3 access key injected into every user namespace |
-| `user-namespace.pipelines.seaweedfs.secretKey` | (wired from `pipelines.seaweedfs.secretKey`) | SeaweedFS S3 secret key injected into every user namespace |
+| `user-namespace.pipelines.seaweedfs.accessKey` | (demo default, copied from `pipelines.seaweedfs.accessKey` in values.yaml only; `-f`/`--set` overrides are not copied, set both — the render fails if they differ) | SeaweedFS S3 access key injected into every user namespace |
+| `user-namespace.pipelines.seaweedfs.secretKey` | (demo default, copied from `pipelines.seaweedfs.secretKey` in values.yaml only; `-f`/`--set` overrides are not copied, set both — the render fails if they differ) | SeaweedFS S3 secret key injected into every user namespace |
 
 ## Registry Overrides
 

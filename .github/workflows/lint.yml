@@ -490,6 +490,53 @@ jobs:
                  echo "$err" >&2; exit 1; }
           echo "OK: opt-in fails closed on the oauth2-proxy guard when it is disabled."
 
+      - name: helm template (credential overrides must reach every consumer)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          sw=(--set pipelines.seaweedfs.accessKey=ci-ak
+              --set pipelines.seaweedfs.secretKey=ci-sk)
+          uns=(--set user-namespace.pipelines.seaweedfs.accessKey=ci-ak
+               --set user-namespace.pipelines.seaweedfs.secretKey=ci-sk)
+          # 1. OIDC: overriding auth.oidc.* must reach Dex and oauth2-proxy (both read
+          #    the chart-managed kubeflow-oidc-client Secret), so the default
+          #    values.yaml client/cookie secrets must not appear anywhere in the output.
+          out="$(helm template ci ./kubeflow "${sw[@]}" "${uns[@]}" \
+                   --set auth.oidc.clientSecret=ci-client \
+                   --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde)"
+          # Secret data is base64-encoded (Dex keeps its config in one), so decode
+          # every Secret before searching.
+          plain="$(python3 -c '
+          import base64, sys, yaml
+          for d in yaml.safe_load_all(sys.stdin):
+              if d:
+                  print(yaml.safe_dump(d))
+                  if d.get("kind") == "Secret":
+                      for v in (d.get("data") or {}).values():
+                          print(base64.b64decode(v).decode(errors="replace"))
+          ' <<<"$out")"
+          for default in pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok 3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=; do
+            if grep -qF -- "$default" <<<"$plain"; then
+              echo "FAIL: auth.oidc.* override did not reach every consumer (a values.yaml default is still rendered)" >&2
+              exit 1
+            fi
+          done
+          grep -q 'secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET' <<<"$plain" \
+            || { echo "FAIL: Dex static client no longer reads the shared Secret" >&2; exit 1; }
+          # 2. SeaweedFS: user-namespace still copies the credentials via YAML
+          #    anchors, which -f/--set don't follow, so overriding only the source
+          #    must fail on the consistency check rather than render mismatched keys.
+          if err="$(helm template ci ./kubeflow "${sw[@]}" \
+                      --set auth.oidc.clientSecret=ci-client \
+                      --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde 2>&1)"; then
+            echo "FAIL: overriding only pipelines.seaweedfs.* rendered with stale user-namespace keys" >&2
+            exit 1
+          fi
+          grep -q 'Credential mismatch' <<<"$err" \
+            || { echo "FAIL: render failed, but not on the credential consistency check. Got:" >&2
+                 echo "$err" >&2; exit 1; }
+          echo "OK: OIDC overrides reach every consumer; mismatched SeaweedFS copies fail the render."
+
       - name: helm template (hostname schema rejects bare public suffixes)
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
