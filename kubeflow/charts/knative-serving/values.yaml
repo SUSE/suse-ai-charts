@@ -16,6 +16,18 @@ global:
   # to the same Gateway the kubeflow-istio-resources sub-chart renders.
   kserveGateway:
     name: "kubeflow/kserve-ingress-gateway"
+  # Ingress-gateway identity, single-sourced at the umbrella parent and mirrored
+  # here so standalone `helm template` of this sub-chart stays nil-safe. Only the
+  # workload-label `selector` is consumed by knative-serving (the fronting
+  # knative-local-gateway Gateway + istio-system Service); the `principal` is kept
+  # for schema/shape parity with the other sub-charts. Rancher/AppCo Istio labels
+  # the gateway pods `istio: istio`; on upstream Istio override selector.istio to
+  # "ingressgateway". See knative-serving.localGatewaySelector in _helpers.tpl.
+  istio:
+    ingressGateway:
+      principal: "cluster.local/ns/istio-system/sa/istio"
+      selector:
+        istio: istio
 
 controller:
   image:
@@ -155,19 +167,20 @@ domainTemplate: ""
 # Workload label selector for the knative-local-gateway — the CLUSTER-LOCAL gateway
 # net-istio uses for in-cluster routing (distinct from the external kubeflow-gateway
 # in the kubeflow-istio-resources sub-chart). Both the Gateway's spec.selector and
-# the fronting istio-system Service's spec.selector use this value, so they cannot
-# drift. The default matches Rancher's bundled Istio (its ingress gateway Pods carry
-# `app: istio` and `istio: istio`). On UPSTREAM Istio the gateway is labelled
-# `istio: ingressgateway` (and has no `app: istio`), so cluster-local routing (and
-# thus KServe/Knative readiness) breaks unless you override this to whichever gateway
-# Deployment serves it. NOTE: Helm MERGES override maps onto this default, so setting
-# only `istio:` leaves the `app: istio` default in place — the merged selector then
-# matches nothing on upstream. Null the unwanted key explicitly to drop it:
+# the fronting istio-system Service's spec.selector are rendered from the SAME
+# helper (knative-serving.localGatewaySelector) so they can never drift.
+#
+# By default the selector is single-sourced from global.istio.ingressGateway.selector
+# (umbrella parent) — the SAME value kubeflow-istio-resources uses for the external
+# kubeflow-gateway, so the umbrella controls it in ONE place and the two can never
+# drift. For Rancher/AppCo Istio this yields {istio: istio}; for upstream Istio
+# override global.istio.ingressGateway.selector.istio to "ingressgateway".
+#
+# The `localGateway.selector` key below is a FULL-OVERRIDE escape hatch: when set it
+# replaces the helper output verbatim, for a fully custom gateway workload label set.
+# Left unset so the global single source wins.
 #   localGateway:
 #     selector:
-#       app: null              # remove the Rancher-only label
 #       istio: ingressgateway
 localGateway:
-  selector:
-    app: istio
-    istio: istio
+  selector: {}

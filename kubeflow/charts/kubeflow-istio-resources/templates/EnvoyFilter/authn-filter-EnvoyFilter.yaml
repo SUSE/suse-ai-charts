@@ -1,4 +1,11 @@
-{{- if .Values.global.oauth2Proxy.enabled }}
+{{- /* Legacy (opt-out) auth mode: the self-contained EnvoyFilter ext_authz chain.
+       Rendered ONLY when global.oauth2Proxy.gatewayAuthMode == "envoyfilter"
+       (opt in with -f values-envoyfilter-authz.yaml / runMe.sh --legacy-authz).
+       In the default "native" mode the upstream-parity CRs
+       (AuthorizationPolicy CUSTOM + RequestAuthentication + AuthorizationPolicy DENY)
+       replace this filter — see templates/AuthorizationPolicy/istio-ingressgateway-*
+       and templates/RequestAuthentication/dex-jwt-*. */}}
+{{- if and .Values.global.oauth2Proxy.enabled (eq (include "kubeflow-istio-resources.gatewayAuthMode" .) "envoyfilter") }}
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -6,21 +13,17 @@ metadata:
   namespace: istio-system
 spec:
   workloadSelector:
-    # MUST match the Gateway's istioGateway.selector (Gateway template uses the
-    # same value with the IDENTICAL guard below). If these drift, ext_authz
-    # attaches to a different workload than the one serving the gateway listeners —
-    # the wildcard :443 server would still render but with no auth chain in front.
-    # The guard falls back to a concrete label so an absent/null selector NEVER
-    # renders an empty workloadSelector: this EnvoyFilter lives in the root
+    # MUST match the Gateway's selector (both use the shared
+    # kubeflow-istio-resources.ingressGatewaySelector helper). If these drift,
+    # ext_authz attaches to a different workload than the one serving the gateway
+    # listeners — the wildcard :443 server would still render but with no auth chain
+    # in front. The helper falls back to a concrete label so an absent/null selector
+    # NEVER renders an empty workloadSelector: this EnvoyFilter lives in the root
     # namespace (istio-system) with all patches context: GATEWAY, so an empty
     # selector would attach ext_authz to EVERY gateway in the mesh (all namespaces),
     # pointing unrelated tenants at Kubeflow's oauth2-proxy.
     labels:
-      {{- if and .Values.istioGateway .Values.istioGateway.selector }}
-      {{- toYaml .Values.istioGateway.selector | nindent 6 }}
-      {{- else }}
-      istio: istio
-      {{- end }}
+      {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 6 }}
   configPatches:
 
   # ── Patch 1 ──────────────────────────────────────────────────────────────────

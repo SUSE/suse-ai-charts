@@ -1,0 +1,35 @@
+{{- /*
+  Native ingress-auth mode — require-jwt DENY AuthorizationPolicy.
+  Denies any request that lacks a verified JWT request-principal, EXCEPT the login
+  paths (/dex, /oauth2). Together with the CUSTOM ext_authz policy this enforces:
+  an unauthenticated request has no principal -> falls to ext_authz -> redirected to
+  Dex; an authenticated request carries a Dex JWT -> dex-jwt RequestAuthentication
+  sets its principal -> this policy passes it through. Rendered ONLY in native mode.
+
+  NOTE: this selects the shared ingress gateway and
+  denies principal-less traffic on all non-login paths. Cookie-less inference POSTs
+  to KServe on this SAME gateway would be denied; KServe internal traffic uses the
+  dedicated cluster-local gateway, but external shared-gateway inference must be
+  scoped/verified before combining native authz with the KServe wildcard-TLS opt-in.
+*/}}
+{{- if and .Values.global.oauth2Proxy.enabled (eq (include "kubeflow-istio-resources.gatewayAuthMode" .) "native") }}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: istio-ingressgateway-require-jwt
+  namespace: istio-system
+spec:
+  action: DENY
+  selector:
+    matchLabels:
+      {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 6 }}
+  rules:
+  - from:
+    - source:
+        notRequestPrincipals: ["*"]
+    to:
+    - operation:
+        notPaths:
+        - /dex/*
+        - /oauth2/*
+{{- end }}

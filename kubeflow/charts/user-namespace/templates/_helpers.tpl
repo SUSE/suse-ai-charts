@@ -99,3 +99,18 @@ Usage: {{ include "user-namespace.suseImageRegistry" (dict "ctx" . "registry" .V
   {{- .registry -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Ingress-gateway ServiceAccount principal — single source of truth (umbrella parent
+overrides via global.istio.ingressGateway.principal). Nil-guarded the same way as
+kubeflow-istio-resources.ingressGatewaySelector so a partially overridden or absent
+global.istio never errors. Returns the traversed value (NO default fallback) so an
+explicitly empty principal still disables the supplementary Rancher gateway-access
+policy via the `if` guard in the AuthorizationPolicy templates.
+*/}}
+{{- define "user-namespace.ingressGatewayPrincipal" -}}
+{{- $g := .Values.global | default dict -}}
+{{- $istio := $g.istio | default dict -}}
+{{- $ig := $istio.ingressGateway | default dict -}}
+{{- $ig.principal | default "" -}}
+{{- end -}}

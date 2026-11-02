@@ -28,7 +28,7 @@ dependencies:
   version: 0.2.1
 - name: kubeflow-pipelines
   repository: file://./charts/kubeflow-pipelines
-  version: 0.2.5
+  version: 0.2.6
 - name: notebook-controller
   repository: file://./charts/notebook-controller
   version: 0.2.1

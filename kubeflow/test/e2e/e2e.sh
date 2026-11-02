@@ -114,6 +114,8 @@ cleanup() {
   kubectl delete pvcviewer        e2e-pvcviewer-test   -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pod              e2e-pvc-binder       -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pvc              e2e-test-pvc         -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  # Test 12: gateway auth deny path
+  kubectl delete pod              e2e-gw-auth-helper   -n "$NS"      --ignore-not-found &>/dev/null || true
   # GPU tests
   kubectl delete notebook         e2e-gpu-notebook     -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pytorchjob       e2e-gpu-pytorch      -n "$USER_NS" --ignore-not-found &>/dev/null || true
@@ -1492,6 +1494,95 @@ EOF
 fi
 
 fi  # end INCLUDE_DRA
+
+# ── Test 12: Ingress gateway auth — deny path ──────────────────────────────────
+# End-to-end check of the ingress auth chain through the SHARED istio gateway,
+# independent of gateway-auth mode (native ext_authz or legacy EnvoyFilter both
+# apply here): an unauthenticated request to a protected path must be denied
+# (oauth2-proxy 302 -> Dex login, or a hard 401/403), while the /dex/ path stays
+# allowlisted so the OIDC login flow itself is reachable. A 200 on the protected
+# path would mean the gateway is serving Kubeflow with NO authentication.
+header "12. Ingress gateway auth — unauthenticated request denied, /dex allowlisted"
+
+# Ingress-gateway Service DNS. Rancher/AppCo Istio names it `istio`; upstream Istio
+# names it `istio-ingressgateway`. Probe the well-known names so the test works on
+# both meshes (dual-mode); fall back to the Rancher default if neither is found.
+GW_HOST=
+for _svc in istio istio-ingressgateway; do
+  if kubectl get svc "$_svc" -n istio-system &>/dev/null; then
+    GW_HOST="${_svc}.istio-system.svc.cluster.local"
+    break
+  fi
+done
+[[ -z "$GW_HOST" ]] && GW_HOST=istio.istio-system.svc.cluster.local
+GW_HELPER=e2e-gw-auth-helper
+
+# Host header the gateway actually serves. When global.hostname is a real FQDN the
+# kubeflow-gateway serves that host, not the literal 'kubeflow'; a mismatched Host
+# would miss every route and return 404 (neither a deny nor a pass), so derive it
+# from the Gateway CR. Fall back to 'kubeflow' for wildcard ('*') / empty hosts,
+# which match any Host header anyway.
+GW_HOSTNAME=$(kubectl get gateway kubeflow-gateway -n "$NS" \
+  -o jsonpath='{.spec.servers[*].hosts[*]}' 2>/dev/null \
+  | tr ' ' '\n' | sed 's#.*/##' | grep -v '^\*\?$' | head -n1)
+[[ -z "$GW_HOSTNAME" ]] && GW_HOSTNAME=kubeflow
+
+# Scheme the gateway actually serves. When TLS is enabled the kubeflow-gateway has a
+# :443 HTTPS server and (usually) a :80 server with httpsRedirect:true. Over plain
+# HTTP with that redirect in place, the allowlisted /dex/ path falls through to a 301
+# (auth is correctly skipped, so it hits the HTTP->HTTPS redirect) rather than the
+# 200 we want to assert, while the protected path still returns oauth2-proxy's 302
+# because ext_authz runs BEFORE routing/redirect. So probe over HTTPS when TLS is on.
+GW_SCHEME=http
+if kubectl get gateway kubeflow-gateway -n "$NS" \
+     -o jsonpath='{.spec.servers[*].port.protocol}' 2>/dev/null | grep -qi HTTPS; then
+  GW_SCHEME=https
+fi
+
+# Build the curl connection options for the chosen scheme. For HTTPS we use
+# --connect-to so curl dials the in-cluster gateway Service ($GW_HOST, which the
+# helper pod can resolve) while presenting the real SNI + Host ($GW_HOSTNAME) that
+# Istio routes on; -k tolerates the self-signed/BYO cert. For HTTP we send the Host
+# header against the Service DNS directly.
+if [[ "$GW_SCHEME" == https ]]; then
+  GW_CURL_OPTS=(-sk --connect-to "${GW_HOSTNAME}:443:${GW_HOST}:443")
+  GW_BASE_URL="https://${GW_HOSTNAME}"
+else
+  GW_CURL_OPTS=(-s -H "Host: ${GW_HOSTNAME}")
+  GW_BASE_URL="http://${GW_HOST}"
+fi
+
+# curl helper WITHOUT an istio sidecar, so it hits the ingress gateway exactly as
+# an external client would (no mesh-internal auth shortcut).
+kubectl run "$GW_HELPER" -n "$NS" --restart=Never \
+  --image=${SUSE_APP_COLLECTION}/containers/curl:8.14.1 \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}},"spec":{"imagePullSecrets":[{"name":"application-collection"}]}}' \
+  --command -- sleep 600 &>/dev/null || true
+
+if kubectl wait --for=condition=Ready pod/"$GW_HELPER" -n "$NS" --timeout=120s &>/dev/null; then
+  GW_EXEC="kubectl exec -n $NS $GW_HELPER -- "
+
+  # 1) Protected path, no auth cookie/header -> must be denied.
+  PROT_CODE=$($GW_EXEC curl "${GW_CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' \
+    "${GW_BASE_URL}/" 2>/dev/null || echo "000")
+  if [[ "$PROT_CODE" =~ ^(302|401|403)$ ]]; then
+    pass "Gateway denies unauthenticated request to / (${GW_SCHEME}, Host: $GW_HOSTNAME, HTTP $PROT_CODE)"
+  else
+    fail "Gateway did NOT deny unauthenticated request to / (${GW_SCHEME}, Host: $GW_HOSTNAME, HTTP $PROT_CODE; expected 302/401/403)"
+  fi
+
+  # 2) /dex/ is allowlisted in both modes -> OIDC discovery reachable unauthenticated.
+  DEX_CODE=$($GW_EXEC curl "${GW_CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' \
+    "${GW_BASE_URL}/dex/.well-known/openid-configuration" 2>/dev/null || echo "000")
+  if [[ "$DEX_CODE" == "200" ]]; then
+    pass "Gateway allowlists /dex/ (${GW_SCHEME}, OIDC discovery reachable unauthenticated, HTTP 200)"
+  else
+    fail "Gateway blocked the allowlisted /dex/ path (${GW_SCHEME}, HTTP $DEX_CODE; expected 200)"
+  fi
+else
+  fail "Gateway auth: curl helper pod $GW_HELPER did not become Ready"
+fi
+kubectl delete pod "$GW_HELPER" -n "$NS" --ignore-not-found &>/dev/null || true
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 header "━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

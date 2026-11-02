@@ -118,6 +118,20 @@ launcher:
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
 
+# kfp-driver — ROOT_DAG / DAG driver pod created per pipeline task.
+# Pinned to match the API server version; without V2_DRIVER_IMAGE the API server
+# falls back to its compiled-in default ghcr.io/kubeflow/kfp-driver:latest, which is
+# mutable and pulled with Always — upstream drift (e.g. --log_level now required for
+# ROOT_DAG) breaks runs against the pinned 2.17.0 API server. Pinning also closes an
+# air-gap gap (default pulls from ghcr.io, not the SUSE registry).
+driver:
+  image:
+    registry: registry.suse.com
+    repository: ai/containers/kubeflow/kfp-driver
+    tag: "2.17.0"
+    pullPolicy: IfNotPresent
+    digest: ""  # optional: sha256:... pins this image for supply-chain security
+
 # KFP API server
 apiServer:
   image:

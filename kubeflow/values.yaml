@@ -123,9 +123,51 @@ global:
   # oauth2-proxy enablement
   oauth2Proxy:
     enabled: true
+    # Ingress-gateway authentication mode. One of:
+    #   native      — upstream-parity Istio-native ext_authz: a CUSTOM
+    #                 AuthorizationPolicy calls oauth2-proxy via an istiod
+    #                 MeshConfig extensionProvider, a RequestAuthentication
+    #                 (dex-jwt) verifies the Dex JWT and a DENY AuthorizationPolicy
+    #                 (require-jwt) enforces it. This is the DEFAULT and matches
+    #                 kubeflow/community-distribution.
+    #                 PREREQUISITE: istiod MeshConfig must carry the "oauth2-proxy"
+    #                 extensionProvider. runMe.sh adds it by default
+    #                 (istio-native-authz-values.yaml); the native-authz-guard
+    #                 template fails the install fast if it is missing, to prevent a
+    #                 CUSTOM-policy gateway lockout. For BYO-istio that cannot add
+    #                 the provider, use envoyfilter mode.
+    #   envoyfilter — self-contained hand-written EnvoyFilter ext_authz chain
+    #                 (authn-filter). No istiod MeshConfig change required, so it
+    #                 works on any BYO-istio. Opt in with -f values-envoyfilter-authz.yaml
+    #                 (or runMe.sh --legacy-authz).
+    gatewayAuthMode: native
 
   gateway:
     name: "kubeflow/kubeflow-gateway"
+
+  # Istio ingress-gateway identity — SINGLE SOURCE OF TRUTH.
+  # Consumed by every subchart that references the mesh ingress gateway:
+  #   - kubeflow-istio-resources : Gateway selector, authn EnvoyFilter
+  #     workloadSelector, and the native ext_authz / require-jwt / dex-jwt CRs
+  #   - kubeflow-hub             : model-registry / -ui / -catalog AuthorizationPolicies
+  #   - user-namespace           : per-profile ingress-gateway access AuthorizationPolicies
+  #   - knative-serving          : knative-local-gateway Gateway + fronting Service
+  # Flipping Rancher <-> upstream Istio is a single change here.
+  istio:
+    ingressGateway:
+      # ServiceAccount principal of the ingress gateway (used by AuthorizationPolicy
+      # source.principals). Rancher/AppCo Istio runs the gateway as SA 'istio';
+      # upstream Kubeflow uses 'istio-ingressgateway-service-account'.
+      #   Verify: kubectl get pod -n istio-system -l app=istio \
+      #             -o jsonpath='{.items[0].spec.serviceAccountName}'
+      principal: "cluster.local/ns/istio-system/sa/istio"
+      # Workload label selector of the ingress-gateway pods. Shared by the Gateway
+      # CRs, the authn EnvoyFilter workloadSelector, and the native auth CRs, so they
+      # can never drift. Must be non-empty (an empty selector on the istio-system
+      # authn EnvoyFilter — patches are context: GATEWAY — would attach ext_authz to
+      # EVERY gateway in the mesh). Rancher: {istio: istio}; upstream: {istio: ingressgateway}.
+      selector:
+        istio: istio
 
   # Dedicated Istio Gateway ("<namespace>/<name>") for KServe/Knative inference.
   # Single source of truth consumed by three subcharts:
@@ -310,6 +352,10 @@ oauth2-proxy:
     clientID: "kubeflow-oidc-authservice"
     clientSecret: *oidcClientSecret
     cookieSecret: *oidcCookieSecret
+    # NOTE: the oauth2-proxy chart renders this whole string through `tpl`
+    # (charts/oauth2-proxy templates/_helpers.tpl: `tpl .Values.config.configFile $`),
+    # so Helm directives below are evaluated with the chart root context and can read
+    # shared `global` values. Any LITERAL `{{`/`}}` added here must be escaped.
     configFile: |-
       provider = "oidc"
       oidc_issuer_url = "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex"
@@ -319,6 +365,20 @@ oauth2-proxy:
       # serve a static HTTP 200 upstream on for authentication success
       # we are using oauth2-proxy as an ExtAuthz to "check" each request, not pass it on
       upstreams = [ "static://200" ]
+
+      {{- if eq ($.Values.global.oauth2Proxy.gatewayAuthMode | default "native") "native" }}
+      # Skip authentication for the Dex login paths. Native ext_authz mode (the
+      # default, gatewayAuthMode: native) sends the ext_authz check to oauth2-proxy,
+      # so oauth2-proxy itself must allow /dex/ through (belt-and-suspenders with the
+      # CUSTOM AuthorizationPolicy notPaths). This block is single-sourced here and
+      # rendered ONLY in native mode: in envoyfilter mode the authn EnvoyFilter's Lua
+      # handles the skip instead, so gatewayAuthMode=envoyfilter drops it via this
+      # conditional (no duplicated configFile override needed). Matches
+      # kubeflow/community-distribution.
+      skip_auth_routes = [
+        "^/dex/",
+      ]
+      {{- end }}
 
       # requests to paths matching these regex patterns will receive a 401 Unauthorized response
       # when not authenticated, instead of being redirected to the login page with a 302,

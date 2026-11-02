@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# istiod MeshConfig override — registers the "oauth2-proxy" ext_authz provider.
+#
+# Applied to the App Collection istio chart (NOT the kubeflow umbrella) by
+# runMe.sh by default:
+#
+#   helm upgrade --install istio oci://<appco>/charts/istio ... \
+#     -f istio-native-authz-values.yaml
+#
+# This is the documented prerequisite for native ingress-auth mode
+# (global.oauth2Proxy.gatewayAuthMode: native). The kubeflow chart's CUSTOM
+# AuthorizationPolicy (istio-ingressgateway-oauth2-proxy) references
+# provider.name "oauth2-proxy"; that name MUST resolve to an extensionProviders
+# entry here or Istio denies all ingress (the native-authz-guard template fails
+# the kubeflow install fast if this is missing).
+#
+# Path note: the App Collection istio chart nests the control plane under the
+# `istiod` sub-chart, which merges `.Values.meshConfig` into the istio ConfigMap
+# (mergeOverwrite), so this block is additive — it does not clobber the chart's
+# other mesh defaults (enablePrometheusMerge, etc.).
+#
+# Values mirror kubeflow/community-distribution
+# common/oauth2-proxy/components/istio-external-auth-patches, adjusted for the SUSE
+# oauth2-proxy Service name/namespace (kubeflow-oauth2-proxy in the kubeflow ns).
+# ─────────────────────────────────────────────────────────────────────────────
+istiod:
+  meshConfig:
+    extensionProviders:
+    - name: oauth2-proxy
+      envoyExtAuthzHttp:
+        # SUSE oauth2-proxy Service: <release>-oauth2-proxy in the release namespace.
+        service: kubeflow-oauth2-proxy.kubeflow.svc.cluster.local
+        port: 80
+        includeRequestHeadersInCheck:
+        - authorization
+        - cookie
+        headersToUpstreamOnAllow:
+        - authorization
+        - path
+        - x-auth-request-email
+        - x-auth-request-groups
+        - x-auth-request-user
+        headersToDownstreamOnDeny:
+        - content-type
+        - set-cookie

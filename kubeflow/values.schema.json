@@ -90,7 +90,33 @@
         "oauth2Proxy": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" }
+            "enabled": { "type": "boolean" },
+            "gatewayAuthMode": {
+              "type": "string",
+              "enum": ["native", "envoyfilter"],
+              "default": "native",
+              "description": "Ingress-gateway authentication mode. 'native' (default): upstream-parity Istio-native ext_authz — istiod MeshConfig extensionProvider + CUSTOM AuthorizationPolicy + dex-jwt RequestAuthentication + require-jwt DENY. Requires the 'oauth2-proxy' extensionProvider in istiod MeshConfig (runMe.sh adds it by default; native-authz-guard fails the install fast if missing). 'envoyfilter': self-contained hand-written EnvoyFilter ext_authz chain, no istiod MeshConfig change (for BYO-istio); opt in with -f values-envoyfilter-authz.yaml or runMe.sh --legacy-authz."
+            }
+          }
+        },
+        "istio": {
+          "type": "object",
+          "description": "Istio ingress-gateway identity — single source of truth consumed by kubeflow-istio-resources, kubeflow-hub, user-namespace, and knative-serving.",
+          "properties": {
+            "ingressGateway": {
+              "type": "object",
+              "properties": {
+                "principal": {
+                  "type": "string",
+                  "description": "ServiceAccount principal of the ingress gateway used by AuthorizationPolicy source.principals. Rancher/AppCo Istio: 'cluster.local/ns/istio-system/sa/istio'; upstream: '.../sa/istio-ingressgateway-service-account'."
+                },
+                "selector": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "description": "Workload label selector of the ingress-gateway pods, shared by the Gateway CRs, the authn EnvoyFilter workloadSelector, and the native auth CRs. Must be non-empty: an empty selector on the istio-system auth resources (context: GATEWAY) would attach the auth chain to every gateway in the mesh. Rancher: {istio: istio}; upstream: {istio: ingressgateway}."
+                }
+              }
+            }
           }
         },
         "gateway": {
@@ -389,16 +415,6 @@
           ] },
           "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$",
           "description": "Host for the gateway. Leave empty ('') for wildcard/IP+NodePort access, or set a hostname: a dotted FQDN (kubeflow.example.com), a single-label name (kubeflow, localhost), or an IPv4 literal (10.43.1.7) are all accepted. Must not contain '*' — a literal wildcard hostname would make the auth-bypass filter trust every host. A bare public suffix (a single-label registry TLD such as 'com'/'io'/'co.uk') is ALSO rejected: hostname is seeded into the letsEncrypt ClusterIssuer's DNS-01 dnsZones (letsencrypt-ClusterIssuer.yaml), so 'com' would scope the ACME solver to the entire TLD — exactly what that template's comment warns against. The list is the common gTLD/ccTLD set, not the full Public Suffix List; the ClusterIssuer comment remains the backstop for the rest. The DNS charset is enforced (no whitespace/non-breaking-space/embedded-newline/trailing-dot/'_'/leading-'-'): the hostname is embedded verbatim into the authn EnvoyFilter's Lua, and an invalid character makes LuaJIT reject the inline_code so istiod NACKs the filter and the gateway falls open. Rejecting it here fails the install instead. Independent of TLS. Kept in sync with the sub-chart values.schema.json."
-        },
-        "istioGateway": {
-          "type": "object",
-          "properties": {
-            "selector": {
-              "type": "object",
-              "minProperties": 1,
-              "description": "Workload label selector shared by the Gateway and the authn EnvoyFilter. Must be non-empty: an empty/null selector on the istio-system authn EnvoyFilter (patches are context: GATEWAY) would attach ext_authz to every gateway in the mesh. Rancher Istio: {istio: istio}; upstream: {istio: ingressgateway}."
-            }
-          }
         },
         "tls": {
           "type": "object",

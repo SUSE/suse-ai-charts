@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Kubeflow deployment script
 # Usage:
-#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>] [--disable-cert-manager]
+#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>] [--disable-cert-manager] [--legacy-authz]
+#
+# Ingress-auth: native Istio ext_authz is the DEFAULT (registers the oauth2-proxy
+# provider in istiod MeshConfig via istio-native-authz-values.yaml). Pass
+# --legacy-authz to use the self-contained EnvoyFilter instead (BYO-istio; no
+# MeshConfig change).
 # Or set env vars:
 #   APPCO_REGISTRY_USER=<user> APPCO_REGISTRY_TOKEN=<token> SUSE_AI_REGISTRY_USER=<user> SUSE_AI_REGISTRY_TOKEN=<token> [CLOUDFLARE_API_KEY=<CloudFlare API Key>] [KUBECONFIG=<path>] ./runMe.sh
 
@@ -33,6 +38,12 @@ unset _pos _a _skip
 
 VALUES_ARGUMENT=
 ENABLE_CERT_MANAGER=1
+# Ingress-gateway auth mode. "native" (default) registers the
+# oauth2-proxy ext_authz provider in istiod MeshConfig (istio-native-authz-values.yaml)
+# and lets the kubeflow chart render the upstream-parity native auth CRs.
+# --legacy-authz switches to the self-contained EnvoyFilter (values-envoyfilter-authz.yaml)
+# and skips the istiod MeshConfig change (for BYO-istio you cannot modify).
+AUTH_MODE=native
 while [ $# -gt 0 ] ; do
   case "$1" in
     -f | --values-file)
@@ -78,6 +89,12 @@ while [ $# -gt 0 ] ; do
       SUSE_APP_COLLECTION="${1#*=}"
       shift
       ;;
+    --legacy-authz)
+      # Opt out of native ext_authz: use the self-contained EnvoyFilter instead
+      # (no istiod MeshConfig change). For BYO-istio control planes.
+      AUTH_MODE=envoyfilter
+      shift
+      ;;
     *)
       # for now assume they are AppCo cred args and SUSE registry cred args
       shift
@@ -98,6 +115,20 @@ if [[ -z "$APPCO_REGISTRY_USER" || -z "$APPCO_REGISTRY_TOKEN" || -z "$SUSE_AI_RE
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ── Ingress-auth mode wiring ─────────────────────────────────
+# native (default): add the oauth2-proxy ext_authz provider to istiod MeshConfig,
+#                   and let the kubeflow chart render the native auth CRs.
+# envoyfilter (--legacy-authz): skip the MeshConfig change and select the
+#                   self-contained EnvoyFilter via the opt-out values overlay.
+ISTIO_AUTHZ_ARG=
+AUTHZ_VALUES_ARG=
+if [[ "$AUTH_MODE" == "native" ]]; then
+  ISTIO_AUTHZ_ARG="--values $SCRIPT_DIR/istio-native-authz-values.yaml"
+else
+  AUTHZ_VALUES_ARG="--values $SCRIPT_DIR/values-envoyfilter-authz.yaml"
+fi
+echo "Ingress-gateway auth mode: $AUTH_MODE"
 
 # Helm registry logins
 echo "=== Step 1: Helm registry login ==="
@@ -155,6 +186,7 @@ helm upgrade --install istio oci://${SUSE_APP_COLLECTION}/charts/istio \
   --namespace istio-system \
   --set global.imagePullSecrets[0].name=application-collection \
   --set gateway.enabled=true \
+  $ISTIO_AUTHZ_ARG \
   --force-conflicts \
   --server-side=true \
   --wait --timeout 5m
@@ -200,6 +232,7 @@ helm upgrade --install kubeflow "$SCRIPT_DIR" \
   --wait --timeout 15m \
   --set global.suseRegistry="${SUSE_REGISTRY}" \
   --set global.suseApplicationCollectionRegistry="${SUSE_APP_COLLECTION}" \
+  $AUTHZ_VALUES_ARG \
   $VALUES_ARGUMENT
 
 echo ""

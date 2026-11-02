@@ -1,0 +1,9 @@
+# helm-docs ignore rules for this charts repo.
+# Only top-level charts maintain docs (e.g. kubeflow/README.md from README.md.gotmpl).
+# Subcharts have no README.md.gotmpl, so helm-docs would otherwise emit a default-template
+# README.md into every <chart>/charts/* directory. Exclude all subchart dirs.
+#
+# NOTE: helm-docs resolves this file at the PARENT of --chart-search-root and matches
+# patterns relative to that dir. Run from this repo root:
+#   helm-docs --chart-search-root=kubeflow --template-files=README.md.gotmpl
+*/charts/*

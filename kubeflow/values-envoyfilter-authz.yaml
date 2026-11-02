@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Opt-out overlay: legacy self-contained EnvoyFilter ingress-auth mode.
+#
+#   helm ... -f values-envoyfilter-authz.yaml      (or: runMe.sh --legacy-authz)
+#
+# The DEFAULT ingress-auth mode is "native" (upstream-parity Istio-native ext_authz:
+# MeshConfig extensionProvider + CUSTOM AuthorizationPolicy + RequestAuthentication +
+# require-jwt DENY). Native mode requires the istiod MeshConfig to carry the
+# "oauth2-proxy" extensionProvider (runMe.sh adds it by default). For a BYO-istio
+# control plane you cannot modify, use this overlay instead: it selects the
+# hand-written authn EnvoyFilter, which needs no istiod MeshConfig change.
+#
+# This overlay changes exactly ONE thing vs. the base values:
+#   global.oauth2Proxy.gatewayAuthMode -> envoyfilter
+#
+# That single flip:
+#   1. Renders the self-contained authn EnvoyFilter and suppresses the native CRs
+#      + the native-authz-guard (kubeflow-istio-resources templates key off
+#      gatewayAuthMode).
+#   2. Drops the oauth2-proxy `skip_auth_routes = ["^/dex/"]` entry: the base
+#      configFile emits it only in native mode (that block is `{{- if ... "native" }}`
+#      guarded and tpl-rendered by the oauth2-proxy chart). In envoyfilter mode the
+#      EnvoyFilter's Lua performs the host-scoped /dex,/oauth2 skip instead, so
+#      oauth2-proxy must NOT also skip /dex/. No configFile duplication required.
+# ─────────────────────────────────────────────────────────────────────────────
+global:
+  oauth2Proxy:
+    gatewayAuthMode: envoyfilter

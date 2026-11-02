@@ -100,6 +100,33 @@ with a human-readable error when required dependencies are misconfigured.
 {{- end }}
 
 {{- /*
+  Migration guard: the per-subchart ingress-gateway identity knobs were removed
+  and replaced by the single source of truth global.istio.ingressGateway.{principal,selector}
+  (and the auth-mode knob moved to global.oauth2Proxy.gatewayAuthMode). The chart
+  no longer reads the old keys, so an operator override file that still sets them
+  would be SILENTLY IGNORED — the gateway/auth resources fall back to the Rancher
+  default, surfacing later as "RBAC: access denied" or an unauthenticated gateway.
+  values.schema.json does not forbid unknown keys, so catch them here and fail fast
+  with the new location. (A null/unset legacy key is a no-op and does not trip this.)
+*/}}
+{{- $legacy := list }}
+{{- $kir := index .Values "kubeflow-istio-resources" | default dict }}
+{{- if hasKey $kir "istioGateway" }}
+{{-   $legacy = append $legacy "kubeflow-istio-resources.istioGateway.selector -> global.istio.ingressGateway.selector" }}
+{{- end }}
+{{- $hubAp := (.Values.hub | default dict).authorizationPolicy | default dict }}
+{{- if hasKey $hubAp "ingressGatewayPrincipal" }}
+{{-   $legacy = append $legacy "hub.authorizationPolicy.ingressGatewayPrincipal -> global.istio.ingressGateway.principal" }}
+{{- end }}
+{{- $unIg := ((index .Values "user-namespace" | default dict).istio | default dict).ingressGateway | default dict }}
+{{- if hasKey $unIg "principal" }}
+{{-   $legacy = append $legacy "user-namespace.istio.ingressGateway.principal -> global.istio.ingressGateway.principal" }}
+{{- end }}
+{{- if $legacy }}
+{{-   fail (printf "REMOVED VALUE KEY(S): these per-subchart ingress-gateway knobs were replaced by the single source of truth global.istio.ingressGateway and are no longer read by the chart. Leaving them in your overrides would silently have NO effect (the gateway identity would fall back to the Rancher default). Move each to its new location:\n  - %s" (join "\n  - " $legacy)) }}
+{{- end }}
+
+{{- /*
   Credential hygiene: fail fast if well-known demo defaults are still present
   and the operator has not explicitly opted in via global.demoMode=true.
 */}}

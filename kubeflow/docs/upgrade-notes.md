@@ -48,6 +48,33 @@ identity-header family at ingress and re-derives `kubeflow-userid` from the auth
 `x-auth-request-email` (using `replace()`, not `add()`), so identity is always gateway-authoritative.
 **Operators running any prior release should upgrade.** No configuration change is required.
 
+## Behaviour change — native Istio ext_authz is now the default ingress-auth mode
+
+_Applies to chart version `0.4.2` and later._
+
+The ingress gateway now enforces OIDC login with **upstream-parity native Istio ext_authz** by default
+(`global.oauth2Proxy.gatewayAuthMode: native`) instead of the legacy self-contained `EnvoyFilter`. The
+native mode adds a `RequestAuthentication` (Dex JWT) plus a `CUSTOM` ext_authz and a `DENY` require-jwt
+`AuthorizationPolicy` on the shared ingress gateway, and requires istiod's MeshConfig to register the
+`oauth2-proxy` extension provider (`runMe.sh` wires this in; manual installs pass
+`-f istio-native-authz-values.yaml` to the Istio install). See
+[Ingress gateway authentication mode](../README.md#ingress-gateway-authentication-mode).
+
+> **⚠ BREAKING for external, cookie-less KServe inference over the shared gateway.** The native
+> `require-jwt` `DENY` policy denies any request without a verified JWT request-principal on all paths
+> except `/dex/*` and `/oauth2/*`. A cookie-less external inference `POST` to a KServe
+> `InferenceService` served on the **shared** ingress gateway now returns `403` — a change from the
+> legacy EnvoyFilter mode. **KServe in-cluster traffic is unaffected** (it uses the dedicated
+> `kserve-ingress-gateway` cluster-local gateway). If you depend on unauthenticated external inference
+> over the shared gateway, either serve it via the dedicated KServe gateway / wildcard-TLS opt-in (see
+> [External HTTPS for KServe inference](access-and-tls.md#external-https-for-kserve-inference-opt-in)) or
+> keep the legacy EnvoyFilter mode by installing with `--legacy-authz` (`runMe.sh`) or
+> `-f values-envoyfilter-authz.yaml`. The two modes are mutually exclusive. Combining native authz with
+> the KServe wildcard-TLS opt-in must be scoped and verified before enabling both together.
+
+**No action required** for installs that do not expose unauthenticated external inference on the shared
+gateway. To stay on the previous behaviour, select the legacy EnvoyFilter mode as above.
+
 ## Migration — Model Registry consolidated into Kubeflow Hub
 
 _Applies to chart version `0.4.0-alpha.2` and later._

@@ -56,6 +56,8 @@ spec:
               fieldPath: metadata.namespace
         - name: V2_LAUNCHER_IMAGE
           value: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.launcher.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.launcher.image.repository }}{{- if .Values.launcher.image.digest }}@{{ .Values.launcher.image.digest }}{{- else }}:{{ .Values.launcher.image.tag }}{{- end }}"
+        - name: V2_DRIVER_IMAGE
+          value: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.driver.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.driver.image.repository }}{{- if .Values.driver.image.digest }}@{{ .Values.driver.image.digest }}{{- else }}:{{ .Values.driver.image.tag }}{{- end }}"
         - name: OBJECTSTORECONFIG_HOST
           value: seaweedfs
         - name: OBJECTSTORECONFIG_PORT

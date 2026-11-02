@@ -1,0 +1,39 @@
+{{- /*
+  Native ingress-auth mode — lockout guard. Renders NOTHING; it
+  fails the install fast when native mode is selected but istiod's MeshConfig does
+  not carry the "oauth2-proxy" extensionProvider the CUSTOM AuthorizationPolicy
+  references. Without that provider a CUSTOM action AuthorizationPolicy makes Istio
+  DENY ALL ingress ("configured but disabled" ext_authz) — locking the gateway.
+
+  Naming-agnostic + fail-closed: a revisioned control plane names the ConfigMap
+  istio-<revision>, so we scan every ConfigMap in istio-system (not just "istio")
+  and parse its `mesh` for an extensionProviders entry named oauth2-proxy.
+
+  `lookup` returns nothing during `helm template`/`helm install --dry-run` (no live
+  cluster read), so the guard is inert there and only enforces on a real install
+  where it can actually see the cluster's ConfigMaps.
+*/}}
+{{- if and .Values.global.oauth2Proxy.enabled (eq (include "kubeflow-istio-resources.gatewayAuthMode" .) "native") }}
+{{- $cms := (lookup "v1" "ConfigMap" "istio-system" "").items }}
+{{- if $cms }}
+{{-   $found := false }}
+{{-   range $cms }}
+{{-     $name := .metadata.name }}
+{{-     if or (eq $name "istio") (hasPrefix "istio-" $name) }}
+{{-       $meshRaw := "" }}
+{{-       if .data }}{{ $meshRaw = (index .data "mesh") | default "" }}{{- end }}
+{{-       if $meshRaw }}
+{{-         $mesh := fromYaml $meshRaw }}
+{{-         range ($mesh.extensionProviders | default list) }}
+{{-           if eq (.name | default "") "oauth2-proxy" }}
+{{-             $found = true }}
+{{-           end }}
+{{-         end }}
+{{-       end }}
+{{-     end }}
+{{-   end }}
+{{-   if not $found }}
+{{-     fail "SECURITY / LOCKOUT GUARD: global.oauth2Proxy.gatewayAuthMode is \"native\" but istiod's MeshConfig (istio-system ConfigMap \"istio\" or \"istio-<revision>\") has no extensionProviders entry named \"oauth2-proxy\". Installing the native CUSTOM AuthorizationPolicy without it would make Istio DENY ALL ingress and lock the gateway.\nFix ONE of:\n  1. Add the provider to istiod MeshConfig, then reinstall. runMe.sh does this by default via istio-native-authz-values.yaml (helm ... istio -f istio-native-authz-values.yaml).\n  2. Use the self-contained EnvoyFilter instead (no istiod MeshConfig change): runMe.sh --legacy-authz, or -f values-envoyfilter-authz.yaml (sets global.oauth2Proxy.gatewayAuthMode=envoyfilter)." }}
+{{-   end }}
+{{- end }}
+{{- end }}
