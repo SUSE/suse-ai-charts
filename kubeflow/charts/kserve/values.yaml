@@ -99,8 +99,8 @@ pmmlServer:
 
 tritonServer:
   image:
-    registry: registry.suse.com
-    repository: ai/containers/nvidia/tritonserver
+    registry: nvcr.io
+    repository: nvidia/tritonserver
     tag: "23.05-py3"
     pullPolicy: IfNotPresent
 
