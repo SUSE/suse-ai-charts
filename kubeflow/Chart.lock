@@ -87,4 +87,4 @@ dependencies:
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
 digest: sha256:b7c9bb2537bb8fa8ab9271aa842960b9e7352bda4376d22b0b0ab23fb865d228
-generated: "2026-11-02T11:06:36.543519043-03:00"
+generated: "2026-11-02T11:20:07.731971554-03:00"
