@@ -34,6 +34,10 @@ spec:
       terminationGracePeriodSeconds: 60
       securityContext:
         fsGroup: 1000
+        # Only re-chown the /data volume when its top-level ownership does not already
+        # match fsGroup — avoids a full recursive relabel on every restart of a large
+        # volume. Matches the upstream community-distribution seaweedfs profile.
+        fsGroupChangePolicy: "OnRootMismatch"
       serviceAccountName: seaweedfs
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -47,11 +51,45 @@ spec:
         - -iam
         - -filer
         - -master.volumePreallocate=false
+        # Each S3 bucket maps to its own SeaweedFS collection (SeaweedFS enforces
+        # 1 bucket = 1 collection; it cannot be shared). By default each collection
+        # grows volumes in batches of 7 (WEED_MASTER_VOLUME_GROWTH_COPY_1, set to 1
+        # below) and the per-directory cap is disk-auto (~14 on a small disk), so a
+        # third bucket exhausts it and new PutObjects fail with "No writable volumes
+        # / Not enough data nodes". With growth=1 each bucket costs ~1 volume, so a
+        # modest explicit cap covers many buckets. Empty slots are cheap and real
+        # usage stays bounded by persistence.size, so this is safe on a single node.
+        # (Upstream relies on a single bucket and does not tune this; SUSE creates
+        # per-model KServe buckets, so we add the safeguard.)
+        - -volume.max={{ .Values.seaweedfs.volumeMax }}
+        # Run as the seaweed user (uid/gid 1000) directly. The image entrypoint
+        # otherwise starts as root and chown+su-execs down to this user, which
+        # needs CHOWN/SETUID/SETGID and crash-loops under a dropped-capability
+        # context. Running as 1000 up front skips that privileged dance: the pod
+        # fsGroup (1000, below) makes the /data PVC group-writable, and the
+        # entrypoint detects it is already the seaweed user and execs weed
+        # directly. This keeps the container non-root with all capabilities
+        # dropped (Pod Security "restricted" posture), matching the upstream
+        # community-distribution seaweedfs securityContext. readOnlyRootFilesystem
+        # is intentionally NOT set (upstream omits it too) — the postStart weed
+        # shell and /tmp scratch writes need a writable root fs.
         securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
           allowPrivilegeEscalation: false
+          privileged: false
+          seccompProfile:
+            type: RuntimeDefault
           capabilities:
             drop:
             - ALL
+        env:
+        # Grow one volume at a time per collection instead of the default batch of 7,
+        # so each S3 bucket costs ~1 volume rather than ~7. The embedded master in
+        # `weed server` honours this WEED_MASTER_* viper binding (verified live).
+        - name: WEED_MASTER_VOLUME_GROWTH_COPY_1
+          value: "1"
         envFrom:
         - secretRef:
             name: mlpipeline-minio-artifact

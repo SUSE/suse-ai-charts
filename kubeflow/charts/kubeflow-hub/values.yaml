@@ -37,7 +37,7 @@ server:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/hub/server
-    tag: v0.3.10
+    tag: v0.3.18
     pullPolicy: IfNotPresent
     digest: ""
   replicaCount: 1
@@ -79,7 +79,7 @@ ui:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/hub/ui
-    tag: v0.3.10
+    tag: v0.3.18
     pullPolicy: IfNotPresent
     digest: ""
   replicaCount: 1
@@ -136,7 +136,7 @@ controller:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/hub/controller
-    tag: v0.3.10           # pinned — upstream manifest uses latest; release-26.03.1 train
+    tag: v0.3.18           # pinned — upstream manifest uses latest; release-26.03.1 train
     pullPolicy: IfNotPresent
     digest: ""
   replicaCount: 1
@@ -174,7 +174,7 @@ kserve:
     image:
       registry: registry.suse.com
       repository: ai/containers/kubeflow/hub/storage-initializer
-      tag: v0.3.10         # pinned — upstream manifest uses latest; release-26.03.1 train
+      tag: v0.3.18         # pinned — upstream manifest uses latest; release-26.03.1 train
       pullPolicy: IfNotPresent
       digest: ""
 

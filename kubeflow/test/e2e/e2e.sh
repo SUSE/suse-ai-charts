@@ -13,6 +13,7 @@
 #   2.  Notebook          — create CR → wait StatefulSet ready → delete
 #   3.  PyTorchJob        — 1-replica CPU job → wait for Succeeded
 #   4.  KServe            — build sklearn model → upload → deploy IS → predict
+#   4b. KServe TensorFlow — build SavedModel → upload → deploy IS → predict
 #   5.  Model Registry    — register → list → archive
 #   6.  Tensorboard canary — leading-slash subPath bug still present
 #   7.  Trainer V2        — TrainJob → wait for Complete
@@ -106,6 +107,8 @@ cleanup() {
   kubectl delete secret           e2e-s3-secret        -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete serviceaccount   e2e-kserve-sa        -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pod              e2e-model-builder    -n "$NS"      --ignore-not-found &>/dev/null || true
+  kubectl delete inferenceservice e2e-tensorflow       -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pod              e2e-tf-model-builder -n "$NS"      --ignore-not-found &>/dev/null || true
   kubectl delete trainjob         test-trainjob        -n "$USER_NS" --ignore-not-found &>/dev/null || true
   # Tests 8-11
   kubectl delete tfjob            e2e-test-tfjob       -n "$USER_NS" --ignore-not-found &>/dev/null || true
@@ -326,7 +329,7 @@ header "4. KServe — build sklearn model → deploy IS → Ready → predict"
 #     sklearn version avoids pickle compatibility issues).
 info "Launching model builder pod..."
 kubectl run e2e-model-builder \
-  --image=${SUSE_REGISTRY}/ai/containers/kserve/sklearnserver:v0.15.2 \
+  --image=${SUSE_REGISTRY}/ai/containers/kserve/sklearnserver:v0.21.0 \
   --restart=Never \
   -n "$NS" \
   --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}},"spec":{"imagePullSecrets":[{"name":"suse-ai-registry"}]}}' \
@@ -466,6 +469,203 @@ print(urllib.request.urlopen(req, timeout=10).read().decode())
         pass "KServe prediction returned valid response: ${PRED_RESULT}"
       else
         fail "KServe prediction failed (response: '${PRED_RESULT:0:200}')"
+      fi
+    fi
+  fi
+fi
+
+# ── Test 4b: KServe TensorFlow Serving ─────────────────────────────────────────
+header "4b. KServe TensorFlow — build SavedModel → deploy IS → Ready → predict"
+
+# Exercises the tensorflow/serving runtime (image pinned to 2.21.0). The serving
+# image is a C++ binary with no boto3/python, so the builder pod uses an
+# initContainer (tensorflow/tensorflow, same 2.21.0 — guarantees SavedModel
+# compatibility) to export a trivial y=x model, and a main container
+# (sklearnserver, which ships boto3) to upload it to SeaweedFS — mirroring Test 4.
+info "Launching TensorFlow model builder pod..."
+kubectl delete pod e2e-tf-model-builder -n "$NS" --ignore-not-found >/dev/null 2>&1 || true
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-tf-model-builder
+  namespace: ${NS}
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  restartPolicy: Never
+  imagePullSecrets:
+  - name: suse-ai-registry
+  volumes:
+  - name: work
+    emptyDir: {}
+  initContainers:
+  - name: tf-build
+    image: ${SUSE_REGISTRY}/ai/containers/tensorflow/tensorflow:2.21.0
+    command: ["python3", "-c"]
+    args:
+    - |
+      import tensorflow as tf, os
+      # y = x: single Dense(1), weight 1, no bias — deterministic for assertion.
+      m = tf.keras.Sequential([tf.keras.layers.Input(shape=(1,)),
+                               tf.keras.layers.Dense(1, kernel_initializer='ones', use_bias=False)])
+      p = '/work/1'
+      os.makedirs(p, exist_ok=True)
+      # model.export writes a TF-Serving-compatible SavedModel (serving_default signature).
+      m.export(p)
+      print('SavedModel exported to', p, sorted(os.listdir(p)))
+    volumeMounts:
+    - name: work
+      mountPath: /work
+  containers:
+  - name: uploader
+    image: ${SUSE_REGISTRY}/ai/containers/kserve/sklearnserver:v0.21.0
+    command: ["python3", "-c"]
+    args:
+    - |
+      import os, boto3
+      s3 = boto3.client('s3',
+          endpoint_url='http://seaweedfs.kubeflow.svc.cluster.local:9000',
+          aws_access_key_id='kubeflow',
+          aws_secret_access_key='kubeflow123',
+          region_name='us-east-1')
+      try:
+          s3.create_bucket(Bucket='e2e-models')
+      except Exception as e:
+          print('bucket:', e)
+      base = '/work'
+      for root, _, files in os.walk(base):
+          for f in files:
+              full = os.path.join(root, f)
+              key = 'tensorflow/' + os.path.relpath(full, base)
+              s3.upload_file(full, 'e2e-models', key)
+              print('uploaded', key)
+      print('TF SavedModel uploaded OK')
+    volumeMounts:
+    - name: work
+      mountPath: /work
+EOF
+
+# Wait for the builder pod (initContainer build + main upload) to Succeed
+elapsed=0
+TF_BUILDER_OK=false
+TF_BUILDER_PHASE="Pending"
+while true; do
+  sleep 5; elapsed=$((elapsed+5))
+  TF_BUILDER_PHASE=$(kubectl get pod e2e-tf-model-builder -n "$NS" \
+    -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+  info "TF model builder: ${TF_BUILDER_PHASE} (${elapsed}s/${T_KSERVE_BUILD}s)"
+  [[ "$TF_BUILDER_PHASE" == "Succeeded" ]] && TF_BUILDER_OK=true && break
+  [[ "$TF_BUILDER_PHASE" == "Failed" ]]    && break
+  [[ $elapsed -ge $T_KSERVE_BUILD ]]       && break
+done
+
+if ! $TF_BUILDER_OK; then
+  kubectl logs e2e-tf-model-builder -n "$NS" -c tf-build  2>/dev/null | tail -5 | while IFS= read -r l; do info "  tf-build: $l"; done
+  kubectl logs e2e-tf-model-builder -n "$NS" -c uploader  2>/dev/null | tail -5 | while IFS= read -r l; do info "  uploader: $l"; done
+  fail "KServe TF: model builder did not succeed (phase: ${TF_BUILDER_PHASE})"
+else
+  pass "KServe TF: SavedModel uploaded to SeaweedFS (e2e-models/tensorflow/1/)"
+
+  # Ensure the SeaweedFS Secret + ServiceAccount exist (idempotent; Test 4 also creates them).
+  kubectl apply -f - &>/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-s3-secret
+  namespace: ${USER_NS}
+  annotations:
+    serving.kserve.io/s3-endpoint: seaweedfs.kubeflow.svc.cluster.local:9000
+    serving.kserve.io/s3-usehttps: "0"
+    serving.kserve.io/s3-region: us-east-1
+    serving.kserve.io/s3-useanoncredential: "false"
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: kubeflow
+  AWS_SECRET_ACCESS_KEY: kubeflow123
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: e2e-kserve-sa
+  namespace: ${USER_NS}
+imagePullSecrets:
+- name: suse-ai-registry
+secrets:
+- name: e2e-s3-secret
+EOF
+
+  kubectl apply -f - &>/dev/null <<EOF
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: e2e-tensorflow
+  namespace: ${USER_NS}
+spec:
+  predictor:
+    serviceAccountName: e2e-kserve-sa
+    model:
+      modelFormat:
+        name: tensorflow
+      storageUri: s3://e2e-models/tensorflow
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+EOF
+
+  info "TF InferenceService created, waiting for Ready..."
+  elapsed=0
+  TF_IS_READY=false
+  while true; do
+    sleep 10; elapsed=$((elapsed+10))
+    IS_COND=$(kubectl get inferenceservice e2e-tensorflow -n "$USER_NS" \
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+    info "TF InferenceService Ready=${IS_COND:-False} (${elapsed}s/${T_KSERVE_READY}s)"
+    [[ "$IS_COND" == "True" ]] && TF_IS_READY=true && break
+    [[ $elapsed -ge $T_KSERVE_READY ]] && break
+  done
+
+  if ! $TF_IS_READY; then
+    kubectl get inferenceservice e2e-tensorflow -n "$USER_NS" -o jsonpath='{.status}' 2>/dev/null \
+      | grep -o '"message":"[^"]*"' | head -3 | while IFS= read -r msg; do info "  IS status: $msg"; done
+    fail "KServe TF: InferenceService did not become Ready within ${T_KSERVE_READY}s"
+  else
+    pass "KServe TF InferenceService Ready"
+
+    # Predict via the TF-Serving REST API. The serving image has no python/curl to
+    # exec, so port-forward directly to the predictor pod (bypasses Istio/knative,
+    # same localhost mechanism the sidecar does not intercept) and curl from the host.
+    TF_PRED_POD=$(kubectl get pod -n "$USER_NS" \
+      -l "serving.kserve.io/inferenceservice=e2e-tensorflow" \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+    if [[ -z "$TF_PRED_POD" ]]; then
+      fail "KServe TF: could not find predictor pod"
+    else
+      info "TF predictor pod: $TF_PRED_POD"
+      kubectl port-forward -n "$USER_NS" "pod/${TF_PRED_POD}" 18081:8080 >/tmp/e2e-tf-pf.log 2>&1 &
+      TF_PF_PID=$!
+      # Retry: the port-forward + TF-Serving REST endpoint need a moment after Ready.
+      TF_PRED_RESULT=""
+      for _try in 1 2 3 4 5 6; do
+        sleep 5
+        TF_PRED_RESULT=$(curl -s -m 10 -X POST \
+          "http://127.0.0.1:18081/v1/models/e2e-tensorflow:predict" \
+          -H "Content-Type: application/json" \
+          -d '{"instances":[[1.0]]}' 2>/dev/null || echo "")
+        echo "$TF_PRED_RESULT" | grep -q '"predictions"' && break
+        info "TF predict not ready yet (attempt ${_try}/6)"
+      done
+      kill $TF_PF_PID >/dev/null 2>&1 || true
+
+      if echo "$TF_PRED_RESULT" | grep -q '"predictions"'; then
+        pass "KServe TF prediction returned valid response: ${TF_PRED_RESULT}"
+      else
+        fail "KServe TF prediction failed (response: '${TF_PRED_RESULT:0:200}')"
       fi
     fi
   fi

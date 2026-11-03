@@ -37,8 +37,45 @@ jobs:
       APPCO_REGISTRY: ${{ secrets.APPCO_REGISTRY }}
       APPCO_USER: ${{ secrets.APPCO_USER }}
       APPCO_TOKEN: ${{ secrets.APPCO_TOKEN }}
+      # helm template/lint render against helm's built-in default Kubernetes version
+      # when no --kube-version is given (Helm 4.0.x derives it from bundled client-go,
+      # ~v1.34). The umbrella chart's Chart.yaml now pins `kubeVersion: >=1.35.0-0`
+      # (knative v1.24.0 hard-gates on k8s 1.35), so the default render is REJECTED
+      # with "chart requires kubeVersion: >=1.35.0-0 which is incompatible". Pass this
+      # explicit version to every render so CI exercises the supported target instead
+      # of helm's lower default. Must satisfy the Chart.yaml kubeVersion floor.
+      KUBE_VERSION: "1.35.0"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: KFP image tags stay consistent across values files
+        # Pure file check — no registry/Helm needed, so it runs unconditionally
+        # (including on fork PRs where the umbrella render steps skip). The KFP
+        # version is hand-maintained as a `tag:` on every ai/containers/kubeflow/kfp-*
+        # image in three files (umbrella values.yaml, user-namespace sub-chart,
+        # kubeflow-pipelines sub-chart). A bump that misses one file ships a skewed
+        # control plane (e.g. api-server 2.17.4 against launcher 2.17.3). Pair each
+        # kfp-* repository with the tag on its next `tag:` line and assert exactly one
+        # distinct value across all three files. Version-agnostic: a future 2.17->2.18
+        # bump that touches only some files still trips the distinct-count check.
+        # Commented-out example blocks (ai/containers/kfp-*, no `kubeflow/`) are not
+        # matched, so they never false-trigger.
+        run: |
+          set -euo pipefail
+          files=(kubeflow/values.yaml
+                 kubeflow/charts/user-namespace/values.yaml
+                 kubeflow/charts/kubeflow-pipelines/values.yaml)
+          tags="$(awk '
+            /^[[:space:]]*repository:.*ai\/containers\/kubeflow\/kfp-/ { want=1; next }
+            want && /^[[:space:]]*tag:/ { gsub(/[" ]/,"",$2); print $2; want=0 }
+          ' "${files[@]}" | sort -u)"
+          if [ "$(printf '%s\n' "$tags" | grep -c .)" -ne 1 ]; then
+            echo "FAIL: KFP (kfp-*) image tags are not consistent across values files. Distinct tags found:" >&2
+            printf '%s\n' "$tags" >&2
+            echo "Bump the KFP tag in all of: ${files[*]}" >&2
+            exit 1
+          fi
+          echo "OK: all KFP image tags are consistent ($tags)."
 
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
@@ -80,14 +117,14 @@ jobs:
         # installable and carries its own validations.yaml/values.schema.json guards
         # (hostname FQDN, kserveExternalHttps prerequisites, gateway selector), so
         # render it on its own to prove those guards hold outside the umbrella.
-        run: helm template ci ./kubeflow/charts/kubeflow-istio-resources --set global.demoMode=true >/dev/null
+        run: helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" --set global.demoMode=true >/dev/null
 
       - name: helm lint
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
           # global.demoMode=true suppresses the demo-credential fail() guard so
           # lint reaches the templates.
-          helm lint ./kubeflow --set global.demoMode=true
+          helm lint ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true
 
       - name: helm template (default values)
         if: ${{ env.APPCO_TOKEN != '' }}
@@ -102,7 +139,7 @@ jobs:
           # net-istio readiness for installs that never asked for wildcard TLS. So
           # render with DEFAULT values (no opt-in) and assert the flattened form is
           # ABSENT — the guard must keep it opt-in only.
-          out="$(helm template ci ./kubeflow --set global.demoMode=true)"
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true)"
           if grep -Fq '{{ .Name }}-{{ .Namespace }}.{{ .Domain }}' <<<"$out"; then
             echo "FAIL: default (non-opt-in) render contains the flattened Knative domainTemplate — the wildcard-TLS flattening is applied unconditionally instead of being gated on global.kserveExternalHttps." >&2
             exit 1
@@ -132,6 +169,7 @@ jobs:
           # is supposed to — a plain `>/dev/null` only proves helm exited 0, which
           # would still pass if the wildcard server silently stopped rendering.
           out="$(helm template ci ./kubeflow \
+            --kube-version "$KUBE_VERSION" \
             --set global.demoMode=true \
             --set global.kserveExternalHttps=true \
             --set global.kserveDomain=kubeflow.example.com \
@@ -263,7 +301,8 @@ jobs:
           # gatewayAuthMode=envoyfilter here (native mode's CRs share the SAME selector
           # helper as the Gateways, so they cannot drift by construction).
           probe=e2e-selector-probe
-          common=(--set global.demoMode=true
+          common=(--kube-version "$KUBE_VERSION"
+                  --set global.demoMode=true
                   --set global.kserveDomain=kubeflow.example.com
                   --set global.oauth2Proxy.gatewayAuthMode=envoyfilter
                   --set global.istio.ingressGateway.selector.istio="$probe")
@@ -295,15 +334,15 @@ jobs:
           # EnvoyFilter emit `labels:\n null` (empty → matches every gateway in the
           # mesh) while the Gateway still falls back to a concrete label. Assert the
           # EnvoyFilter fallback is non-empty AND equals both Gateways'.
-          gwn="$(helm template ci ./kubeflow --set global.demoMode=true \
+          gwn="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
             --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kubeflow-gateway-kubeflow-Gateway.yaml)"
-          kgwn="$(helm template ci ./kubeflow --set global.demoMode=true \
+          kgwn="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
             --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kserve-ingress-gateway-kubeflow-Gateway.yaml)"
-          efn="$(helm template ci ./kubeflow --set global.demoMode=true \
+          efn="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
             --set global.oauth2Proxy.gatewayAuthMode=envoyfilter \
             --set-json 'global.istio.ingressGateway.selector=null' \
@@ -337,7 +376,7 @@ jobs:
           # Render on the NAMED-host path (hostname set) so is_trusted_host is a real
           # host comparison, not the wildcard-listener `true` — that lets us also
           # assert it was NOT hard-forced to true.
-          ef="$(helm template ci ./kubeflow --set global.demoMode=true \
+          ef="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
             --set global.oauth2Proxy.gatewayAuthMode=envoyfilter \
             --set kubeflow-istio-resources.hostname=kf.example.com \
             --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
@@ -438,6 +477,7 @@ jobs:
           custom_ns="custom-namespace"
           custom_name="custom-gateway-name"
           out="$(helm template ci ./kubeflow \
+            --kube-version "$KUBE_VERSION" \
             --set global.demoMode=true \
             --set global.kserveDomain=kubeflow.example.com \
             --set global.kserveGateway.name="${custom_ns}/${custom_name}")"
@@ -470,6 +510,7 @@ jobs:
           # and that it fails for the RIGHT reason (the oauth2Proxy guard message),
           # not some unrelated template error that would mask a regression.
           if err="$(helm template ci ./kubeflow \
+              --kube-version "$KUBE_VERSION" \
               --set global.demoMode=true \
               --set global.kserveExternalHttps=true \
               --set global.kserveDomain=kubeflow.example.com \
@@ -501,7 +542,7 @@ jobs:
           # 1. OIDC: overriding auth.oidc.* must reach Dex and oauth2-proxy (both read
           #    the chart-managed kubeflow-oidc-client Secret), so the default
           #    values.yaml client/cookie secrets must not appear anywhere in the output.
-          out="$(helm template ci ./kubeflow "${sw[@]}" "${uns[@]}" \
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${sw[@]}" "${uns[@]}" \
                    --set auth.oidc.clientSecret=ci-client \
                    --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde)"
           # Secret data is base64-encoded (Dex keeps its config in one), so decode
@@ -526,7 +567,7 @@ jobs:
           # 2. SeaweedFS: user-namespace still copies the credentials via YAML
           #    anchors, which -f/--set don't follow, so overriding only the source
           #    must fail on the consistency check rather than render mismatched keys.
-          if err="$(helm template ci ./kubeflow "${sw[@]}" \
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${sw[@]}" \
                       --set auth.oidc.clientSecret=ci-client \
                       --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde 2>&1)"; then
             echo "FAIL: overriding only pipelines.seaweedfs.* rendered with stale user-namespace keys" >&2
@@ -555,7 +596,7 @@ jobs:
           # sub-chart schema on its own — in the umbrella either schema's guard
           # masks a regression in the other).
           for bad in com COM io '*'; do
-            if err="$(helm template ci ./kubeflow --set global.demoMode=true \
+            if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
                 --set kubeflow-istio-resources.hostname="$bad" 2>&1)"; then
               echo "FAIL: umbrella accepted hostname='$bad' — a bare public suffix / wildcard must be rejected (it would widen the ACME solver scope / re-enable the auth bypass)." >&2
               exit 1
@@ -563,7 +604,7 @@ jobs:
             grep -q 'hostname' <<<"$err" \
               || { echo "FAIL: umbrella rejected hostname='$bad', but not on the hostname schema — a different error is masking the guard. Got:" >&2
                    echo "$err" >&2; exit 1; }
-            if err="$(helm template ci ./kubeflow/charts/kubeflow-istio-resources \
+            if err="$(helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" \
                 --set global.demoMode=true --set hostname="$bad" 2>&1)"; then
               echo "FAIL: sub-chart accepted hostname='$bad' standalone — the sub-chart schema guard has regressed." >&2
               exit 1
@@ -573,10 +614,10 @@ jobs:
                    echo "$err" >&2; exit 1; }
           done
           for good in kubeflow localhost 10.43.1.7 kf.example.com; do
-            helm template ci ./kubeflow --set global.demoMode=true \
+            helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
               --set kubeflow-istio-resources.hostname="$good" >/dev/null 2>&1 \
               || { echo "FAIL: umbrella rejected hostname='$good' — a legit single-label name / IPv4 literal / FQDN must be accepted." >&2; exit 1; }
-            helm template ci ./kubeflow/charts/kubeflow-istio-resources \
+            helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" \
               --set global.demoMode=true --set hostname="$good" >/dev/null 2>&1 \
               || { echo "FAIL: sub-chart rejected hostname='$good' standalone — a legit hostname must be accepted." >&2; exit 1; }
           done

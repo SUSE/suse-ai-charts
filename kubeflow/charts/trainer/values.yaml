@@ -53,7 +53,7 @@ jobset:
   image:
     registry: registry.suse.com
     repository: ai/containers/jobset/jobset
-    tag: v0.10.1
+    tag: v0.13.0
     pullPolicy: IfNotPresent
 
 # ClusterTrainingRuntime instances bundled with the chart

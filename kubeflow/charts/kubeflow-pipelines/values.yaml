@@ -80,7 +80,7 @@ seaweedfs:
   image:
     registry: registry.suse.com
     repository: ai/containers/chrislusf/seaweedfs
-    tag: "4.00"
+    tag: "4.51"
     pullPolicy: IfNotPresent
   enabled: true
   # S3 credentials — must match the IAM user SeaweedFS registers at startup.
@@ -96,6 +96,15 @@ seaweedfs:
   # Example: kubectl create secret generic mlpipeline-minio-artifact \
   #            --from-literal=accesskey=<key> --from-literal=secretkey=<secret> -n kubeflow
   existingSecret: ""
+  # Maximum number of SeaweedFS volumes the single volume server may allocate.
+  # Each S3 bucket becomes its own collection; combined with growth-count=1 (set via
+  # WEED_MASTER_VOLUME_GROWTH_COPY_1 in the Deployment) each bucket costs ~1 volume,
+  # so this cap roughly equals the number of buckets supported. The disk-auto default
+  # (~14) is too low once more than ~2 buckets exist (PutObject then fails with "No
+  # writable volumes"). 30 gives comfortable headroom for KServe per-model buckets;
+  # raise it for many-bucket deployments. Empty slots are cheap and real usage stays
+  # bounded by persistence.size.
+  volumeMax: 30
   persistence:
     size: 20Gi
     storageClass: ""
@@ -114,7 +123,7 @@ launcher:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-launcher
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
 
@@ -128,7 +137,7 @@ driver:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-driver
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
 
@@ -137,7 +146,7 @@ apiServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-api-server
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -150,7 +159,7 @@ frontend:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-frontend
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -163,7 +172,7 @@ persistenceAgent:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-persistence-agent
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -176,7 +185,7 @@ scheduledWorkflow:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-scheduled-workflow-controller
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -192,7 +201,7 @@ viewerCrdController:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-viewer-crd-controller
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -208,7 +217,7 @@ visualizationServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-visualization-server
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -230,7 +239,7 @@ cacheServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-cache-server
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -280,7 +289,7 @@ metadataEnvoy:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-metadata-envoy
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -296,7 +305,7 @@ metadataWriter:
   image:
     registry: registry.suse.com
     repository: ai/containers/kubeflow/kfp-metadata-writer
-    tag: "2.17.0"
+    tag: "2.17.3"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -328,7 +337,7 @@ profileController:
   image:
     registry: registry.suse.com
     repository: ai/containers/python
-    tag: "3.11"
+    tag: "3.15.2"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:

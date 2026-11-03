@@ -12,7 +12,7 @@ controller:
   image:
     registry: registry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/controller
-    tag: "v1.22.0"  # unused when digest is set
+    tag: "v1.24.0"  # unused when digest is set
     digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
     pullPolicy: IfNotPresent
   resources:
@@ -23,7 +23,7 @@ controller:
     APISERVER_RA_IMAGE:
       registry: registry.suse.com
       repository: ai/containers/knative-releases/knative.dev/eventing/cmd/apiserver_receive_adapter
-      tag: "v1.22.0"  # unused when digest is set
+      tag: "v1.24.0"  # unused when digest is set
       digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
       pullPolicy: IfNotPresent
 
@@ -31,7 +31,7 @@ webhook:
   image:
     registry: registry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/webhook
-    tag: "v1.22.0"  # unused when digest is set
+    tag: "v1.24.0"  # unused when digest is set
     digest: ""  # e.g. sha256:abcd1234... (overrides tag when set)
     pullPolicy: IfNotPresent
   resources:
@@ -46,7 +46,7 @@ pingsource:
   image:
     registry: registry.suse.com
     repository: ai/containers/knative-releases/knative.dev/eventing/cmd/mtping
-    tag: "v1.22.0"  # unused when digest is set
+    tag: "v1.24.0"  # unused when digest is set
     pullPolicy: IfNotPresent
   resources:
     limits:
