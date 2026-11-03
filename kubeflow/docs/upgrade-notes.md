@@ -15,6 +15,18 @@
 > **user-supplied** values (do **not** add `-a`/`--all`, which also dumps chart defaults and would
 > re-pin you to the old ones). The file may contain secrets set via values, so handle it accordingly.
 
+## Kubernetes ≥ 1.35 required (Knative Serving/Eventing v1.24.0)
+
+The Knative Serving and Eventing images moved to **v1.24.0**, whose controllers hard-gate on the
+cluster Kubernetes version and refuse to start on anything older than **1.35.0** (the binary logs
+`kubernetes version "<v>" is not compatible, need at least "1.35.0-0"` and crash-loops). The umbrella
+chart's `kubeVersion` floor has therefore been raised **`>=1.31.0-0` → `>=1.35.0-0`**, so
+`helm install`/`upgrade` now fails fast on older clusters instead of letting Knative crash-loop
+post-install. (The previous `1.31` floor came from the Training Operator DRA requirement and is still
+satisfied.) Upgrade the cluster to Kubernetes ≥ 1.35 before installing this release. As an escape
+hatch Knative honours the `KUBERNETES_MIN_VERSION` env var, but running v1.24.0 below its supported
+floor is unsupported.
+
 ## Applying CRDs on upgrade (all sub-charts)
 
 <a id="applying-crds"></a>
@@ -50,7 +62,7 @@ identity-header family at ingress and re-derives `kubeflow-userid` from the auth
 
 ## Behaviour change — native Istio ext_authz is now the default ingress-auth mode
 
-_Applies to chart version `0.4.2` and later._
+_Applies to chart version `0.5.0` and later._
 
 The ingress gateway now enforces OIDC login with **upstream-parity native Istio ext_authz** by default
 (`global.oauth2Proxy.gatewayAuthMode: native`) instead of the legacy self-contained `EnvoyFilter`. The
@@ -77,7 +89,7 @@ gateway. To stay on the previous behaviour, select the legacy EnvoyFilter mode a
 
 ## Behaviour change — OIDC credentials in one Secret, mismatched credential copies fail the render
 
-_Applies to chart version `0.4.2` and later._
+_Applies to chart version `0.5.0` and later._
 
 `auth.oidc.clientSecret` and `auth.oidc.cookieSecret` previously reached Dex and oauth2-proxy through
 YAML anchors in `values.yaml`, which `-f`/`--set` overrides do not follow, so an override changed only
@@ -311,6 +323,24 @@ StorageClasses, delete the PVC manually first:
 kubectl delete pvc -n kubeflow data-mysql-0   # KFP MariaDB (Rancher MariaDB StatefulSet)
 kubectl delete pvc -n kubeflow katib-mysql    # Katib MariaDB (standalone Deployment)
 ```
+
+## SeaweedFS now runs as non-root (uid/gid 1000)
+
+The SeaweedFS pod now runs with an explicit restricted security context —
+`runAsNonRoot: true`, `runAsUser: 1000`, `runAsGroup: 1000`, `fsGroup: 1000`,
+`fsGroupChangePolicy: OnRootMismatch`, `seccompProfile: RuntimeDefault`, `privileged: false`
+— matching the upstream community-distribution manifest. The repackaged `4.51` image previously
+relied on a root entrypoint (`chown`/`su-exec`) that crash-looped once capabilities were dropped;
+running as `1000` up front skips that privileged step, and `fsGroup: 1000` makes the `/data` PVC
+group-writable so the non-root process can still write.
+
+**Action required only if you override `pipelines.seaweedfs.image` with a custom image:** it must be
+able to run as uid/gid **1000** with all capabilities dropped — i.e. it must **not** depend on
+starting as root to `chown` the data directory or to drop privileges itself. (The root filesystem
+stays writable; `readOnlyRootFilesystem` is intentionally not set, matching upstream.) Stock `chrislusf/seaweedfs`
+and the SUSE-repackaged image both satisfy this. On upgrade of an existing install, `fsGroup` relabels
+the PVC on first start where the top-level ownership does not already match 1000 (`OnRootMismatch`), so
+expect a one-time startup delay proportional to the data size; no manual `chown` is needed.
 
 ## Credential rotation (SeaweedFS)
 

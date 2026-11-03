@@ -23,7 +23,8 @@ spec:
         memory: 2Gi
   protocolVersions:
   - v1
+  - v2
   supportedModelFormats:
   - autoSelect: true
     name: xgboost
-    version: '1'
+    version: '2'

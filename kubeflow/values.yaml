@@ -548,7 +548,7 @@ trainingOperator:
 
 # Trainer V2 — TrainJob / TrainingRuntime / ClusterTrainingRuntime
 # Distinct from Training Operator V1 (trainingOperator) which provides PyTorchJob/TFJob/etc.
-# Requires JobSet v0.10.1 (installed automatically; set trainer.jobset.installCRDs=false if already present)
+# Requires JobSet v0.13.0 (installed automatically; set trainer.jobset.installCRDs=false if already present)
 trainer:
   enabled: true
   runtimes:
@@ -964,11 +964,11 @@ user-namespace:
     visualizationServer:
       registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-visualization-server
-      tag: "2.17.0"
+      tag: "2.17.3"
     frontend:
       registry: registry.suse.com
       repository: ai/containers/kubeflow/kfp-frontend
-      tag: "2.17.0"
+      tag: "2.17.3"
 
 # Test images for Helm hook test Pods.
 # These are used in charts/kubeflow/templates/tests/ for connectivity checks.

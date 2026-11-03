@@ -14,7 +14,7 @@ controllerManager:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/kserve-controller
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:
@@ -44,7 +44,7 @@ storageInitializer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/storage-initializer
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 # Serving runtime images - these are used by ClusterServingRuntime resources
@@ -52,49 +52,49 @@ tensorflowServing:
   image:
     registry: registry.suse.com
     repository: ai/containers/tensorflow/serving
-    tag: "2.6.2"
+    tag: "2.21.0"
     pullPolicy: IfNotPresent
 
 huggingfaceServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/huggingfaceserver
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 xgbServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/xgbserver
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 lgbServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/lgbserver
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 sklearnServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/sklearnserver
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 paddleServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/paddleserver
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 pmmlServer:
   image:
     registry: registry.suse.com
     repository: ai/containers/kserve/pmmlserver
-    tag: v0.19.0
+    tag: v0.21.0
     pullPolicy: IfNotPresent
 
 tritonServer:
@@ -131,7 +131,7 @@ inferenceServiceConfig:
     image:
       registry: registry.suse.com
       repository: ai/containers/kserve/agent
-      tag: v0.19.0
+      tag: v0.21.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"
@@ -141,7 +141,7 @@ inferenceServiceConfig:
     image:
       registry: registry.suse.com
       repository: ai/containers/kserve/agent
-      tag: v0.19.0
+      tag: v0.21.0
     memoryRequest: "1Gi"
     memoryLimit: "1Gi"
     cpuRequest: "1"
@@ -192,7 +192,7 @@ inferenceServiceConfig:
     image:
       registry: registry.suse.com
       repository: ai/containers/kserve/agent
-      tag: v0.19.0
+      tag: v0.21.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"
@@ -209,7 +209,7 @@ inferenceServiceConfig:
     image:
       registry: registry.suse.com
       repository: ai/containers/kserve/router
-      tag: v0.19.0
+      tag: v0.21.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"
@@ -219,7 +219,7 @@ inferenceServiceConfig:
     image:
       registry: registry.suse.com
       repository: ai/containers/kserve/storage-initializer
-      tag: v0.19.0
+      tag: v0.21.0
     memoryRequest: "100Mi"
     memoryLimit: "1Gi"
     cpuRequest: "100m"

@@ -29,6 +29,34 @@ spec:
         notRequestPrincipals: ["*"]
     to:
     - operation:
+        # Scope the DENY to the gateway's HTTP/HTTPS listener ports. A DENY rule
+        # built from HTTP-only attributes (notRequestPrincipals / notPaths) with no
+        # port would, for non-HTTP TCP, match unconditionally and deny ALL traffic to
+        # every TCP port under the selector (e.g. the 15021 status / 15090 metrics
+        # ports) — Istio emits a validation warning for exactly this. Pinning the
+        # ports keeps the JWT requirement on real ingress traffic while leaving other
+        # TCP ports unaffected.
+        #
+        # Port 80 is listed UNCONDITIONALLY: the kserve-ingress-gateway hard-codes its
+        # plain-HTTP listener at :80, and the kubeflow-gateway's HTTP->HTTPS redirect
+        # server is also :80 — neither tracks .Values.gateway.port. If the custom
+        # gateway HTTP port below were the only HTTP entry in this list, overriding it
+        # to anything other than 80 would leave those :80 listeners OUTSIDE the DENY and
+        # the JWT requirement would silently fail OPEN on them. Listing a port the
+        # selector never serves is harmless (it simply matches no traffic).
+        #
+        # The custom HTTP port additionally tracks the kubeflow-gateway's own plain-HTTP
+        # server (.Values.gateway.port) for the non-TLS render, so customising it keeps
+        # the JWT requirement there too. The HTTPS port is fixed at 443, matching the
+        # hard-coded HTTPS server in both gateway templates. If you add HTTP/HTTPS
+        # listener ports beyond these, update this rule too.
+        ports:
+        {{- $httpPort := toString ((.Values.gateway.port | default dict).number | default 80) }}
+        - "80"
+        {{- if ne $httpPort "80" }}
+        - {{ $httpPort | quote }}
+        {{- end }}
+        - "443"
         notPaths:
         - /dex/*
         - /oauth2/*

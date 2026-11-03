@@ -1,5 +1,7 @@
 apiVersion: v1
 data:
+  domainmapping-direct-route-traffic: "disabled"
+  kubernetes.podspec-volumes-ephemeral: "disabled"
 kind: ConfigMap
 metadata:
   annotations:
