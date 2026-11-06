@@ -1,6 +1,6 @@
 {{- $kir := index .Values "kubeflow-istio-resources" }}
 {{- $tls := $kir.tls | default dict }}
-{{- $tlsSource := $tls.source | default "" }}
+{{- $tlsSource := include "kubeflow.tlsSource" . }}
 {{- if eq $tlsSource "letsEncrypt" }}
 {{- /* `| default dict`: an explicit `tls.letsEncrypt: null` (or a value space
        where coalesce doesn't backfill the default map) otherwise nil-derefs on

@@ -1,4 +1,7 @@
 {{- if .Values.preflightChecks.enabled }}
+{{- /* cert-manager is only checked when it is required (kubeflow.needsCertManager).
+       A trainer-only install needs none of it. */}}
+{{- $needsCertManager := eq (include "kubeflow.needsCertManager" .) "true" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -13,6 +16,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 0
+  activeDeadlineSeconds: 300
   template:
     metadata:
       annotations:
@@ -30,6 +34,10 @@ spec:
       - name: preflight
         image: "{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.preflightChecks.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.preflightChecks.image.repository }}{{- if .Values.preflightChecks.image.digest }}@{{ .Values.preflightChecks.image.digest }}{{- else }}:{{ .Values.preflightChecks.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
+        {{- with .Values.preflightChecks.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -52,6 +60,7 @@ spec:
           echo "  Default StorageClass: $DEFAULT_SC — OK"
 
           # Check 2: cert-manager is available (CRD check)
+          {{- if $needsCertManager }}
           echo "Check 2: cert-manager CRDs..."
           if ! kubectl get crd certificates.cert-manager.io > /dev/null 2>&1; then
             echo "PREFLIGHT FAILED: cert-manager CRDs not found."
@@ -59,6 +68,9 @@ spec:
             exit 1
           fi
           echo "  cert-manager CRDs present — OK"
+          {{- else }}
+          echo "Check 2: cert-manager CRDs... skipped (no enabled component uses cert-manager)"
+          {{- end }}
 
           echo "=== PREFLIGHT: OK ==="
 {{- end }}

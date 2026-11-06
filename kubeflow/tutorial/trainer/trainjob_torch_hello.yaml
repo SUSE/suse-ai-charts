@@ -1,0 +1,26 @@
+# Minimal Trainer V2 smoke test: runs a few PyTorch operations on the bundled
+# torch-distributed ClusterTrainingRuntime (CPU is enough).
+# Used by docs/use-cases/trainer-only-install.md (Step 7) and installTrainerOnly.sh --sample.
+# No namespace is set: apply it with -n <namespace>. That namespace needs a
+# registry.suse.com pull secret on its default ServiceAccount (see the guide).
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: torch-hello
+spec:
+  runtimeRef:
+    name: torch-distributed          # kind defaults to ClusterTrainingRuntime
+  trainer:
+    numNodes: 1
+    command:
+      - python
+      - -c
+      - |
+        import os, torch
+        print("torch", torch.__version__)
+        print("PET_NNODES", os.environ.get("PET_NNODES"))
+        print("sum", torch.ones(3, 3).sum().item())
+    resourcesPerNode:
+      requests:
+        cpu: "1"
+        memory: 2Gi

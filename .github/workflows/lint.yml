@@ -161,6 +161,207 @@ jobs:
 
           echo "OK: default render succeeds and leaves the Knative domainTemplate un-flattened (flattening stays gated on the opt-in)."
 
+      - name: helm template (trainer-only overrides)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # kubeflow/trainer-only-overrides.yaml (used by the trainer-only guide and
+          # installTrainerOnly.sh) must install on a cluster with no Istio, no
+          # cert-manager and no Profiles. Render WITHOUT global.demoMode or
+          # global.kserveDomain: the demo-credential and inference-domain guards must
+          # stay scoped to their (disabled) components. Then assert only the kubeflow
+          # Namespace, the trainer sub-chart and the trainer test render.
+          vals=kubeflow/trainer-only-overrides.yaml
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f "$vals")"
+          if grep -Eq '^apiVersion: (networking\.istio\.io|security\.istio\.io|cert-manager\.io)/' <<<"$out"; then
+            echo "FAIL: trainer-only render contains Istio or cert-manager resources." >&2; exit 1
+          fi
+          if grep -Eq '^kind: Profile$' <<<"$out"; then
+            echo "FAIL: trainer-only render contains a Profile CR (its CRD ships only with profiles-and-kfam)." >&2; exit 1
+          fi
+          unexpected="$(grep -E '^# Source: ' <<<"$out" | sed 's/^# Source: //' \
+            | grep -Ev '^kubeflow/charts/(kubeflow-namespace|trainer)/|^kubeflow/templates/tests/test-trainer\.yaml$' || true)"
+          [ -z "$unexpected" ] \
+            || { echo "FAIL: trainer-only render contains unexpected templates:" >&2; echo "$unexpected" >&2; exit 1; }
+          grep -Fq 'kind: ClusterTrainingRuntime' <<<"$out" \
+            || { echo "FAIL: trainer-only render has no bundled ClusterTrainingRuntimes." >&2; exit 1; }
+          # The bundled runtimes must be applied by the server-side-apply Job, never
+          # rendered as top-level manifests: as Helm hooks (before-hook-creation) they are
+          # deleted on every upgrade, which hangs on the trainer.kubeflow.org/resource-in-use
+          # finalizer while any TrainJob uses them; as release resources, runtimes created
+          # by older chart versions block the upgrade on Helm's ownership check.
+          if grep -Eq '^kind: ClusterTrainingRuntime$' <<<"$out"; then
+            echo "FAIL: a bundled ClusterTrainingRuntime is rendered as a top-level manifest; it must go through files/runtimes/ and the runtimes-applier Job." >&2; exit 1
+          fi
+          grep -Fq 'name: kubeflow-trainer-runtimes-applier' <<<"$out" \
+            || { echo "FAIL: the runtimes-applier hook Job is missing from the trainer-only render." >&2; exit 1; }
+          # Inspect the bundled runtimes by parsing the applier ConfigMap with yq (preinstalled
+          # on ubuntu-latest) rather than by indentation, so a reformat can't break or blind
+          # these checks. rt_docs prints the runtime documents from the ConfigMap data.
+          rt_docs() { yq 'select(.kind == "ConfigMap" and .metadata.name == "kubeflow-trainer-runtimes-applier") | .data[] | "---\n" + .' <<<"$1"; }
+          # The applier prunes runtimes it applied earlier by label, so every bundled
+          # runtime must carry the label, and its ClusterRole must allow delete.
+          rts="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f "$vals" \
+            --set trainer.runtimes.torchtune.enabled=true)"
+          n_rt="$(rt_docs "$rts" | yq -N 'select(.kind == "ClusterTrainingRuntime") | .metadata.name' | grep -c . || true)"
+          unlabelled="$(rt_docs "$rts" | yq -N 'select(.kind == "ClusterTrainingRuntime" and .metadata.labels."app.kubernetes.io/managed-by" != "kubeflow-trainer-runtimes-applier") | .metadata.name')"
+          [ "$n_rt" -eq 6 ] && [ -z "$unlabelled" ] \
+            || { echo "FAIL: expected 6 bundled runtimes (torchtune on), all labelled app.kubernetes.io/managed-by=kubeflow-trainer-runtimes-applier; got $n_rt, unlabelled: ${unlabelled:-none}." >&2; exit 1; }
+          yq -e 'select(.kind == "ClusterRole" and .metadata.name == "kubeflow-trainer-runtimes-applier") | .rules[].verbs[] | select(. == "delete")' <<<"$rts" >/dev/null \
+            || { echo "FAIL: the runtimes-applier ClusterRole cannot delete runtimes (needed for pruning)." >&2; exit 1; }
+          # trainer.runtimes.istioSidecar must reach every bundled runtime pod template
+          # (torchtune included): disabled -> inject "false", native -> nativeSidecar
+          # "true", default -> neither. A regular sidecar outlives the training
+          # container, so a template that misses the annotation never completes.
+          for mode in disabled native default; do
+            out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f "$vals" \
+              --set trainer.runtimes.torchtune.enabled=true --set trainer.runtimes.istioSidecar="$mode")"
+            # One line per pod template: "<inject>/<nativeSidecar>", "-" when unset.
+            anns="$(rt_docs "$out" | yq -N '.spec.template.spec.replicatedJobs[].template.spec.template
+              | (.metadata.annotations."sidecar.istio.io/inject" // "-") + "/" + (.metadata.annotations."sidecar.istio.io/nativeSidecar" // "-")')"
+            case "$mode" in
+              disabled) want='false/-' ;;
+              native)   want='-/true' ;;
+              default)  want='-/-' ;;
+            esac
+            pods="$(grep -c . <<<"$anns" || true)"
+            bad="$(grep -vxF "$want" <<<"$anns" | sort | uniq -c || true)"
+            [ "$pods" -ge 14 ] && [ -z "$bad" ] \
+              || { echo "FAIL: istioSidecar=$mode: want every runtime pod template to be '$want' (inject/nativeSidecar); $pods templates, mismatches: ${bad:-none}" >&2; exit 1; }
+          done
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f "$vals" \
+            --set trainer.runtimes.enabled=false --set trainer.runtimes.torchtune.enabled=true)"
+          if grep -Fq 'kind: ClusterTrainingRuntime' <<<"$out"; then
+            echo "FAIL: trainer.runtimes.enabled=false still renders ClusterTrainingRuntimes (torchtune.enabled=true must not override it)." >&2; exit 1
+          fi
+          # ...and, offline (lookup finds no runtimes to prune), no applier Job either: a
+          # bring-your-own-runtimes install must not need the kubectl image or the
+          # application-collection pull secret. On a cluster the Job renders while
+          # runtimes it applied earlier still exist, and prunes them.
+          if yq -e 'select(.kind == "Job" and .metadata.name == "kubeflow-trainer-runtimes-applier")' <<<"$out" >/dev/null 2>&1; then
+            echo "FAIL: with trainer.runtimes.enabled=false and nothing to prune, the runtimes-applier Job still renders." >&2; exit 1
+          fi
+          # Cross-component guards must fail closed when a dependency is re-enabled.
+          for bad in "profiles.enabled=true:requires kubeflowRoles.enabled=true" \
+                     "profiles.enabled=true,kubeflowRoles.enabled=true:  - profiles.enabled" \
+                     "notebooks.webApp.enabled=true:  - notebooks.webApp.enabled" \
+                     "katib.enabled=true:  - katib.enabled" \
+                     "tensorboard.controller.enabled=true:  - tensorboard.controller.enabled" \
+                     "userNamespace.enabled=true:requires profiles.enabled=true"; do
+            set_arg="${bad%%:*}"; want="${bad#*:}"
+            if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
+                -f "$vals" --set "$set_arg" 2>&1)"; then
+              echo "FAIL: trainer-only + --set $set_arg rendered; the cross-component guard should reject it." >&2; exit 1
+            fi
+            grep -Fq "$want" <<<"$err" \
+              || { echo "FAIL: trainer-only + --set $set_arg failed, but not on the expected guard. Got:" >&2; echo "$err" >&2; exit 1; }
+          done
+          # externalSecrets is not tied to Profiles: with ESO, trainer-only installs can
+          # propagate pull secrets to their own namespaces (the guide's example values).
+          # The ESO-API guard is skipped offline, so this must render.
+          sel='{"enabled":true,"namespaceSelector":{"matchLabels":{"app.kubernetes.io/part-of":null,"suse.com/trainjob-pull-secrets":"true"}}}'
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f "$vals" \
+            --set-json "externalSecrets=$sel" -s templates/external-secrets/ClusterExternalSecret.yaml)"
+          grep -Fq 'suse.com/trainjob-pull-secrets: "true"' <<<"$out" && ! grep -Fq 'kubeflow-profile' <<<"$out" \
+            || { echo "FAIL: trainer-only + externalSecrets with a custom namespaceSelector did not render the expected selector. Got:" >&2; echo "$out" >&2; exit 1; }
+          echo "OK: trainer-only overrides render only Namespace + trainer + test-trainer, no Istio/cert-manager/Profile, and its guards fail closed."
+
+      - name: helm template (trainer-only detection is explicit and covers every component)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # kubeflow.trainerOnly (templates/_helpers.tpl) selects the NOTES banner that
+          # installTrainerOnly.sh uses to recognise a trainer-only release. Check that it
+          # lists every component toggle from Chart.yaml, and how it decides.
+          helper="$(sed -n '/define "kubeflow.trainerOnly"/,/end -}}/p' kubeflow/templates/_helpers.tpl)"
+          addons='certManager\.install|externaldns\.enabled|externalSecretsOperator\.enabled|monitoring\.enabled|networkPolicies\.enabled|trainer\.enabled'
+          missing=""
+          for t in $(awk '/^\s*condition:/{print $2}' kubeflow/Chart.yaml | sort -u | grep -vxE "$addons"); do
+            grep -Fq "\$v.$t" <<<"$helper" || missing="$missing $t"
+          done
+          [ -z "$missing" ] \
+            || { echo "FAIL: kubeflow.trainerOnly does not check:$missing. Add them to \$others in templates/_helpers.tpl (or to the add-on list here if they add no Kubeflow component)." >&2; exit 1; }
+          tmp="$(mktemp -d)"; cp -r kubeflow "$tmp/"
+          printf 'apiVersion: v1\nkind: ConfigMap\nmetadata: {name: ci-trainer-only}\ndata:\n  trainerOnly: {{ include "kubeflow.trainerOnly" . | quote }}\n' \
+            > "$tmp/kubeflow/templates/zz-ci-trainer-only.yaml"
+          check() { # want, description, helm args...
+            want="$1"; desc="$2"; shift 2
+            got="$(helm template ci "$tmp/kubeflow" --kube-version "$KUBE_VERSION" -n kubeflow "$@" \
+              -s templates/zz-ci-trainer-only.yaml | sed -n 's/^ *trainerOnly: "\(.*\)"$/\1/p')"
+            [ "$got" = "$want" ] || { echo "FAIL: kubeflow.trainerOnly for $desc is '$got', want '$want'." >&2; exit 1; }
+          }
+          vals=kubeflow/trainer-only-overrides.yaml
+          check true "the trainer-only preset" -f "$vals"
+          check true "the preset plus add-ons" -f "$vals" --set networkPolicies.enabled=true \
+            --set network-policies.knativeServingPolicies.enabled=false --set monitoring.enabled=true
+          check "" "the preset plus the notebook controller without Istio" -f "$vals" \
+            --set notebooks.controller.enabled=true --set notebook-controller.configMapData.USE_ISTIO=false
+          check "" "the preset with Trainer off" -f "$vals" --set trainer.enabled=false
+          check "" "default values" --set global.demoMode=true
+          echo "OK: kubeflow.trainerOnly covers every component toggle and detects trainer-only releases explicitly."
+
+      - name: helm template (istioResources guard and preflight cert-manager list cover every component)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          # The istioResources guard (validations.yaml) and the preflight's
+          # kubeflow.needsCertManager list (_helpers.tpl) are maintained by hand. Derive every sub-chart toggle
+          # from Chart.yaml and fail if a component renders Istio / cert-manager
+          # resources without being covered, so a new or changed component cannot
+          # silently reintroduce mid-install "no matches for kind" failures.
+          # Limitation: Istio resources a controller creates at RUNTIME (notebook and
+          # TensorBoard controllers) are invisible to helm template and stay listed by
+          # hand in validations.yaml.
+          set -euo pipefail
+          vals=kubeflow/trainer-only-overrides.yaml
+          # Every sub-chart toggle, taken from the dependency conditions in Chart.yaml, so a
+          # new component is covered without editing this step. certManager.install deploys
+          # cert-manager itself and istioResources.enabled is the switch under test.
+          toggles="$(awk '/^\s*condition:/{print $2}' kubeflow/Chart.yaml | sort -u \
+            | grep -vxE 'certManager\.install|istioResources\.enabled')"
+          # Messages of the chart's cross-component guards (validations.yaml).
+          known_guards='istioResources\.enabled=false is meant for installs without Istio|requires (pipelines|profiles|kubeflowRoles)\.enabled=true|networkPolicies\.enabled=true with knativeServing\.enabled=false'
+          fail=0
+          for t in $toggles; do
+            # 1. Istio list (validations.yaml): with Istio resources off, a toggle must either be
+            #    refused by the chart or render no Istio resources.
+            #    Only the chart's own guard messages count as "refused": any other render
+            #    error (e.g. a broken template) must fail this step instead of passing it.
+            if out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
+                -f "$vals" --set global.demoMode=true --set "$t=true" 2>&1)"; then
+              if grep -Eq '^apiVersion: [a-z.]*istio\.io/' <<<"$out"; then
+                echo "FAIL: $t=true with istioResources.enabled=false renders Istio resources but is not refused. Add it to the istioResources guard in kubeflow/templates/validations.yaml." >&2
+                fail=1
+              fi
+            elif ! grep -Eq "$known_guards" <<<"$out"; then
+              echo "FAIL: $t=true with istioResources.enabled=false failed to render for a reason other than a known chart guard:" >&2
+              grep -m3 -E 'Error|error' <<<"$out" >&2 || true
+              fail=1
+            fi
+            # 2. cert-manager list (preflight Job): if a toggle renders cert-manager resources,
+            #    the preflight must run its cert-manager CRD check for it. Enable only what the
+            #    chart's own guards require alongside the toggle.
+            deps=(--set profiles.enabled=true --set kubeflowRoles.enabled=true)
+            case "$t" in
+              hub.enabled)             deps+=(--set pipelines.enabled=true) ;;
+              networkPolicies.enabled) deps+=(--set network-policies.knativeServingPolicies.enabled=false) ;;
+            esac
+            if out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
+                -f "$vals" --set global.demoMode=true --set istioResources.enabled=true \
+                --set preflightChecks.enabled=true --set "$t=true" "${deps[@]}" 2>&1)"; then
+              if grep -Eq '^apiVersion: cert-manager\.io/' <<<"$out" \
+                 && grep -Fq 'cert-manager CRDs... skipped' <<<"$out"; then
+                echo "FAIL: $t=true renders cert-manager resources but the preflight skips the cert-manager check. Add it to kubeflow.needsCertManager in kubeflow/templates/_helpers.tpl." >&2
+                fail=1
+              fi
+            else
+              echo "FAIL: $t=true does not render with its prerequisites; extend the deps case in this step:" >&2
+              echo "$out" | grep -m3 -E 'Error|fail' >&2 || true
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "OK: the istioResources guard and the preflight cert-manager list cover every sub-chart toggle ($(wc -w <<<"$toggles") checked)."
+
       - name: helm template (KServe external-HTTPS opt-in)
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
@@ -499,6 +700,24 @@ jobs:
             || { echo "FAIL: kserve inferenceservice-config ingressGateway is not '${custom_ns}/${custom_name}'." >&2; exit 1; }
 
           echo "OK: all three consumers of kserveGateway.name are in sync under override ($custom_ns/$custom_name)."
+
+      - name: kubectl image tags stay consistent
+        run: |
+          set -euo pipefail
+          # The chart pulls containers/kubectl for the Trainer runtimes applier
+          # (trainer.runtimes.applier.image), the preflight and webhook-secret-migration
+          # hooks (preflightChecks.image) and the kserve-config helm test
+          # (testImages.kubectl). Keep them on one tag so there is one image to mirror.
+          # Any containers/kubectl pin in a values.yaml counts, so a new consumer is
+          # covered too.
+          refs="$(grep -rn --include=values.yaml -A2 'repository: containers/kubectl' kubeflow \
+            | grep -E 'tag: ' | sed -E 's/^([^-]+)-[0-9]+-\s*tag:\s*/\1 /')"
+          echo "$refs"
+          [ "$(wc -l <<<"$refs")" -ge 3 ] \
+            || { echo "FAIL: expected at least 3 containers/kubectl images (applier, preflight, helm test); found:" >&2; echo "$refs" >&2; exit 1; }
+          [ "$(awk '{print $2}' <<<"$refs" | sort -u | wc -l)" -eq 1 ] \
+            || { echo "FAIL: containers/kubectl is pinned to different tags; bump them together." >&2; exit 1; }
+          echo "OK: all containers/kubectl images use tag $(awk 'NR==1{print $2}' <<<"$refs")."
 
       - name: helm template (opt-in security guards fail closed)
         if: ${{ env.APPCO_TOKEN != '' }}

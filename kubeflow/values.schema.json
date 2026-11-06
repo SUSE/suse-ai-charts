@@ -384,6 +384,34 @@
         "enabled": { "type": "boolean" }
       }
     },
+    "istioResources": {
+      "type": "object",
+      "description": "kubeflow-istio-resources sub-chart (Gateways, VirtualServices, AuthorizationPolicies). Requires Istio CRDs.",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "kubeflowRoles": {
+      "type": "object",
+      "description": "kubeflow-roles sub-chart (kubeflow-{admin,edit,view} aggregated ClusterRoles).",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "admissionWebhook": {
+      "type": "object",
+      "description": "PodDefaults admission webhook. Requires cert-manager CRDs.",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "userNamespace": {
+      "type": "object",
+      "description": "user-namespace sub-chart (default Profile + additionalUsers). Requires profiles.enabled=true.",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
     "volumesWebApp": {
       "type": "object",
       "properties": {
