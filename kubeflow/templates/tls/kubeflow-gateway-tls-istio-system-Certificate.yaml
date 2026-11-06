@@ -1,6 +1,6 @@
 {{- $kir := index .Values "kubeflow-istio-resources" }}
 {{- $tls := $kir.tls | default dict }}
-{{- $tlsSource := $tls.source | default "" }}
+{{- $tlsSource := include "kubeflow.tlsSource" . }}
 {{- if and $tlsSource (ne $tlsSource "secret") }}
 {{- $host := $kir.hostname | default "kubeflow.local" }}
 apiVersion: cert-manager.io/v1

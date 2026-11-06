@@ -11,6 +11,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
     sidecar.istio.io/nativeSidecar: "true"
 spec:
+  {{- include "kubeflow.imagePullSecrets" . | trim | nindent 2 }}
   restartPolicy: Never
   containers:
   - name: test

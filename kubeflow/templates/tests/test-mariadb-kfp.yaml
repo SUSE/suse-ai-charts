@@ -1,3 +1,4 @@
+{{- if and .Values.pipelines.enabled .Values.pipelines.mariadb.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -10,6 +11,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
     sidecar.istio.io/nativeSidecar: "true"
 spec:
+  {{- include "kubeflow.imagePullSecrets" . | trim | nindent 2 }}
   restartPolicy: Never
   containers:
   - name: test
@@ -21,3 +23,4 @@ spec:
       nc -zw 5 mysql.kubeflow.svc.cluster.local 3306 \
         && echo "KFP MariaDB port reachable" \
         || (echo "KFP MariaDB TCP check failed" && exit 1)
+{{- end }}

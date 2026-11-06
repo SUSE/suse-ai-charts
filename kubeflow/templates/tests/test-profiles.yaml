@@ -1,3 +1,4 @@
+{{- if .Values.profiles.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -10,6 +11,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
     sidecar.istio.io/nativeSidecar: "true"
 spec:
+  {{- include "kubeflow.imagePullSecrets" . | trim | nindent 2 }}
   restartPolicy: Never
   containers:
   - name: test
@@ -21,3 +23,4 @@ spec:
       nc -zw 5 profiles-kfam.kubeflow.svc.cluster.local 8081 \
         && echo "Profiles controller port reachable" \
         || (echo "Profiles controller TCP check failed" && exit 1)
+{{- end }}

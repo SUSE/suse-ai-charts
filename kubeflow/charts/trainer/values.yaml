@@ -57,8 +57,48 @@ jobset:
     pullPolicy: IfNotPresent
 
 # ClusterTrainingRuntime instances bundled with the chart
+# The runtime manifests live in files/runtimes/ and are applied by a post-install/
+# post-upgrade Job with `kubectl apply --server-side`, so upgrades update them in place.
+# (As Helm hooks they were deleted and recreated on every upgrade, which hangs on the
+# trainer.kubeflow.org/resource-in-use finalizer while any TrainJob uses them.)
+# They are not release resources. The Job labels them
+# (app.kubernetes.io/managed-by=kubeflow-trainer-runtimes-applier) and deletes labelled
+# runtimes that are no longer in the set, e.g. after torchtune.enabled=false. With
+# enabled=false the Job runs only while runtimes it applied still exist (lookup), removes
+# them, and is then skipped, so bring-your-own installs need no kubectl image. Offline
+# renders can't see them; helm uninstall leaves them in place.
 runtimes:
   enabled: true
+  # Istio sidecar mode for the training pods of the bundled runtimes:
+  #   disabled (default): sidecar.istio.io/inject "false". Pods leave the mesh (no mTLS
+  #             or AuthorizationPolicy). Works without Istio and with registry policies
+  #             that refuse the Istio proxy image. A regular sidecar would outlive the
+  #             training container, so pods would never complete.
+  #   native:   sidecar.istio.io/nativeSidecar "true". The sidecar stops with the pod,
+  #             so pods complete inside the mesh. Use on full-platform installs that
+  #             want mTLS for training traffic (e.g. torch rendezvous ports).
+  #   default:  no annotation; the namespace's injection setting decides.
+  istioSidecar: disabled
+  # Extra annotations for the training pod templates of the bundled runtimes. They win
+  # over the istioSidecar annotation on conflicts.
+  podAnnotations: {}
+  # kubectl image for the Job that applies the runtimes (dp.apps.rancher.io, so it needs
+  # the application-collection pull secret). Keep the tag equal to the umbrella chart's
+  # preflightChecks.image and testImages.kubectl (CI checks this).
+  applier:
+    image:
+      registry: dp.apps.rancher.io
+      repository: containers/kubectl
+      tag: "1.36.2"
+      pullPolicy: IfNotPresent
+    # Set so the Job also runs in namespaces whose ResourceQuota requires requests/limits.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
   deepspeed:
     image:
       registry: registry.suse.com
@@ -78,7 +118,8 @@ runtimes:
         repository: ai/containers/pytorch/pytorch
         tag: 2.11.0-cuda12.8-cudnn9-runtime
         pullPolicy: IfNotPresent
-  # TorchTune fine-tuning runtimes (Llama3, Qwen2.5) — requires GPU + HuggingFace token
+  # TorchTune fine-tuning runtimes (Llama3, Qwen2.5) — requires GPU + HuggingFace token.
+  # Only applied when runtimes.enabled is also true.
   # Disabled by default; enable when running LLM fine-tuning workloads
   torchtune:
     enabled: false

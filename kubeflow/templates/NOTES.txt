@@ -1,4 +1,18 @@
 
+{{- $trainerOnly := eq (include "kubeflow.trainerOnly" .) "true" }}
+{{- /* installTrainerOnly.sh recognises a trainer-only release by the banner line
+       "Kubeflow Trainer has been installed!"; keep the two in sync. */}}
+{{- if $trainerOnly }}
+{{- $tr := .Values.trainer | default dict }}
+===============================================================================
+  Kubeflow Trainer has been installed!
+===============================================================================
+
+Kubeflow Trainer version: {{ dig "image" "tag" "unknown" $tr }}
+JobSet version: {{ dig "jobset" "image" "tag" "unknown" $tr }}
+Release name: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+{{- else }}
 ===============================================================================
   Kubeflow has been installed!
 ===============================================================================
@@ -6,11 +20,12 @@
 Kubeflow version: {{ .Chart.AppVersion }}
 Release name: {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}
+{{- end }}
 
 {{- $unsCreds := (index .Values "user-namespace").pipelines.seaweedfs }}
-{{- $usingDemoSeaweedCreds  := and (eq ($unsCreds.accessKey | default "kubeflow") "kubeflow") (eq ($unsCreds.secretKey | default "kubeflow123") "kubeflow123") }}
-{{- $usingDemoDexSecret     := contains "pUBnBOY80Sn" (.Values.dex.config.staticClients | toJson) }}
-{{- $usingDemoUserCreds     := eq .Values.auth.initialUser.email "user@example.com" }}
+{{- $usingDemoSeaweedCreds  := and .Values.pipelines.enabled (eq ($unsCreds.accessKey | default "kubeflow") "kubeflow") (eq ($unsCreds.secretKey | default "kubeflow123") "kubeflow123") }}
+{{- $usingDemoDexSecret     := and .Values.dex.enabled (contains "pUBnBOY80Sn" (.Values.dex.config.staticClients | toJson)) }}
+{{- $usingDemoUserCreds     := and .Values.dex.enabled (eq .Values.auth.initialUser.email "user@example.com") }}
 {{- if or $usingDemoSeaweedCreds $usingDemoDexSecret $usingDemoUserCreds }}
 ⚠ ⚠ ⚠  SECURITY WARNING  ⚠ ⚠ ⚠
 -------------------------------------------------------------------------------
@@ -31,6 +46,20 @@ this deployment to any network or storing sensitive data.
 {{- end }}
 -------------------------------------------------------------------------------
 {{- end }}
+{{- if and (or .Values.notebooks.controller.enabled .Values.notebooks.webApp.enabled) (not .Values.admissionWebhook.enabled) }}
+
+⚠ Notebooks are enabled but admissionWebhook.enabled=false: PodDefaults are not
+  applied to notebook pods.
+{{- end }}
+{{- if not .Values.istioResources.enabled }}
+
+GETTING STARTED (Istio resources disabled)
+------------------------------------------
+
+1. Wait for the controllers to be ready:
+
+   kubectl get pods -n {{ .Release.Namespace }} -w
+{{- else }}
 
 GETTING STARTED
 ---------------
@@ -42,10 +71,9 @@ GETTING STARTED
 2. Get the Kubeflow dashboard URL:
 
 {{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- $tls := $kir.tls | default dict }}
 {{- if $kir.hostname }}
    Hostname: {{ $kir.hostname }}
-{{- if ne ($tls.source | default "") "" }}
+{{- if include "kubeflow.tlsSource" . }}
    Dashboard URL: https://{{ $kir.hostname }}
 {{- else }}
    Dashboard URL: http://{{ $kir.hostname }}
@@ -70,6 +98,8 @@ GETTING STARTED
    Email: {{ .Values.auth.initialUser.email }}
    Password: 12341234  (update hash in dex.config.staticPasswords to change)
 
+{{- end }}
+
 COMPONENTS INSTALLED
 --------------------
 
@@ -88,9 +118,47 @@ COMPONENTS INSTALLED
 {{- if .Values.trainingOperator.enabled }}
 ✓ Training Operator (TFJob, PyTorchJob, etc.)
 {{- end }}
+{{- if .Values.trainer.enabled }}
+✓ Kubeflow Trainer V2 (TrainJob, TrainingRuntime, ClusterTrainingRuntime) + JobSet
+{{- end }}
 {{- if .Values.tensorboard.controller.enabled }}
 ✓ TensorBoard
 {{- end }}
+{{- if not .Values.istioResources.enabled }}
+{{- if .Values.trainer.enabled }}
+
+NEXT STEPS
+----------
+
+1. List the available runtimes:
+
+   kubectl get clustertrainingruntimes
+{{- if not .Values.trainer.runtimes.enabled }}
+   (the bundled runtimes are disabled: trainer.runtimes.enabled=false)
+{{- end }}
+
+2. Submit a TrainJob with the Kubeflow SDK or kubectl:
+   https://www.kubeflow.org/docs/components/trainer/
+
+3. Run the chart tests:
+
+   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+{{- end }}
+
+DOCUMENTATION
+-------------
+{{ if .Values.trainer.enabled }}
+- Kubeflow Trainer: https://www.kubeflow.org/docs/components/trainer/
+{{- end }}
+{{- if $trainerOnly }}
+- Trainer-only install guide: docs/use-cases/trainer-only-install.md in the chart
+{{- else }}
+- Kubeflow: https://www.kubeflow.org/docs/
+- Installs without Istio: docs/use-cases/trainer-only-install.md in the chart
+  ("Adding other Kubeflow components later")
+- Chart README: See README.md for full configuration reference
+{{- end }}
+{{- else }}
 
 NEXT STEPS
 ----------
@@ -150,5 +218,6 @@ If you encounter issues:
 
 3. Check Istio ingress:
    kubectl get svc -n istio-system istio
+{{- end }}
 
 ===============================================================================

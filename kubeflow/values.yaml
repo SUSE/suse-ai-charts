@@ -252,8 +252,21 @@ certManager:
 # Uses oci://dp.apps.rancher.io/charts/istio
 istio:
   install: false  # Set true only if installing Istio via this chart (not recommended)
+  # Not read by any template (kept so existing override files stay valid). To turn
+  # off the Kubeflow Gateways/VirtualServices/AuthorizationPolicies use
+  # istioResources.enabled below.
   gateway:
     enabled: true
+
+# Kubeflow Istio resources (kubeflow-istio-resources sub-chart): the kubeflow-gateway
+# and kserve-ingress-gateway Gateways, the Dex/oauth2-proxy VirtualServices, the
+# gateway AuthorizationPolicies/EnvoyFilters and the kubeflow-istio-* ClusterRoles.
+# Requires Istio CRDs. Disable only for installs without Istio (e.g. trainer-only,
+# see docs/use-cases/trainer-only-install.md). Every component that needs Istio must then be
+# disabled too; the chart fails fast and lists the ones still enabled (the list lives in
+# templates/validations.yaml).
+istioResources:
+  enabled: true
 
 # KServe / Knative external access — single source of truth.
 # See global.kserveDomain and global.kserveExternalHttps above.
@@ -560,6 +573,19 @@ trainer:
 profiles:
   enabled: true
 
+# Kubeflow aggregated ClusterRoles (kubeflow-roles sub-chart): kubeflow-{admin,edit,view}
+# and kubeflow-kubernetes-{admin,edit,view}. Component charts aggregate their rules
+# into these; Profiles binds them to users. Not needed for a trainer-only install.
+kubeflowRoles:
+  enabled: true
+
+# PodDefaults admission webhook (admission-webhook sub-chart). Injects PodDefaults
+# into notebook pods. Requires cert-manager CRDs (it ships a cert-manager Issuer and
+# Certificate). Disable for installs without cert-manager; notebooks then run without
+# PodDefaults.
+admissionWebhook:
+  enabled: true
+
 # Volumes Web App
 # pvcviewer-controller is automatically deployed together with volumes-web-app
 # (Chart.yaml condition: volumesWebApp.enabled) — no separate toggle needed.
@@ -588,11 +614,22 @@ networkPolicies:
 # Validates: default StorageClass exists, cert-manager CRDs present.
 preflightChecks:
   enabled: false  # set true to enable preflight validation on install/upgrade
+  # Same kubectl image as trainer.runtimes.applier.image and testImages.kubectl;
+  # keep the tags equal (CI checks this).
   image:
     registry: dp.apps.rancher.io
     repository: containers/kubectl
     tag: "1.36.2"
     pullPolicy: IfNotPresent
+  # For the preflight and webhook-secret-migration Jobs; set so they also run in
+  # namespaces whose ResourceQuota requires requests/limits.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 # Observability — ServiceMonitors + PrometheusRules.
 # Requires Rancher Monitoring (kube-prometheus-stack) to be installed first.
@@ -943,6 +980,12 @@ externaldns:
 #     annotations: {}
 
 # --- User Namespace ---
+# Toggle for the user-namespace sub-chart (the kubeflow-user-example-com Profile plus
+# additionalUsers, and their per-namespace KFP servers and AuthorizationPolicies).
+# Requires profiles.enabled=true (the Profile CRD ships with profiles-and-kfam).
+userNamespace:
+  enabled: true
+
 user-namespace:
   # Additional user profiles. Each entry creates a Profile CR and deploys all
   # KFP per-namespace resources (artifact server, viz server, credentials,
@@ -985,10 +1028,11 @@ testImages:
     repository: containers/mariadb
     tag: "11.8.8-10.1"
     pullPolicy: IfNotPresent
-  # kubectl for Kubernetes API tests
+  # kubectl for Kubernetes API tests. Keep the tag equal to preflightChecks.image and
+  # trainer.runtimes.applier.image (CI checks this).
   kubectl:
     registry: dp.apps.rancher.io
     repository: containers/kubectl
-    tag: "1.34.5"
+    tag: "1.36.2"
     pullPolicy: IfNotPresent
 

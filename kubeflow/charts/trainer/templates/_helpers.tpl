@@ -99,3 +99,60 @@ Usage: {{ include "trainer.suseImageRegistry" (dict "ctx" . "registry" <SIBLING>
   {{- .registry -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Return the SUSE Application Collection registry (dp.apps.rancher.io images such as kubectl).
+Precedence: global.imageRegistry > global.suseApplicationCollectionRegistry > component image.registry
+Usage: {{ include "trainer.suseApplicationCollectionRegistry" (dict "ctx" . "registry" <SIBLING>.registry) }}
+*/}}
+{{- define "trainer.suseApplicationCollectionRegistry" -}}
+{{- $ctx := .ctx -}}
+{{- if $ctx.Values.global.imageRegistry -}}
+  {{- $ctx.Values.global.imageRegistry -}}
+{{- else if $ctx.Values.global.suseApplicationCollectionRegistry -}}
+  {{- $ctx.Values.global.suseApplicationCollectionRegistry -}}
+{{- else -}}
+  {{- .registry -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Pod-template metadata for the bundled runtimes: the Istio sidecar mode
+(runtimes.istioSidecar) plus runtimes.podAnnotations, which win on conflicts.
+  disabled: sidecar.istio.io/inject "false". Training pods leave the mesh: a regular
+            sidecar outlives the training container, so pods would never complete.
+  native:   sidecar.istio.io/nativeSidecar "true". The sidecar runs as a native
+            (init) sidecar that stops with the pod, so pods complete inside the mesh
+            (mTLS, AuthorizationPolicies); same pattern as the chart's test pods.
+  default:  no Istio annotation; the namespace's injection setting applies.
+Renders nothing when there are no annotations.
+*/}}
+{{- define "trainer.runtimePodMetadata" -}}
+{{- $mode := .Values.runtimes.istioSidecar | default "disabled" -}}
+{{- $a := dict -}}
+{{- if eq $mode "disabled" -}}
+{{-   $_ := set $a "sidecar.istio.io/inject" "false" -}}
+{{- else if eq $mode "native" -}}
+{{-   $_ := set $a "sidecar.istio.io/nativeSidecar" "true" -}}
+{{- else if ne $mode "default" -}}
+{{-   fail (printf "trainer.runtimes.istioSidecar must be one of disabled, native, default (got %q)" $mode) -}}
+{{- end -}}
+{{- $a = merge (deepCopy (.Values.runtimes.podAnnotations | default dict)) $a -}}
+{{- if $a -}}
+metadata:
+  annotations:
+    {{- toYaml $a | nindent 4 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Labels on the bundled ClusterTrainingRuntimes. The runtimes applier Job selects on
+managed-by + instance to prune runtimes that are no longer in the chart (renamed,
+dropped, or switched off such as torchtune.enabled=false).
+*/}}
+{{- define "trainer.runtimeLabels" -}}
+app.kubernetes.io/managed-by: kubeflow-trainer-runtimes-applier
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- /* Not helm.sh/chart: Helm doesn't own these objects. */}}
+trainer.kubeflow.org/bundled-runtime-version: {{ .Chart.Version | replace "+" "_" | quote }}
+{{- end -}}

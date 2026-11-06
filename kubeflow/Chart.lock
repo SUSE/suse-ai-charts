@@ -46,7 +46,7 @@ dependencies:
   version: 0.3.0
 - name: trainer
   repository: file://./charts/trainer
-  version: 0.2.1
+  version: 0.2.2
 - name: profiles-and-kfam
   repository: file://./charts/profiles-and-kfam
   version: 0.2.1
@@ -76,7 +76,7 @@ dependencies:
   version: 0.2.2
 - name: network-policies
   repository: file://./charts/network-policies
-  version: 0.1.0
+  version: 0.1.1
 - name: monitoring
   repository: file://./charts/monitoring
   version: 0.1.0
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:86ea748ea9da5aea9fdfdb4ed04a0200494361d4137f186fe420d1de4e9a2d6b
+digest: sha256:1eb9d349d10a9988ccbe44599727626b6da6e7d3889f6664f255f4c12ac80b7b
 generated: "2026-10-30T11:09:32.476562633-07:00"

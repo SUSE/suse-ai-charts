@@ -1,3 +1,4 @@
+{{- if .Values.pipelines.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -10,6 +11,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
     sidecar.istio.io/nativeSidecar: "true"
 spec:
+  {{- include "kubeflow.imagePullSecrets" . | trim | nindent 2 }}
   restartPolicy: Never
   containers:
   - name: test
@@ -21,3 +23,4 @@ spec:
       wget -qO- --timeout=10 http://ml-pipeline.kubeflow.svc.cluster.local:8888/apis/v1beta1/healthz \
         && echo "KFP API healthy" \
         || (echo "KFP API health check failed" && exit 1)
+{{- end }}
