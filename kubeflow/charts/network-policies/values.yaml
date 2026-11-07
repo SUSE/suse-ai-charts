@@ -1,3 +1,9 @@
 # Network policy configuration.
 # Set enabled: false for CNI plugins that do not enforce NetworkPolicy (e.g., bare Flannel).
 enabled: true
+
+# Policies rendered into the knative-serving namespace (deny-all plus the allow rules
+# Knative/KServe need). Set false when Knative Serving is not installed (e.g. a
+# trainer-only install): the namespace does not exist and the install would fail.
+knativeServingPolicies:
+  enabled: true

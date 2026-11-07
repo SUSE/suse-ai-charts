@@ -2,13 +2,10 @@
 apiVersion: trainer.kubeflow.org/v1alpha1
 kind: ClusterTrainingRuntime
 metadata:
-  name: mlx-distributed
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-weight: "5"
-    helm.sh/hook-delete-policy: before-hook-creation
+  name: deepspeed-distributed
   labels:
-    trainer.kubeflow.org/framework: mlx
+    trainer.kubeflow.org/framework: deepspeed
+    {{- include "trainer.runtimeLabels" . | nindent 4 }}
 spec:
   mlPolicy:
     numNodes: 1
@@ -33,20 +30,22 @@ spec:
                 trainer.kubeflow.org/trainjob-ancestor-step: trainer
             spec:
               template:
+                {{- include "trainer.runtimePodMetadata" . | nindent 16 }}
                 spec:
                   containers:
                     - name: node
-                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.mlx.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.mlx.image.repository }}{{- if .Values.runtimes.mlx.image.digest }}@{{ .Values.runtimes.mlx.image.digest }}{{- else }}:{{ .Values.runtimes.mlx.image.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.deepspeed.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
         - name: node
           template:
             spec:
               template:
+                {{- include "trainer.runtimePodMetadata" . | nindent 16 }}
                 spec:
                   containers:
                     - name: node
-                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.mlx.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.mlx.image.repository }}{{- if .Values.runtimes.mlx.image.digest }}@{{ .Values.runtimes.mlx.image.digest }}{{- else }}:{{ .Values.runtimes.mlx.image.tag }}{{- end }}"
+                      image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.deepspeed.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.deepspeed.image.repository }}{{- if .Values.runtimes.deepspeed.image.digest }}@{{ .Values.runtimes.deepspeed.image.digest }}{{- else }}:{{ .Values.runtimes.deepspeed.image.tag }}{{- end }}"
                       securityContext:
                         runAsUser: 1000
                       command:

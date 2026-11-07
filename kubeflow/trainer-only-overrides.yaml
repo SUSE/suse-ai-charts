@@ -1,0 +1,89 @@
+# ============================================================================
+# TRAINER-ONLY OVERRIDES
+# Deploys only Kubeflow Trainer V2 (TrainJob / TrainingRuntime /
+# ClusterTrainingRuntime) with JobSet. No Istio, cert-manager, Dex/oauth2-proxy,
+# Profiles or KFP are needed.
+#
+#   helm upgrade --install kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+#     --version <chart-version> -n kubeflow -f trainer-only-overrides.yaml \
+#     --force-conflicts --server-side=true --wait --timeout 10m
+#
+# The kubeflow namespace must exist with Helm ownership labels first, and pull
+# secrets are needed: see docs/use-cases/trainer-only-install.md for all steps.
+# installTrainerOnly.sh and CI use this file as well.
+#
+# If you ship your own ClusterTrainingRuntimes (e.g. SUSE AI Factory's aif-*
+# runtimes), also set trainer.runtimes.enabled=false.
+# ============================================================================
+
+# --- Trainer V2 (includes the JobSet CRD and controller) ---
+trainer:
+  enabled: true
+  runtimes:
+    # Bundled torch-distributed, deepspeed-distributed and mlx-distributed
+    # ClusterTrainingRuntimes. Set false if you bring your own runtimes.
+    enabled: true
+
+# --- Infrastructure sub-charts that need Istio / cert-manager / Profiles ---
+istioResources:
+  enabled: false     # Gateways, VirtualServices, AuthorizationPolicies (Istio CRDs)
+admissionWebhook:
+  enabled: false     # PodDefaults webhook (cert-manager Issuer + Certificate)
+userNamespace:
+  enabled: false     # kubeflow-user-example-com Profile + per-namespace KFP servers
+kubeflowRoles:
+  enabled: false     # kubeflow-{admin,edit,view} aggregated ClusterRoles (used by Profiles)
+
+# --- Authentication ---
+global:
+  oauth2Proxy:
+    enabled: false
+dex:
+  enabled: false
+
+# --- Every other Kubeflow component ---
+knativeServing:
+  enabled: false
+knativeEventing:
+  enabled: false
+centralDashboard:
+  enabled: false
+pipelines:
+  enabled: false
+notebooks:
+  enabled: false
+  controller:
+    enabled: false
+  webApp:
+    enabled: false
+katib:
+  enabled: false
+kserve:
+  enabled: false
+hub:
+  enabled: false
+trainingOperator:
+  enabled: false     # Training Operator V1 (PyTorchJob, TFJob, ...); Trainer is V2
+profiles:
+  enabled: false
+volumesWebApp:
+  enabled: false
+tensorboard:
+  controller:
+    enabled: false
+  webApp:
+    enabled: false
+
+# Pull-secret propagation with the External Secrets Operator. Off because ESO may
+# not be installed, and the default namespaceSelector matches Profile namespaces,
+# which don't exist here. If ESO is installed, you can turn it on and point
+# namespaceSelector at your TrainJob namespaces instead (see the trainer-only guide,
+# "Propagate pull secrets with External Secrets"):
+#   externalSecrets:
+#     enabled: true
+#     namespaceSelector:
+#       matchLabels:
+#         app.kubernetes.io/part-of: null   # drop the default; Helm merges maps
+#         suse.com/trainjob-pull-secrets: "true"
+externalSecrets:
+  enabled: false

@@ -60,8 +60,18 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `hub.catalog.enabled` | `false` | Model Catalog server with PostgreSQL backend (disabled by default) |
 | `trainer.runtimes.enabled` | `true` | Deploy built-in ClusterTrainingRuntime manifests |
 | `trainer.runtimes.torchtune.enabled` | `false` | TorchTune fine-tuning runtime (disabled by default) |
+| `trainer.runtimes.istioSidecar` | `disabled` | Istio sidecar for the bundled runtimes' training pods. `disabled`: `sidecar.istio.io/inject: "false"`, pods leave the mesh (no mTLS or AuthorizationPolicy). `native`: `sidecar.istio.io/nativeSidecar: "true"`, pods complete inside the mesh; use on full-platform installs. `default`: no annotation. |
+| `trainer.runtimes.podAnnotations` | `{}` | Extra annotations for the bundled runtimes' training pod templates; they win over `istioSidecar` on conflicts |
 | `dex.enabled` | `true` | Dex OIDC identity provider |
 | `oauth2Proxy.enabled` | `true` | oauth2-proxy authentication broker |
+| `istioResources.enabled` | `true` | kubeflow-istio-resources: Gateways, Dex/oauth2-proxy VirtualServices, gateway AuthorizationPolicies/EnvoyFilters (requires Istio CRDs). When `false`, every component that needs Istio must be disabled; the install fails and its error lists the ones still enabled. |
+| `admissionWebhook.enabled` | `true` | PodDefaults admission webhook (requires cert-manager CRDs). When `false`, notebooks run without PodDefaults |
+| `userNamespace.enabled` | `true` | Default `kubeflow-user-example-com` Profile plus `user-namespace.additionalUsers` and their per-namespace KFP servers (requires `profiles.enabled=true`) |
+| `kubeflowRoles.enabled` | `true` | Aggregated `kubeflow-{admin,edit,view}` and `kubeflow-kubernetes-*` ClusterRoles |
+
+To install only Trainer V2 + JobSet, use the `trainer-only-overrides.yaml` preset in the chart root,
+which sets all of the above (and every other component except `trainer`) to `false`. See
+[Trainer-only Install](use-cases/trainer-only-install.md) for the full instructions.
 
 Model Registry provides model versioning and metadata storage, accessible from the Central Dashboard →
 "Model Registry" sidebar link or directly at `/model-registry/`. It shares KFP's MariaDB.
@@ -80,9 +90,11 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 | Key | Default | Description |
 |-----|---------|-------------|
 | `networkPolicies.enabled` | `false` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Disable with bare Flannel or any CNI that does not enforce NetworkPolicy. |
-| `preflightChecks.enabled` | `false` | Pre-install hook Job that validates default StorageClass and cert-manager CRDs |
+| `network-policies.knativeServingPolicies.enabled` | `true` | Render the NetworkPolicies for the `knative-serving` namespace. Set `false` when `networkPolicies.enabled=true` but Knative Serving is not installed (e.g. trainer-only); the chart refuses that combination otherwise. |
+| `preflightChecks.enabled` | `false` | Pre-install hook Job that validates the default StorageClass and, when a cert-manager consumer is enabled (admission webhook, Katib, KServe, pipelines, volumes web app, or a cert-manager gateway TLS source), the cert-manager CRDs |
 | `preflightChecks.image.repository` | `containers/kubectl` | Repository for the preflight kubectl image |
-| `preflightChecks.image.tag` | `1.34.5` | Tag for the preflight kubectl image |
+| `preflightChecks.image.tag` | `1.36.2` | Tag for the preflight kubectl image |
+| `preflightChecks.resources` | requests `50m`/`64Mi`, limits `500m`/`256Mi` | Resources for the preflight and webhook-secret-migration Jobs (the Trainer runtimes applier uses `trainer.runtimes.applier.resources`), so they run in namespaces whose ResourceQuota requires them |
 | `monitoring.enabled` | `false` | ServiceMonitors + PrometheusRules (requires Rancher Monitoring) |
 | `pipelines.mariadb.backup.enabled` | `false` | Daily MariaDB backup CronJob to a dedicated PVC |
 | `certManager.install` | `false` | Install bundled cert-manager v1.20.2 via this chart (not recommended — install separately) |
