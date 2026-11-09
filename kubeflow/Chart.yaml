@@ -89,10 +89,12 @@ dependencies:
   - name: kubeflow-istio-resources
     version: "0.2.3"
     repository: "file://./charts/kubeflow-istio-resources"
+    condition: istioResources.enabled
 
   - name: kubeflow-roles
     version: "0.1.0"
     repository: "file://./charts/kubeflow-roles"
+    condition: kubeflowRoles.enabled
   
   - name: central-dashboard
     version: "0.2.1"
@@ -131,7 +133,7 @@ dependencies:
     condition: trainingOperator.enabled
 
   - name: trainer
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/trainer"
     condition: trainer.enabled
 
@@ -163,6 +165,7 @@ dependencies:
   - name: admission-webhook
     version: "0.2.1"
     repository: "file://./charts/admission-webhook"
+    condition: admissionWebhook.enabled
 
   - name: models-web-app
     version: "0.2.1"
@@ -180,11 +183,12 @@ dependencies:
   - name: user-namespace
     version: "0.2.2"
     repository: "file://./charts/user-namespace"
+    condition: userNamespace.enabled
 
   # NetworkPolicies — deny-by-default with explicit allow rules
   # Set networkPolicies.enabled: false for CNIs that do not enforce NetworkPolicy
   - name: network-policies
-    version: "0.1.0"
+    version: "0.1.1"
     repository: "file://./charts/network-policies"
     condition: networkPolicies.enabled
 

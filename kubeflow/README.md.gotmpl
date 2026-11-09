@@ -187,6 +187,8 @@ pull secret, the cert-manager / Istio / ESO OCI chart installs, and sets
 the mirror.
 `--suse-registry` redirects: the `registry.suse.com` registry login, the `suse-ai-registry` pull secret,
 and sets `global.suseRegistry` on the Kubeflow helm install.
+Mirror `dp.apps.rancher.io/containers/kubectl` even for trainer-only installs: the Job that applies the
+Trainer runtimes uses it.
 
 See [Registry Overrides](docs/values-reference.md#registry-overrides) for the full precedence model.
 
@@ -391,6 +393,15 @@ networked use.
 
 ---
 
+## Trainer-only install
+
+To deploy only Kubeflow Trainer V2 (TrainJob / TrainingRuntime / ClusterTrainingRuntime) with JobSet,
+without Istio, cert-manager, Dex/oauth2-proxy, Profiles or KFP, follow
+[Trainer-only Install](docs/use-cases/trainer-only-install.md). It uses the `trainer-only-overrides.yaml`
+preset and walks through the install, verification with a sample TrainJob, and upgrade/uninstall caveats.
+
+---
+
 ## Ingress gateway authentication mode
 
 All browser traffic enters through the shared Istio ingress gateway, which enforces OIDC login via
@@ -469,6 +480,7 @@ Istio).
 | Guide | Contents |
 |-------|----------|
 | [Accessing & TLS / Configuration Scenarios](docs/access-and-tls.md) | Port-forward / NodePort / LoadBalancer access, hostname + TLS scenarios (self-signed, Let's Encrypt, BYO cert, existing external-dns/cert-manager), external HTTPS for KServe inference |
+| [Trainer-only Install](docs/use-cases/trainer-only-install.md) | Installing only Trainer V2 + JobSet (no Istio, cert-manager, Profiles or KFP): values, install, sample TrainJob, upgrade/uninstall |
 | [Values Reference](docs/values-reference.md) | Every configurable value — globals, credentials, component toggles, storage, networking, registry overrides |
 | [Production Hardening & Multi-tenancy](docs/production-and-tenancy.md) | Credential rotation, external IdP, NetworkPolicies, backups, HA, resource quotas, adding users / profiles |
 | [Upgrade Notes](docs/upgrade-notes.md) | Version migrations, breaking changes, and required manual steps per release |

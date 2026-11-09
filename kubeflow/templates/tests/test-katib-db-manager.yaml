@@ -1,3 +1,4 @@
+{{- if .Values.katib.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -10,6 +11,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
     sidecar.istio.io/nativeSidecar: "true"
 spec:
+  {{- include "kubeflow.imagePullSecrets" . | trim | nindent 2 }}
   restartPolicy: Never
   containers:
   - name: test
@@ -22,3 +24,4 @@ spec:
       nc -zw 5 katib-db-manager.kubeflow.svc.cluster.local 6789 \
         && echo "katib-db-manager port reachable" \
         || (echo "katib-db-manager TCP check failed" && exit 1)
+{{- end }}

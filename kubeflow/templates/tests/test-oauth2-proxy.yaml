@@ -1,3 +1,4 @@
+{{- if .Values.global.oauth2Proxy.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -10,6 +11,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
     sidecar.istio.io/nativeSidecar: "true"
 spec:
+  {{- include "kubeflow.imagePullSecrets" . | trim | nindent 2 }}
   restartPolicy: Never
   containers:
   - name: test
@@ -23,3 +25,4 @@ spec:
       nc -zw 5 {{ $svcName }}.{{ $ns }}.svc.cluster.local 80 \
         && echo "oauth2-proxy port reachable" \
         || (echo "oauth2-proxy TCP check failed" && exit 1)
+{{- end }}

@@ -27,6 +27,71 @@ satisfied.) Upgrade the cluster to Kubernetes ≥ 1.35 before installing this re
 hatch Knative honours the `KUBERNETES_MIN_VERSION` env var, but running v1.24.0 below its supported
 floor is unsupported.
 
+## Optional infrastructure sub-charts and trainer-only installs
+
+Four sub-charts that always rendered can now be turned off. They default to `true`, so rendering with
+your existing values is unchanged:
+
+| New key | Sub-chart | Needs |
+|---------|-----------|-------|
+| `istioResources.enabled` | kubeflow-istio-resources | Istio CRDs |
+| `admissionWebhook.enabled` | admission-webhook (PodDefaults) | cert-manager CRDs |
+| `userNamespace.enabled` | user-namespace (default Profile + `additionalUsers`) | `profiles.enabled=true` |
+| `kubeflowRoles.enabled` | kubeflow-roles (aggregated ClusterRoles) | - |
+
+Together they allow a Trainer V2-only install without Istio or cert-manager, using the new
+`trainer-only-overrides.yaml` preset; see [Trainer-only Install](use-cases/trainer-only-install.md).
+
+Check your values file for these combinations, which now **fail at render time** instead of failing
+(or half-working) during the install:
+
+- **`profiles.enabled=false`** now also needs `userNamespace.enabled=false` (the default Profile needs
+  the Profile CRD).
+- **`profiles.enabled=true` with `kubeflowRoles.enabled=false`** is refused: Profiles and KFAM bind
+  the `kubeflow-admin` / `kubeflow-edit` / `kubeflow-view` ClusterRoles that `kubeflowRoles` creates.
+- **`externalSecrets.enabled=true`** (the default) now fails at install time if the External Secrets
+  Operator API (`external-secrets.io/v1`) isn't on the cluster. Before, the install failed anyway,
+  with `no matches for kind "ClusterExternalSecret"`.
+  `helm template` doesn't run this check.
+- **`networkPolicies.enabled=true` with `knativeServing.enabled=false`** now needs
+  `network-policies.knativeServingPolicies.enabled=false` (the policies target the `knative-serving`
+  namespace).
+- **`istioResources.enabled=false`** requires every component that needs Istio to be disabled; the
+  error lists the ones that are still on.
+
+Other behaviour changes:
+
+- The Trainer runtimes are applied by a Job using `dp.apps.rancher.io/containers/kubectl`, so every
+  install needs the `application-collection` pull secret, and air-gapped clusters must mirror that
+  image. The kserve-config helm test's kubectl moves from 1.34.5 to 1.36.2 to match.
+- The demo-credential checks run only for components that use the credentials: `auth.oidc.*` when Dex
+  or oauth2-proxy is enabled, `pipelines.seaweedfs.*` when pipelines are enabled. The inference-domain
+  check only looks at the domain of whichever of Knative Serving / KServe is enabled.
+- `helm test` Pods are rendered only for enabled components and now set `imagePullSecrets` from
+  `global.imagePullSecrets`.
+- The JobSet CRD now carries `helm.sh/resource-policy: keep`, so JobSets survive `helm uninstall`.
+  It keeps the old release's ownership annotations, so **reinstall with the same release name and
+  namespace**, or re-annotate the CRD (`meta.helm.sh/release-name`/`-namespace`) or set
+  `trainer.jobset.installCRDs=false`.
+- **The bundled ClusterTrainingRuntimes are no longer Helm hooks.** Recreating them on every upgrade
+  hung on Trainer's `resource-in-use` finalizer whenever a TrainJob used one (`post-upgrade hooks
+  failed: ClusterTrainingRuntime//torch-distributed still exists`). A post-install/post-upgrade Job
+  (`kubeflow-trainer-runtimes-applier`) now server-side-applies them in place, takes over runtimes from
+  older chart versions, and deletes bundled runtimes no longer in the chart (they are labelled
+  `app.kubernetes.io/managed-by: kubeflow-trainer-runtimes-applier`). Upgrades work with TrainJobs
+  present. `trainer.runtimes.enabled=false` removes them (not with tools that render the chart
+  offline, where the Job can't see them); `helm uninstall` leaves them in place.
+  Runtimes created by older chart versions (as hooks) aren't labelled yet: if you disable them in
+  the same upgrade, delete them once yourself (`kubectl delete clustertrainingruntime
+  torch-distributed deepspeed-distributed mlx-distributed`, plus the torchtune ones if enabled).
+- **`trainer.runtimes.enabled=false` now also turns off the TorchTune runtimes.** Before,
+  `trainer.runtimes.torchtune.enabled=true` applied them regardless.
+- **New `trainer.runtimes.istioSidecar` for the bundled runtimes' pod templates.** In an
+  Istio-injected namespace a regular sidecar outlives the training container, so pods never complete.
+  `disabled` (default) sets `sidecar.istio.io/inject: "false"` (pods leave the mesh); `native` sets
+  `sidecar.istio.io/nativeSidecar: "true"` (pods complete inside the mesh); `default` sets nothing.
+  `trainer.runtimes.podAnnotations` adds more. Your own runtimes are not changed.
+
 ## Applying CRDs on upgrade (all sub-charts)
 
 <a id="applying-crds"></a>

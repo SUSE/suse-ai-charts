@@ -7,6 +7,75 @@ with a human-readable error when required dependencies are misconfigured.
 {{- end }}
 
 {{- /*
+  Cross-component guards for the optional infrastructure sub-charts
+  (istioResources, userNamespace). trainer-only-overrides.yaml disables them together
+  with everything that depends on them.
+*/}}
+{{- if and .Values.userNamespace.enabled (not .Values.profiles.enabled) }}
+{{- fail "userNamespace.enabled=true requires profiles.enabled=true: the user-namespace sub-chart creates Profile CRs, and the Profile CRD ships with profiles-and-kfam. Set userNamespace.enabled=false or enable profiles." }}
+{{- end }}
+{{- /* The Profiles controller and KFAM bind the kubeflow-admin / kubeflow-edit /
+       kubeflow-view ClusterRoles by name; only kubeflow-roles creates them. Without
+       them the RoleBindings point at missing roles and user RBAC fails at runtime. */}}
+{{- if and .Values.profiles.enabled (not .Values.kubeflowRoles.enabled) }}
+{{- fail "profiles.enabled=true requires kubeflowRoles.enabled=true: the Profiles controller and KFAM bind the kubeflow-admin, kubeflow-edit and kubeflow-view ClusterRoles, which the kubeflow-roles sub-chart creates. Without them, Profile owners and contributors get no permissions. Set kubeflowRoles.enabled=true or disable profiles." }}
+{{- end }}
+{{- /* externalSecrets renders ClusterSecretStore / ClusterExternalSecret
+       (external-secrets.io/v1), so it needs the External Secrets Operator API. It is
+       NOT tied to Profiles: externalSecrets.namespaceSelector can target any
+       namespaces, e.g. TrainJob namespaces on a trainer-only install.
+       The bundled externalSecretsOperator ships its CRDs as templates, so on a first
+       install with both enabled the API is missing too (Helm would fail with "no matches
+       for kind ClusterExternalSecret"); this guard reports that case as well.
+       Skipped when rendering offline (helm template, --dry-run=client): .Capabilities
+       then lists only built-in APIs, so the check would reject every offline render.
+       lookup returns an empty map offline, so an empty kube-system Namespace means
+       offline. */}}
+{{- if and .Values.externalSecrets.enabled
+           (not (.Capabilities.APIVersions.Has "external-secrets.io/v1"))
+           (lookup "v1" "Namespace" "" "kube-system") }}
+{{- fail "externalSecrets.enabled=true, but the cluster has no External Secrets Operator API (external-secrets.io/v1). Install ESO before this chart, or set externalSecrets.enabled=false. (With externalSecretsOperator.enabled=true, ESO's CRDs are created by this release: install once with externalSecrets.enabled=false, then enable it.)" }}
+{{- end }}
+{{- /* network-policies renders policies into the knative-serving namespace, which
+       only exists when Knative Serving is installed. */}}
+{{- $np := index .Values "network-policies" | default dict }}
+{{- if and .Values.networkPolicies.enabled (not .Values.knativeServing.enabled) (dig "knativeServingPolicies" "enabled" true $np) }}
+{{- fail "networkPolicies.enabled=true with knativeServing.enabled=false: the network-policies sub-chart would render NetworkPolicies into the knative-serving namespace, which does not exist without Knative. Set network-policies.knativeServingPolicies.enabled=false." }}
+{{- end }}
+{{- if not .Values.istioResources.enabled }}
+{{- /* Components that render Istio resources (VirtualService, AuthorizationPolicy,
+       DestinationRule, Gateway, PeerAuthentication) or route through the
+       kubeflow-gateway / Dex. Without istioResources there is usually no Istio at
+       all, so these would fail mid-install with "no matches for kind ...". The
+       notebook and TensorBoard controllers render none at install time but create a
+       VirtualService per Notebook / Tensorboard at runtime; the notebook controller
+       can opt out with notebook-controller.configMapData.USE_ISTIO="false". */}}
+{{-   $needGw := list }}
+{{-   $nbUseIstio := printf "%v" (dig "configMapData" "USE_ISTIO" "true" (index .Values "notebook-controller" | default dict)) }}
+{{-   range $flag := list
+        (list .Values.centralDashboard.enabled "centralDashboard.enabled")
+        (list .Values.dex.enabled "dex.enabled")
+        (list .Values.global.oauth2Proxy.enabled "global.oauth2Proxy.enabled")
+        (list .Values.pipelines.enabled "pipelines.enabled")
+        (list .Values.profiles.enabled "profiles.enabled")
+        (list .Values.knativeServing.enabled "knativeServing.enabled")
+        (list .Values.kserve.enabled "kserve.enabled")
+        (list .Values.katib.enabled "katib.enabled")
+        (list .Values.notebooks.webApp.enabled "notebooks.webApp.enabled")
+        (list (and .Values.notebooks.controller.enabled (ne $nbUseIstio "false")) "notebooks.controller.enabled (or set notebook-controller.configMapData.USE_ISTIO=\"false\")")
+        (list .Values.volumesWebApp.enabled "volumesWebApp.enabled")
+        (list .Values.tensorboard.webApp.enabled "tensorboard.webApp.enabled")
+        (list .Values.tensorboard.controller.enabled "tensorboard.controller.enabled")
+        (list .Values.global.kserveExternalHttps "global.kserveExternalHttps")
+        (list (include "kubeflow.tlsSource" $) "kubeflow-istio-resources.tls.source") }}
+{{-     if index $flag 0 }}{{ $needGw = append $needGw (index $flag 1) }}{{ end }}
+{{-   end }}
+{{-   if $needGw }}
+{{-     fail (printf "istioResources.enabled=false is meant for installs without Istio (e.g. trainer-only), but these settings need Istio or the kubeflow-gateway (they render Istio resources, create them at runtime, or route through the gateway/Dex). Disable/unset them, or install Istio and set istioResources.enabled=true:\n  - %s" (join "\n  - " $needGw)) }}
+{{-   end }}
+{{- end }}
+
+{{- /*
   Reject a literal '*' as the gateway hostname. Leaving hostname empty already
   serves the wildcard '*' listener for IP/NodePort access; setting hostname: "*"
   additionally makes the auth-bypass filter trust every host, reinstating the
@@ -27,6 +96,9 @@ with a human-readable error when required dependencies are misconfigured.
   are set to something other than the "example.com" default, but global.kserveDomain
   is not set, fail fast to prevent the dedicated kserve-ingress-gateway hosts
   (which fall back to *.example.com) from silently diverging and breaking readiness.
+  Each key is checked only when its component is enabled: Helm merges a disabled
+  sub-chart's defaults into neither .Values.knativeServing nor .Values.kserve, so
+  the key reads '' and would otherwise trip the guard on installs without them.
 */}}
 {{- if not .Values.global.kserveDomain }}
 {{- /*
@@ -39,7 +111,9 @@ with a human-readable error when required dependencies are misconfigured.
     */}}
 {{-   $kd := printf "%v" (dig "domain" "" (.Values.knativeServing | default dict)) }}
 {{-   $id := printf "%v" (dig "ingressDomain" "" (.Values.kserve | default dict)) }}
-{{-   if or (ne $kd "example.com") (ne $id "example.com") }}
+{{-   $kdBad := and .Values.knativeServing.enabled (ne $kd "example.com") }}
+{{-   $idBad := and .Values.kserve.enabled (ne $id "example.com") }}
+{{-   if or $kdBad $idBad }}
 {{-     fail (printf "DIVERGENCE: knativeServing.domain is '%s' and kserve.ingressDomain is '%s' but global.kserveDomain is empty. When overriding the inference domain, you MUST set global.kserveDomain to the same value (e.g., --set global.kserveDomain=10.0.0.5.nip.io) so that the dedicated gateway's hosts stay in sync and route traffic." $kd $id) }}
 {{-   end }}
 {{- end }}
@@ -58,7 +132,7 @@ with a human-readable error when required dependencies are misconfigured.
 {{- if .Values.global.kserveExternalHttps }}
 {{-   $kir := index .Values "kubeflow-istio-resources" }}
 {{-   $tls := $kir.tls | default dict }}
-{{-   $tlsSource := $tls.source | default "" }}
+{{-   $tlsSource := include "kubeflow.tlsSource" . }}
 {{- /*
       Collect every unmet opt-in prerequisite and fail once with the full list.
     */}}
@@ -194,20 +268,25 @@ with a human-readable error when required dependencies are misconfigured.
 {{- if not .Values.global.demoMode }}
 
 {{- /* With auth.oidc.existingSecret the operator supplies kubeflow-oidc-client and the
-       auth.oidc secrets below are not used, so don't require changing them. */}}
-{{- if and (not .Values.auth.oidc.existingSecret) (eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok") }}
+       auth.oidc secrets below are not used, so don't require changing them. They are
+       also unused when neither Dex nor oauth2-proxy is enabled (the same condition as
+       templates/secrets/oidc-client-Secret.yaml). */}}
+{{- $oidcInUse := and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) }}
+{{- if and $oidcInUse (eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok") }}
 {{- fail "SECURITY: auth.oidc.clientSecret is the well-known demo value.\nGenerate a real secret: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if and (not .Values.auth.oidc.existingSecret) (eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=") }}
+{{- if and $oidcInUse (eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=") }}
 {{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow" }}
+{{- /* SeaweedFS credentials are only used by KFP (and its per-namespace servers in
+       user-namespace), so skip them when pipelines are disabled. */}}
+{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow") }}
 {{- fail "SECURITY: pipelines.seaweedfs.accessKey is the well-known demo value.\nSet a real value or for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if eq (.Values.pipelines.seaweedfs.secretKey | default "") "kubeflow123" }}
+{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.secretKey | default "") "kubeflow123") }}
 {{- fail "SECURITY: pipelines.seaweedfs.secretKey is the well-known demo value.\nGenerate: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 

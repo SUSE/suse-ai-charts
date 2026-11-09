@@ -1,0 +1,210 @@
+{{- /*
+  Applies the bundled ClusterTrainingRuntimes (files/runtimes/*.yaml) with
+  `kubectl apply --server-side`, from a post-install/post-upgrade hook Job.
+
+  Why not regular release resources or plain hooks:
+  - As hooks with hook-delete-policy before-hook-creation (chart versions up to
+    0.2.1) they were deleted and recreated on every upgrade. Trainer puts a
+    trainer.kubeflow.org/resource-in-use finalizer on a runtime while any TrainJob
+    references it, so the delete hung and the upgrade failed.
+  - As regular release resources, existing (hook-created) runtimes would block the
+    upgrade: Helm refuses to adopt objects without its ownership metadata, and it
+    checks that before any pre-upgrade hook could fix it up.
+  Server-side apply updates the runtimes in place, never deletes them, and takes over
+  runtimes created by older chart versions without any migration step.
+
+  The runtimes are not release resources, so Helm never prunes them. The Job does:
+  after applying, it deletes runtimes labelled by this release's applier
+  (trainer.runtimeLabels) that are no longer in the set, e.g. renamed or dropped
+  in a newer chart version, or torchtune.enabled switched off. It only deletes
+  objects that its own field manager applied, so a user's copy of a bundled runtime
+  that kept the labels is left alone. kubectl delete --wait=false: a runtime still
+  used by a TrainJob stays Terminating on Trainer's resource-in-use finalizer until
+  that TrainJob is deleted.
+  With no runtime enabled (runtimes.enabled=false) the Job renders only while runtimes
+  it applied earlier still exist (found with lookup); it then skips the apply and
+  prunes them. A fresh install that brings its own runtimes renders no Job, so it
+  needs no kubectl image or application-collection pull secret. lookup sees nothing
+  in offline renders, so there disabling does not remove existing runtimes. On helm
+  uninstall the Job does not run either; delete them with
+  kubectl delete clustertrainingruntime -l app.kubernetes.io/managed-by=kubeflow-trainer-runtimes-applier
+*/}}
+{{- $runtimes := dict }}
+{{- range $path, $_ := .Files.Glob "files/runtimes/*.yaml" }}
+{{-   $doc := tpl ($.Files.Get $path) $ | trim }}
+{{-   if $doc }}
+{{-     $_ := set $runtimes (base $path) $doc }}
+{{-   end }}
+{{- end }}
+{{- $prune := false }}
+{{- if and (not $runtimes) (.Capabilities.APIVersions.Has "trainer.kubeflow.org/v1alpha1/ClusterTrainingRuntime") }}
+{{-   range (lookup "trainer.kubeflow.org/v1alpha1" "ClusterTrainingRuntime" "" "").items | default list }}
+{{-     $l := .metadata.labels | default dict }}
+{{-     if and (eq (index $l "app.kubernetes.io/managed-by" | default "") "kubeflow-trainer-runtimes-applier") (eq (index $l "app.kubernetes.io/instance" | default "") $.Release.Name) }}
+{{-       $prune = true }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+{{- if or $runtimes $prune }}
+{{- $name := "kubeflow-trainer-runtimes-applier" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: kubeflow
+  labels:
+    {{- include "trainer.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  {{- if not $runtimes }} {}{{ end }}
+  {{- range $file, $doc := $runtimes }}
+  {{ $file }}: |
+    {{- $doc | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: kubeflow
+  labels:
+    {{- include "trainer.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "trainer.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+- apiGroups: [trainer.kubeflow.org]
+  resources: [clustertrainingruntimes]
+  verbs: [get, list, create, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "trainer.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+- kind: ServiceAccount
+  name: {{ $name }}
+  namespace: kubeflow
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: kubeflow
+  labels:
+    {{- include "trainer.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  # Covers the image pull plus the apply retries (12 x 10s) below.
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+    spec:
+      serviceAccountName: {{ $name }}
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "trainer.imagePullSecrets" . | nindent 6 }}
+      containers:
+      - name: apply
+        {{- $img := .Values.runtimes.applier.image }}
+        image: "{{- $registry := include "trainer.suseApplicationCollectionRegistry" (dict "ctx" . "registry" $img.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ $img.repository }}{{- if $img.digest }}@{{ $img.digest }}{{- else }}:{{ $img.tag }}{{- end }}"
+        imagePullPolicy: {{ $img.pullPolicy }}
+        {{- with .Values.runtimes.applier.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        env:
+        - name: HOME
+          value: /tmp
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          current=""
+          if ls /runtimes/*.yaml >/dev/null 2>&1; then
+            # Retry while the API server / Trainer webhook settle right after install.
+            i=0
+            until kubectl apply --server-side --force-conflicts \
+                    --field-manager=kubeflow-trainer-runtimes -f /runtimes/; do
+              i=$((i+1))
+              if [ "$i" -ge 12 ]; then echo "giving up after $i attempts"; exit 1; fi
+              echo "apply failed, retrying in 10s ($i/12)"; sleep 10
+            done
+            # Runtimes created by chart versions that installed them as Helm hooks still
+            # carry the hook annotations; drop them (no-op when absent).
+            current="$(kubectl get -f /runtimes/ -o name)"
+            for r in $current; do
+              kubectl annotate "$r" helm.sh/hook- helm.sh/hook-weight- helm.sh/hook-delete-policy- \
+                >/dev/null 2>&1 || true
+            done
+          else
+            echo "no bundled runtimes enabled; pruning the ones applied earlier"
+          fi
+          # Prune runtimes this release's applier created earlier that are no longer in
+          # the set. Only objects our field manager applied are deleted, so a user's
+          # copy that kept the labels survives.
+          sel="app.kubernetes.io/managed-by=kubeflow-trainer-runtimes-applier,app.kubernetes.io/instance={{ .Release.Name }}"
+          for r in $(kubectl get clustertrainingruntimes -l "$sel" -o name); do
+            case " $(echo $current) " in *" $r "*) continue ;; esac
+            managers="$(kubectl get "$r" --show-managed-fields -o jsonpath='{.metadata.managedFields[*].manager}')"
+            case " $managers " in
+              *" kubeflow-trainer-runtimes "*)
+                echo "pruning $r (no longer bundled)"
+                kubectl delete "$r" --wait=false || echo "warning: could not delete $r" ;;
+              *) echo "keeping $r: labelled, but not applied by this Job" ;;
+            esac
+          done
+        volumeMounts:
+        - name: runtimes
+          mountPath: /runtimes
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: runtimes
+        configMap:
+          name: {{ $name }}
+      - name: tmp
+        emptyDir: {}
+{{- end }}
