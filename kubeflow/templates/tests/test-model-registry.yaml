@@ -1,4 +1,13 @@
+{{- /* TCP probe of the shared server, or of the example profile's server in perProfile mode. */}}
+{{- $mrHost := "" }}
 {{- if .Values.hub.enabled }}
+{{-   if eq (include "kubeflow.modelRegistryMode" .) "shared" }}
+{{-     $mrHost = "model-registry-service.kubeflow.svc.cluster.local" }}
+{{-   else if include "kubeflow.modelRegistryFirstNamespace" . }}
+{{-     $mrHost = printf "model-registry-service.%s.svc.cluster.local" (include "kubeflow.modelRegistryFirstNamespace" .) }}
+{{-   end }}
+{{- end }}
+{{- if $mrHost }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -20,7 +29,7 @@ spec:
     - sh
     - -c
     - |
-      nc -zw 5 model-registry-service.kubeflow.svc.cluster.local 8080 \
+      nc -zw 5 {{ $mrHost }} 8080 \
         && echo "Model Registry API TCP ok" \
         || (echo "Model Registry API TCP check failed" && exit 1)
 {{- end }}

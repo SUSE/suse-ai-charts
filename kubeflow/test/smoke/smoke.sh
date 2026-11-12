@@ -156,6 +156,23 @@ check_http() {
   fi
 }
 
+# Like check_http, but passes only if the request is refused with HTTP 403.
+check_http_denied() {
+  local label="$1" url="$2" extra_header="${3:-}" out
+  local -a wget_args=(-qO- --timeout=10)
+  [[ -n "$extra_header" ]] && wget_args+=(--header "$extra_header")
+  out=$(kubectl run "smoke-http-$$" \
+        --image=${SUSE_APP_COLLECTION}/containers/bci-busybox:15.7 \
+        --restart=Never --rm --attach -n "$NS" \
+        --overrides='{"metadata":{"annotations":{"sidecar.istio.io/nativeSidecar":"true"}},"spec":{"imagePullSecrets":[{"name":"application-collection"}]}}' \
+        --command -- wget "${wget_args[@]}" "$url" 2>&1 || true)
+  if printf '%s' "$out" | grep -q ' 403'; then
+    pass "HTTP $label denied with 403 ($url)"
+  else
+    fail "HTTP $label not denied with 403 ($url): $(printf '%s' "$out" | tail -1)"
+  fi
+}
+
 # TCP connectivity check via a temporary pod
 check_tcp() {
   local label="$1" host="$2" port="$3"
@@ -259,9 +276,24 @@ check_deploy_ready "tensorboard-controller-deployment"
 check_deploy_ready "jupyter-web-app-deployment"
 check_deploy_ready "kserve-controller-manager"
 
+# Model Registry: UI/BFF always lives in $NS. The server is in $NS in legacy shared mode and in each
+# profile namespace in perProfile mode (default) — check whichever is deployed.
+if kubectl get deploy model-registry-ui -n "$NS" &>/dev/null; then
+  check_deploy_ready "model-registry-ui"
+  if ! kubectl get deploy model-registry-deployment -n "$NS" &>/dev/null \
+     && ! kubectl get deploy model-registry-deployment -n "$USER_NS" &>/dev/null; then
+    fail "Model Registry: no Model Registry server in $USER_NS or $NS although the Model Registry UI is installed. In perProfile mode every profile gets one: check that userNamespace is enabled, and list profiles created outside the chart in user-namespace.modelRegistry.extraNamespaces"
+  fi
+fi
 if kubectl get deploy model-registry-deployment -n "$NS" &>/dev/null; then
   check_deploy_ready "model-registry-deployment"
-  check_deploy_ready "model-registry-ui"
+fi
+if kubectl get deploy model-registry-deployment -n "$USER_NS" &>/dev/null; then
+  # Embedded Postgres only exists with user-namespace.modelRegistry.db.mode=embedded (the default).
+  if kubectl get deploy model-registry-db -n "$USER_NS" &>/dev/null; then
+    check_deploy_ready "model-registry-db" "$USER_NS"
+  fi
+  check_deploy_ready "model-registry-deployment" "$USER_NS"
 fi
 if kubectl get deploy model-registry-controller -n "$NS" &>/dev/null; then
   check_deploy_ready "model-registry-controller"
@@ -380,9 +412,21 @@ check_tcp "Katib DB Manager"     "katib-db-manager.${NS}.svc.cluster.local"   67
 check_tcp "KFP MariaDB"          "mysql.${NS}.svc.cluster.local"               3306
 check_tcp "Katib MariaDB"        "katib-mysql.${NS}.svc.cluster.local"         3306
 
+if kubectl get svc model-registry-ui-service -n "$NS" &>/dev/null; then
+  check_tcp  "Model Registry UI"  "model-registry-ui-service.${NS}.svc.cluster.local" 8080
+fi
+# perProfile (default): the example profile's registry. It admits only the UI/BFF and the profile's
+# own callers (owner/contributors, pods in the profile namespace), so a pod in $NS with a made-up
+# token must be refused.
+if kubectl get svc model-registry-service -n "$USER_NS" &>/dev/null; then
+  check_tcp  "Model Registry API (${USER_NS})" "model-registry-service.${USER_NS}.svc.cluster.local" 8080
+  check_http_denied "Model Registry API, made-up token from ${NS} (${USER_NS})" \
+    "http://model-registry-service.${USER_NS}.svc.cluster.local:8080/api/model_registry/v1alpha3/registered_models" \
+    "authorization: Bearer smoke-test-probe"
+fi
+# Legacy shared mode: one server in $NS.
 if kubectl get svc model-registry-service -n "$NS" &>/dev/null; then
   check_tcp  "Model Registry API" "model-registry-service.${NS}.svc.cluster.local" 8080
-  check_tcp  "Model Registry UI"  "model-registry-ui-service.${NS}.svc.cluster.local" 8080
   # The model-registry server carries a strict Istio AuthorizationPolicy (aligned to
   # kubeflow/community-distribution release-26.03.1): in-cluster callers must present an
   # `authorization` header and must NOT carry a `kubeflow-userid` header (anti-spoofing).

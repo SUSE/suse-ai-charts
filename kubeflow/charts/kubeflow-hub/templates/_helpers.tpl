@@ -118,3 +118,40 @@ Rancher/AppCo default. Upstream Istio: override to the upstream SA principal.
 {{- $ig := $istio.ingressGateway | default dict -}}
 {{- $ig.principal | default "cluster.local/ns/istio-system/sa/istio" -}}
 {{- end -}}
+
+{{/* "perProfile" | "shared": global.modelRegistry.mode, else modelRegistry.mode; fails on other values.
+     Must agree with the umbrella and user-namespace (test/ci/check_model_registry_consistency.py). */}}
+{{- define "kubeflow-hub.modelRegistryMode" -}}
+{{- $g := .Values.global | default dict -}}
+{{- $gmode := (($g.modelRegistry | default dict).mode | default "") | toString -}}
+{{- $mode := $gmode | default ((.Values.modelRegistry | default dict).mode | default "perProfile") | toString -}}
+{{- if not (has $mode (list "shared" "perProfile")) -}}
+{{- fail (printf "kubeflow-hub: modelRegistry.mode must be \"shared\" or \"perProfile\", got %q" $mode) -}}
+{{- end -}}
+{{- $mode -}}
+{{- end -}}
+
+{{/* "true" in shared mode (render the kubeflow-namespace server and its wiring). */}}
+{{- define "kubeflow-hub.isShared" -}}
+{{- if eq (include "kubeflow-hub.modelRegistryMode" .) "shared" -}}true{{- end -}}
+{{- end -}}
+
+{{/* Controller REGISTRIES_NAMESPACE; required in perProfile mode when the reconciler is managed. */}}
+{{- define "kubeflow-hub.registriesNamespace" -}}
+{{- $ns := .Values.controller.env.registriesNamespace | default "" | toString -}}
+{{- if $ns -}}
+{{- $ns -}}
+{{- else if and (not (include "kubeflow-hub.isShared" .)) (eq (include "kubeflow-hub.inferenceServiceController" .) "managed") -}}
+{{- fail "kubeflow-hub: per-profile Model Registry mode with the InferenceService reconciler managed (the default in this mode) requires controller.env.registriesNamespace (a profile namespace). No registry runs in `kubeflow` in perProfile mode; label InferenceServices in other profiles with modelregistry.kubeflow.org/namespace=<profile>." -}}
+{{- else -}}
+kubeflow
+{{- end -}}
+{{- end -}}
+
+{{/* INFERENCE_SERVICE_CONTROLLER: explicit value, else managed (perProfile) / false (shared). */}}
+{{- define "kubeflow-hub.inferenceServiceController" -}}
+{{- $raw := .Values.controller.env.inferenceServiceController -}}
+{{- $v := "" -}}
+{{- if kindIs "bool" $raw -}}{{- $v = toString $raw -}}{{- else if $raw -}}{{- $v = toString $raw -}}{{- end -}}
+{{- if $v -}}{{ $v }}{{- else if include "kubeflow-hub.isShared" . -}}false{{- else -}}managed{{- end -}}
+{{- end -}}

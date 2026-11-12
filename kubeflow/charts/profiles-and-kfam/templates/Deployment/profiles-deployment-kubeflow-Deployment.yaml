@@ -14,6 +14,10 @@ spec:
     metadata:
       annotations:
         sidecar.istio.io/inject: 'true'
+        # Restart on config change (fixed ConfigMap names): the controller reads profiles-config and
+        # namespace-labels at startup and re-reconciles every Profile when it restarts.
+        checksum/profiles-config: {{ include (print $.Template.BasePath "/ConfigMap/profiles-config-46c7tgh6fd-kubeflow-ConfigMap.yaml") . | sha256sum | trunc 16 }}
+        checksum/namespace-labels: {{ include (print $.Template.BasePath "/ConfigMap/namespace-labels-data-4df5t8mdgf-kubeflow-ConfigMap.yaml") . | sha256sum | trunc 16 }}
       labels:
         kustomize.component: profiles
     spec:

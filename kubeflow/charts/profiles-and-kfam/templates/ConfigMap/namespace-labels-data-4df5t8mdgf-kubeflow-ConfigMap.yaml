@@ -35,6 +35,10 @@ data:
     pipelines.kubeflow.org/enabled: "true"
 
     app.kubernetes.io/part-of: "kubeflow-profile"
+{{- if eq (include "profiles-and-kfam.istioCni" .) "true" }}
+
+    pod-security.kubernetes.io/enforce: "baseline"
+{{- end }}
 
     '
 kind: ConfigMap

@@ -54,6 +54,25 @@
       "type": "object",
       "description": "Global settings applied to all sub-charts",
       "properties": {
+        "istio": {
+          "type": "object",
+          "properties": {
+            "cni": {
+              "type": "boolean",
+              "description": "Istio installed with the istio-cni plugin (default true). true: profile namespaces enforce Pod Security Standards baseline. false: classic istio-init sidecars, no PSS label."
+            }
+          }
+        },
+        "modelRegistry": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["perProfile", "shared"],
+              "description": "Model Registry topology — single switch for kubeflow-hub and user-namespace. perProfile (default, upstream parity): one UI/BFF/catalog/controller/CSI in kubeflow, a registry server + Postgres per profile namespace. shared: DEPRECATED, will be removed in a future release — legacy single registry in kubeflow on KFP's MariaDB."
+            }
+          }
+        },
         "storageClass": {
           "type": "string",
           "description": "Default StorageClass for all PVCs. Empty = cluster default."
@@ -226,7 +245,21 @@
       "properties": {
         "enabled":    { "type": "boolean" },
         "mariadb":    { "type": "object" },
-        "seaweedfs":  { "type": "object" }
+        "seaweedfs":  { "type": "object" },
+        "artifacts": {
+          "type": "object",
+          "properties": {
+            "proxyEnabled": {
+              "type": "boolean",
+              "description": "Per-profile ml-pipeline-ui-artifact proxy (upstream default: off)."
+            },
+            "retentionDays": {
+              "type": "integer",
+              "minimum": -1,
+              "description": "Delete objects under private-artifacts/ older than N days; -1 keeps them."
+            }
+          }
+        }
       }
     },
     "notebooks": {
@@ -266,6 +299,152 @@
         "enabled": { "type": "boolean" },
         "ingressDomain": { "type": "string", "description": "Domain for InferenceService external URLs. Normally left unset — auto-derived from global.kserveDomain. Only set for a standalone kserve install without the umbrella globals." },
         "urlScheme": { "type": "string", "enum": ["http", "https"], "description": "Scheme KServe reports in status.url. Normally left unset — auto-derived from global.kserveExternalHttps (https when enabled, otherwise http). Only set for a standalone kserve install without the umbrella globals." }
+      }
+    },
+    "user-namespace": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create the example profile."
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "description": "Example profile and namespace name (default kubeflow-user-example-com)."
+            }
+          }
+        },
+        "modelRegistry": {
+          "type": "object",
+          "description": "Per-profile Model Registry data plane (registry server, Postgres and Istio routing/policy in each profile namespace); follows global.modelRegistry.mode. Settings are documented in charts/user-namespace/values.yaml.",
+          "properties": {
+            "enabled": {
+              "type": ["boolean", "null"],
+              "description": "null (default) follows global.modelRegistry.mode; true/false overrides it."
+            },
+            "extraNamespaces": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+              },
+              "description": "Existing profile namespaces created outside the chart that also get a registry (registry resources only)."
+            },
+            "server": {
+              "type": "object",
+              "properties": {
+                "image": {
+                  "$ref": "#/$defs/imageBlock"
+                },
+                "replicaCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "resources": {
+                  "$ref": "#/$defs/resourceBlock"
+                }
+              }
+            },
+            "db": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "embedded",
+                    "external"
+                  ]
+                },
+                "image": {
+                  "$ref": "#/$defs/imageBlock"
+                },
+                "embedded": {
+                  "type": "object",
+                  "properties": {
+                    "database": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "storage": {
+                      "type": "string"
+                    },
+                    "networkPolicy": { "type": "boolean" },
+                    "storageClassName": {
+                      "type": "string"
+                    },
+                    "existingSecret": {
+                      "type": "string",
+                      "description": "Use this pre-created Secret (keys POSTGRES_USER/POSTGRES_PASSWORD, in every registry namespace) instead of a generated one. Set it when rendering with helm template (no lookup)."
+                    },
+                    "resources": {
+                      "$ref": "#/$defs/resourceBlock"
+                    }
+                  }
+                },
+                "external": {
+                  "type": "object",
+                  "properties": {
+                    "host": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": "integer"
+                    },
+                    "databasePrefix": {
+                      "type": "string"
+                    },
+                    "sslMode": {
+                      "type": "string",
+                      "description": "libpq sslmode for the external Postgres. verify-ca / verify-full are not offered: the chart cannot mount a CA bundle, so they would fail at startup.",
+                      "enum": [
+                        "disable",
+                        "allow",
+                        "prefer",
+                        "require"
+                      ]
+                    },
+                    "existingSecret": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "istio": {
+              "type": "object",
+              "properties": {
+                "virtualService": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            },
+            "authorizationPolicy": {
+              "type": "object",
+              "properties": {
+                "strict": {
+                  "type": "boolean"
+                },
+                "controllerPrincipal": { "type": "string" },
+                "bffPrincipal": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "hub": {

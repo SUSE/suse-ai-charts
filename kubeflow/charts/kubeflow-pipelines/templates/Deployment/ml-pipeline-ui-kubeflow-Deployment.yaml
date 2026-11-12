@@ -20,6 +20,8 @@ spec:
       annotations:
         cluster-autoscaler.kubernetes.io/safe-to-evict: 'true'
         sidecar.istio.io/inject: 'true'
+        # Restart when ARTIFACTS_PROXY_ENABLED (pipeline-install-config) changes.
+        checksum/artifacts: {{ printf "%v" .Values.artifacts.proxyEnabled | sha256sum | trunc 16 }}
       labels:
         app: ml-pipeline-ui
         app.kubernetes.io/component: ml-pipeline
@@ -50,7 +52,10 @@ spec:
         - name: ARTIFACTS_SERVICE_PROXY_PORT
           value: '80'
         - name: ARTIFACTS_SERVICE_PROXY_ENABLED
-          value: 'true'
+          valueFrom:
+            configMapKeyRef:
+              name: pipeline-install-config
+              key: ARTIFACTS_PROXY_ENABLED
         - name: ENABLE_AUTHZ
           value: 'true'
         - name: KUBEFLOW_USERID_HEADER

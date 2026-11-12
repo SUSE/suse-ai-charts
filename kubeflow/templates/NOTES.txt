@@ -22,7 +22,7 @@ Release name: {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}
 {{- end }}
 
-{{- $unsCreds := (index .Values "user-namespace").pipelines.seaweedfs }}
+{{- $unsCreds := .Values.pipelines.seaweedfs | default dict }}
 {{- $usingDemoSeaweedCreds  := and .Values.pipelines.enabled (eq ($unsCreds.accessKey | default "kubeflow") "kubeflow") (eq ($unsCreds.secretKey | default "kubeflow123") "kubeflow123") }}
 {{- $usingDemoDexSecret     := and .Values.dex.enabled (contains "pUBnBOY80Sn" (.Values.dex.config.staticClients | toJson)) }}
 {{- $usingDemoUserCreds     := and .Values.dex.enabled (eq .Values.auth.initialUser.email "user@example.com") }}
@@ -44,6 +44,26 @@ this deployment to any network or storing sensitive data.
   • SeaweedFS credentials are kubeflow / kubeflow123.
     Update pipelines.seaweedfs.accessKey/secretKey in your values override.
 {{- end }}
+-------------------------------------------------------------------------------
+{{- end }}
+{{- if eq (include "kubeflow.modelRegistryMode" .) "shared" }}
+
+⚠  DEPRECATION: global.modelRegistry.mode=shared
+-------------------------------------------------------------------------------
+The shared Model Registry (one registry in the kubeflow namespace) is
+deprecated and will be removed in a future release. Upstream Kubeflow only
+supports one registry per profile (global.modelRegistry.mode=perProfile).
+Registered models are not migrated between the two modes.
+See docs/upgrade-notes.md#model-registry-per-profile (Upgrading to 0.6.0).
+-------------------------------------------------------------------------------
+{{- end }}
+{{- if and .Values.hub.enabled (eq (include "kubeflow.modelRegistryMode" .) "perProfile") (not (include "kubeflow.modelRegistryFirstNamespace" .)) }}
+
+⚠  No Model Registry server is deployed
+-------------------------------------------------------------------------------
+The Model Registry UI is installed, but no per-profile registry is rendered
+(userNamespace or user-namespace.modelRegistry is off, or no profile namespace is
+listed). Enable them, set global.modelRegistry.mode=shared, or set hub.enabled=false.
 -------------------------------------------------------------------------------
 {{- end }}
 {{- if and (or .Values.notebooks.controller.enabled .Values.notebooks.webApp.enabled) (not .Values.admissionWebhook.enabled) }}
@@ -189,22 +209,15 @@ DOCUMENTATION
 - KServe: https://kserve.github.io/website/
 - Chart README: See README.md for full configuration reference
 
-BACKUP & RESTORE (MariaDB / KFP metadata)
------------------------------------------
+{{ if (((.Values.pipelines).mariadb).backup).enabled -}}
+BACKUP & RESTORE (KFP MariaDB)
+------------------------------
 
-Backups run daily at 02:00 UTC (configurable via pipelines.mariadb.backup.schedule).
-Backup files are stored on PVC mariadb-backup-pvc in namespace {{ .Release.Namespace }}.
+KFP databases (mlpipeline, metadb) are dumped to PVC mariadb-backup-pvc on schedule
+"{{ .Values.pipelines.mariadb.backup.schedule }}". Model Registry databases are not included.
+List and restore: docs/production-and-tenancy.md#5-enable-database-backups
 
-To list backups:
-  kubectl exec -n {{ .Release.Namespace }} deploy/mysql -- ls /backup/
-
-To restore a backup:
-  kubectl exec -n {{ .Release.Namespace }} deploy/mysql -- \
-    sh -c "mariadb --ssl=false -u root < /backup/<filename>.sql"
-
-To disable backups (resource-constrained clusters):
-  Set pipelines.mariadb.backup.enabled=false in your values override.
-
+{{ end -}}
 TROUBLESHOOTING
 ---------------
 

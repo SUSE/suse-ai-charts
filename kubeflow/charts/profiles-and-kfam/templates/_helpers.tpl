@@ -99,3 +99,8 @@ Usage: {{ include "profiles-and-kfam.suseImageRegistry" (dict "ctx" . "registry"
   {{- .registry -}}
 {{- end -}}
 {{- end -}}
+
+{{/* global.istio.cni as "true"/"false" (default true). Copied per chart; CI keeps the copies equal. */}}
+{{- define "profiles-and-kfam.istioCni" -}}
+{{- ne (toString (dig "istio" "cni" true (.Values.global | default dict))) "false" -}}
+{{- end -}}

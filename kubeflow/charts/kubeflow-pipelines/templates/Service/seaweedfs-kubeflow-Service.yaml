@@ -10,6 +10,12 @@ metadata:
     application-crd-id: kubeflow-pipelines
 spec:
   ports:
+  # SeaweedFS IAM API (upstream http-iam). The KFP profile controller creates each profile's own
+  # access key + policy through it (AWS_ENDPOINT_URL=http://seaweedfs.kubeflow:8111).
+  - name: http-iam
+    port: 8111
+    targetPort: 8111
+    protocol: TCP
   - name: http-s3-compat
     port: 9000
     targetPort: 8333

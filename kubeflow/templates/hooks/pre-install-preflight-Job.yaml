@@ -51,7 +51,8 @@ spec:
 
           # Check 1: default StorageClass exists
           echo "Check 1: Default StorageClass..."
-          DEFAULT_SC=$(kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.annotations.storageclass\.kubernetes\.io/is-default-class}{"\t"}{.metadata.name}{"\n"}{end}' | grep '^true' | awk '{print $2}' | head -1)
+          # The kubectl image has no grep/awk: filter with JSONPath and shell patterns only.
+          DEFAULT_SC=$(kubectl get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' | head -1)
           if [ -z "$DEFAULT_SC" ]; then
             echo "PREFLIGHT FAILED: No default StorageClass found."
             echo "  Create one or set global.storageClass in your values."
@@ -71,6 +72,54 @@ spec:
           {{- else }}
           echo "Check 2: cert-manager CRDs... skipped (no enabled component uses cert-manager)"
           {{- end }}
+
+          echo "Check 3: Istio CNI mode (global.istio.cni={{ include "kubeflow.istioCni" . }})..."
+{{- if not (or .Values.profiles.enabled .Values.userNamespace.enabled) }}
+          echo "  skipped (no profile namespaces: profiles and userNamespace are disabled)"
+{{- else }}
+{{- $p := include "kubeflow.istioCniProbe" . | fromYaml }}
+          # Same rules as validations.yaml (kubeflow.istioCniProbe). kubectl errors (e.g. RBAC) fail
+          # the check instead of reading as "not found".
+          ISTIOD=$(kubectl get deployment -n istio-system -o jsonpath='{.items[*].metadata.name}') || { echo "PREFLIGHT FAILED: cannot list Deployments in istio-system."; exit 1; }
+          DS=$(kubectl get daemonset -A -o jsonpath='{.items[*].metadata.name}') || { echo "PREFLIGHT FAILED: cannot list DaemonSets."; exit 1; }
+          CNI=false; HAS_ISTIOD=false
+          for n in $DS; do if [ "$n" = {{ $p.cniDaemonSet }} ]; then CNI=true; fi; done
+          for n in $ISTIOD; do case "$n" in {{ $p.istiod }}|{{ $p.istiod }}-*) HAS_ISTIOD=true ;; esac; done
+{{- if eq (include "kubeflow.istioCni" .) "true" }}
+          CMS=$(kubectl get configmap -n istio-system -o jsonpath='{.items[*].metadata.name}') || { echo "PREFLIGHT FAILED: cannot list ConfigMaps in istio-system."; exit 1; }
+          INJ_OFF=""
+          for cm in $CMS; do
+            case "$cm" in {{ $p.injector }}|{{ $p.injector }}-*)
+              v=$(kubectl get configmap -n istio-system "$cm" -o jsonpath='{.data.values}') || { echo "PREFLIGHT FAILED: cannot read ConfigMap istio-system/$cm."; exit 1; }
+              [ -n "$v" ] || continue
+              # Read the field exactly: wrap the JSON as an object and let kubectl's JSONPath parse it offline.
+              e=$(printf '%s' "$v" | tr -d '\n' | sed 's/^[[:space:]]*{/{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"x"},/' \
+                | kubectl label --local -f - x=y -o jsonpath='{.{{ join "." $p.injectorField }}}') || { echo "PREFLIGHT FAILED: cannot parse istio-system/$cm data.values."; exit 1; }
+              if [ "$e" = false ]; then INJ_OFF="${INJ_OFF:+$INJ_OFF, }$cm"; fi ;;
+            esac
+          done
+{{- end }}
+          if [ "$HAS_ISTIOD" != true ]; then
+            echo "  skipped (no istiod in istio-system)"
+{{- if eq (include "kubeflow.istioCni" .) "true" }}
+          elif [ "$CNI" != true ]; then
+            echo "PREFLIGHT FAILED: {{ include "kubeflow.istioCniMissingMsg" . }}"
+            exit 1
+          elif [ -n "$INJ_OFF" ]; then
+            echo "PREFLIGHT FAILED: {{ include "kubeflow.istioCniInjectorMsg" "$INJ_OFF" }}"
+            exit 1
+          else
+            echo "  {{ $p.cniDaemonSet }} present — OK"
+          fi
+{{- else }}
+          elif [ "$CNI" = true ]; then
+            echo "  NOTE: {{ $p.cniDaemonSet }} found but global.istio.cni=false: profile namespaces will not"
+            echo "  enforce Pod Security Standards 'baseline'. Set global.istio.cni=true to enable it."
+          else
+            echo "  no {{ $p.cniDaemonSet }} (classic istio-init) — OK"
+          fi
+{{- end }}
+{{- end }}
 
           echo "=== PREFLIGHT: OK ==="
 {{- end }}

@@ -1,3 +1,6 @@
+{{- /* Shared-mode data plane: rendered only when modelRegistry.mode=shared. In perProfile the
+     per-namespace equivalent is rendered by the user-namespace subchart. */}}
+{{- if include "kubeflow-hub.isShared" . }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,6 +9,8 @@ metadata:
     app.kubernetes.io/component: model-registry-server
     app.kubernetes.io/name: model-registry
     kustomize.component: model-registry
+    # Discovery label used by the BFF and the controller (upstream); not part of the selector.
+    component: model-registry
   name: model-registry-service
   namespace: kubeflow
 spec:
@@ -18,3 +23,4 @@ spec:
     app.kubernetes.io/component: model-registry-server
     app.kubernetes.io/name: model-registry
     kustomize.component: model-registry
+{{- end }}

@@ -1,0 +1,7 @@
+# Patterns excluded when this sub-chart is packaged on its own (the umbrella's .helmignore covers
+# the released chart). Python bytecode from running the profile-controller unit tests locally.
+__pycache__/
+*.pyc
+# Vendoring metadata for files/profile-controller/sync.py (used by CI, not by the chart).
+files/profile-controller/suse.patch
+files/profile-controller/UPSTREAM_VERSION
