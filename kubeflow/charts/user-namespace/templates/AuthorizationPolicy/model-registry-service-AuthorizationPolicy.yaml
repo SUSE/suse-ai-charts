@@ -1,0 +1,47 @@
+{{- if (include "user-namespace.modelRegistry.enabled" .) }}
+{{- $ap := .Values.modelRegistry.authorizationPolicy }}
+{{- /* The server does no authorisation and Istio ORs ALLOW policies, so this policy admits only the
+       BFF and the Model Registry controller, by mesh identity. Upstream's gateway rule (any logged-in
+       user) and "authorization header present" rule (any pod; nothing validates the token) are
+       dropped. The profile's own policies admit its owner and contributors via the gateway and pods
+       in the profile namespace. */}}
+{{- $principals := compact (list $ap.bffPrincipal $ap.controllerPrincipal) }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: model-registry-service
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  action: ALLOW
+  selector:
+    matchLabels:
+      component: model-registry-server
+      app.kubernetes.io/name: model-registry-server
+  {{- if $ap.strict }}
+  {{- with $principals }}
+  rules:
+  # The UI/BFF (it SubjectAccessReviews the caller against this namespace before proxying) and
+  # the controller, both in kubeflow (mesh mTLS identity).
+  - from:
+    - source:
+        principals:
+        {{- range . }}
+        - {{ . | quote }}
+        {{- end }}
+  {{- else }}
+  rules: []
+  {{- end }}
+  {{- else }}
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - kubeflow
+        - {{ .namespace }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,129 @@
+{{- if (include "user-namespace.modelRegistry.enabled" .) }}
+{{- include "user-namespace.modelRegistry.validate" . }}
+{{- $mr := .Values.modelRegistry }}
+{{- $serverImage := include "user-namespace.image" (dict "registry" (include "user-namespace.suseImageRegistry" (dict "ctx" $ "registry" $mr.server.image.registry)) "image" $mr.server.image) }}
+{{- $dbImage := include "user-namespace.image" (dict "registry" (include "user-namespace.suseApplicationCollectionRegistry" (dict "ctx" $ "registry" $mr.db.image.registry)) "image" $mr.db.image) }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+{{- $db := include "user-namespace.modelRegistry.db" (dict "root" $ "ns" .namespace) | fromJson }}
+---
+# Upstream base/model-registry-deployment.yaml + overlays/postgres patch, per profile namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-registry-deployment
+  namespace: {{ .namespace }}
+  labels:
+    component: model-registry-server
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $mr.server.replicaCount }}
+  selector:
+    # Upstream's label plus a registry-specific one, as for the DB: profile namespaces host user
+    # pods, which could carry `component: model-registry-server`. Immutable once released.
+    matchLabels:
+      component: model-registry-server
+      app.kubernetes.io/name: model-registry-server
+  template:
+    metadata:
+      annotations:
+        # DB traffic bypasses the sidecar (DB pod is not meshed; also lets the initContainer
+        # reach the DB before the sidecar starts). Upstream overlays/postgres.
+        traffic.sidecar.istio.io/excludeOutboundPorts: {{ $db.port | quote }}
+      labels:
+        component: model-registry-server
+        app.kubernetes.io/name: model-registry-server
+        # Upstream base: meshes the server even where the namespace lacks istio-injection
+        # (profile namespaces normally carry it; see user-namespace.profileNamespaceLabels).
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: model-registry-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "user-namespace.imagePullSecrets" $ | nindent 6 }}
+      initContainers:
+      # Wait for Postgres and create the database if missing (external mode).
+      - name: init-db
+        image: {{ $dbImage | quote }}
+        imagePullPolicy: {{ $mr.db.image.pullPolicy }}
+        command:
+        - bash
+        - -ec
+        - |
+          until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d postgres -q; do
+            echo "Waiting for Postgres at $POSTGRES_HOST:$POSTGRES_PORT..."; sleep 3
+          done
+          if [ -z "$(psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'")" ]; then
+            psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"${POSTGRES_DB}\""
+          fi
+          echo "Database '${POSTGRES_DB}' ready."
+        env:
+        - name: POSTGRES_HOST
+          value: {{ $db.host | quote }}
+        - name: POSTGRES_PORT
+          value: {{ $db.port | quote }}
+        - name: POSTGRES_DB
+          value: {{ $db.database | quote }}
+        - name: PGSSLMODE
+          value: {{ $db.sslMode | quote }}
+        - name: POSTGRES_USER
+          valueFrom: { secretKeyRef: { name: {{ $db.secret }}, key: POSTGRES_USER } }
+        - name: PGPASSWORD
+          valueFrom: { secretKeyRef: { name: {{ $db.secret }}, key: POSTGRES_PASSWORD } }
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 999
+          capabilities: { drop: [ALL] }
+          seccompProfile: { type: RuntimeDefault }
+      containers:
+      - name: rest-container
+        image: {{ $serverImage | quote }}
+        imagePullPolicy: {{ $mr.server.image.pullPolicy }}
+        command:
+        - /model-registry
+        - proxy
+        args:
+        - --hostname=0.0.0.0
+        - --port=8080
+        - --datastore-type=embedmd
+        - --embedmd-database-type=postgres
+        - --embedmd-database-dsn=postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)
+        env:
+        - name: POSTGRES_HOST
+          value: {{ $db.host | quote }}
+        - name: POSTGRES_PORT
+          value: {{ $db.port | quote }}
+        - name: POSTGRES_DB
+          value: {{ $db.database | quote }}
+        - name: POSTGRES_SSLMODE
+          value: {{ $db.sslMode | quote }}
+        - name: POSTGRES_USER
+          valueFrom: { secretKeyRef: { name: {{ $db.secret }}, key: POSTGRES_USER } }
+        - name: POSTGRES_PASSWORD
+          valueFrom: { secretKeyRef: { name: {{ $db.secret }}, key: POSTGRES_PASSWORD } }
+        ports:
+        - name: http-api
+          containerPort: 8080
+        {{- with $mr.server.livenessProbe }}
+        livenessProbe: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $mr.server.startupProbe }}
+        startupProbe: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $mr.server.readinessProbe }}
+        readinessProbe: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $mr.server.resources }}
+        resources: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: { drop: [ALL] }
+          seccompProfile: { type: RuntimeDefault }
+          readOnlyRootFilesystem: false  # Go binary writes temp files during DB migrations
+{{- end }}
+{{- end }}

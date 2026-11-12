@@ -14,10 +14,18 @@ spec:
     image: "{{- $registry := include "kubeflow-hub.suseImageRegistry" (dict "ctx" . "registry" .Values.kserve.storageContainer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.kserve.storageContainer.image.repository }}{{- if .Values.kserve.storageContainer.image.digest }}@{{ .Values.kserve.storageContainer.image.digest }}{{- else }}:{{ .Values.kserve.storageContainer.image.tag }}{{- end }}"
     imagePullPolicy: {{ .Values.kserve.storageContainer.image.pullPolicy }}
     env:
+    {{- if include "kubeflow-hub.isShared" . }}
     - name: MODEL_REGISTRY_BASE_URL
       # model-registry-service is created with a hardcoded `kubeflow` namespace (like every
       # Service/Deployment in this chart), so target it explicitly rather than Release.Namespace.
       value: "model-registry-service.kubeflow.svc.cluster.local:8080"
+    {{- end }}
+    # ?namespace=<profile> in the storageUri targets <service>.<profile>.<domain>:8080 (binary
+    # defaults, pinned to match user-namespace's per-profile Service).
+    - name: MODEL_REGISTRY_SERVICE_NAME
+      value: model-registry-service
+    - name: MODEL_REGISTRY_CLUSTER_DOMAIN
+      value: svc.cluster.local
     resources:
       requests:
         cpu: 100m

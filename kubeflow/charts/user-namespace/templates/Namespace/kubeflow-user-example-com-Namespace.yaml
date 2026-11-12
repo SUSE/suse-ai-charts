@@ -1,13 +1,16 @@
+{{- if .Values.profile.enabled }}
+{{- include "user-namespace.checkProfileNamespace" (dict "what" "profile.name" "ns" .Values.profile.name) }}
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kubeflow-user-example-com
+  name: {{ .Values.profile.name }}
   labels:
-    app.kubernetes.io/part-of: kubeflow-profile
+    {{- include "user-namespace.profileNamespaceLabels" . | nindent 4 }}
   annotations:
     # The profiles controller checks for this annotation to confirm it owns the namespace.
     # Pre-setting it here lets the controller reconcile normally (create RoleBindings,
     # service accounts, ns-owner-access-istio, etc.) even though Helm created the namespace
-    # first (so that our rancher-ingressgateway-access AuthorizationPolicy can be applied
-    # on a fresh install before the profiles controller runs).
+    # first (so that namespaced resources such as the Model Registry can be applied on a fresh
+    # install before the profiles controller runs).
     owner: {{ .Values.profile.owner.name }}
+{{- end }}

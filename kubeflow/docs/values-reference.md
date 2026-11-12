@@ -19,6 +19,7 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `global.labels` | `{}` | Common labels applied to all managed resources |
 | `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
 | `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer. Disabling it removes the gateway's ext_authz auth chain, so it is **incompatible with `global.kserveExternalHttps: true`** (the chart fails fast on that combination — see [External HTTPS for KServe inference](access-and-tls.md#external-https-for-kserve-inference-opt-in)) |
+| `global.istio.cni` | `true` | Set to match how Istio is installed: `true` with istio-cni (profile namespaces enforce Pod Security `baseline`), `false` for classic `istio-init`. See [Pod Security Standards on profile namespaces](production-and-tenancy.md#9-pod-security-standards-on-profile-namespaces) |
 | `global.gateway.name` | `kubeflow/kubeflow-gateway` | Istio Gateway (`<namespace>/<name>`) for the dashboard and app VirtualServices. KServe inference does **not** use this — it uses `global.kserveGateway.name` |
 | `global.kserveGateway.name` | `kubeflow/kserve-ingress-gateway` | Single source of truth for the **dedicated** KServe inference gateway (`<namespace>/<name>`). Threads through the Gateway CR that `kubeflow-istio-resources` renders, the `config-istio` `gateway.<ns>.<name>` key net-istio binds inference to, and kserve's `inferenceservice-config` `ingressGateway`. Keeps inference readiness independent of the dashboard's `:443` TLS |
 
@@ -47,7 +48,12 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `notebooks.webApp.enabled` | `true` | Jupyter Web App |
 | `katib.enabled` | `true` | Katib hyperparameter tuning |
 | `kserve.enabled` | `true` | KServe model serving + Models Web App |
-| `hub.enabled` | `true` | Kubeflow Hub — Model Registry + Model Catalog (requires `pipelines.enabled=true`) |
+| `hub.enabled` | `true` | Kubeflow Hub — Model Registry + Model Catalog |
+| `global.modelRegistry.mode` | `perProfile` | `perProfile`: one registry per profile namespace (upstream). `shared` (deprecated): one registry in `kubeflow`, needs `pipelines.enabled=true`. See [Upgrade Notes](upgrade-notes.md#model-registry-per-profile) |
+| `user-namespace.modelRegistry.enabled` | `null` | Follows `global.modelRegistry.mode`. Set `false` to skip the per-profile registries (required when `hub.enabled=false` and `userNamespace.enabled=true`) |
+| `user-namespace.profile.enabled` | `true` | Create the example profile (`user-namespace.profile.name`). `false` keeps only `additionalUsers` and `modelRegistry.extraNamespaces` (e.g. production) |
+| `user-namespace.profile.name` | `kubeflow-user-example-com` | Name of the example profile and its namespace |
+| `user-namespace.modelRegistry.extraNamespaces` | `[]` | Existing profile namespaces created outside the chart that should also get a registry (registry resources only). Remove an entry before deleting its profile, or the next `helm upgrade` fails with "namespace not found" |
 | `trainingOperator.enabled` | `true` | Training Operator V1 (TFJob, PyTorchJob, etc.) |
 | `trainer.enabled` | `true` | Trainer V2 (TrainJob, TrainingRuntime, ClusterTrainingRuntime) |
 | `profiles.enabled` | `true` | Profiles & KFAM (multi-tenancy) |
@@ -66,7 +72,7 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `oauth2Proxy.enabled` | `true` | oauth2-proxy authentication broker |
 | `istioResources.enabled` | `true` | kubeflow-istio-resources: Gateways, Dex/oauth2-proxy VirtualServices, gateway AuthorizationPolicies/EnvoyFilters (requires Istio CRDs). When `false`, every component that needs Istio must be disabled; the install fails and its error lists the ones still enabled. |
 | `admissionWebhook.enabled` | `true` | PodDefaults admission webhook (requires cert-manager CRDs). When `false`, notebooks run without PodDefaults |
-| `userNamespace.enabled` | `true` | Default `kubeflow-user-example-com` Profile plus `user-namespace.additionalUsers` and their per-namespace KFP servers (requires `profiles.enabled=true`) |
+| `userNamespace.enabled` | `true` | Example `kubeflow-user-example-com` Profile, `user-namespace.additionalUsers` and the per-profile Model Registry (requires `profiles.enabled=true`) |
 | `kubeflowRoles.enabled` | `true` | Aggregated `kubeflow-{admin,edit,view}` and `kubeflow-kubernetes-*` ClusterRoles |
 
 To install only Trainer V2 + JobSet, use the `trainer-only-overrides.yaml` preset in the chart root,
@@ -74,15 +80,32 @@ which sets all of the above (and every other component except `trainer`) to `fal
 [Trainer-only Install](use-cases/trainer-only-install.md) for the full instructions.
 
 Model Registry provides model versioning and metadata storage, accessible from the Central Dashboard →
-"Model Registry" sidebar link or directly at `/model-registry/`. It shares KFP's MariaDB.
+"Model Registry" sidebar link or directly at `/model-registry/`. Each profile namespace has its own
+registry (server + Postgres): the example profile, every `user-namespace.additionalUsers[]` entry, and
+any namespace in `user-namespace.modelRegistry.extraNamespaces`. Select the namespace in the UI.
+Per-profile settings (embedded or external Postgres, Istio route, authorization policy) are documented
+in `charts/user-namespace/values.yaml` under `modelRegistry`.
+
+- **Registry data lives and dies with the profile namespace.** The embedded Postgres PVC
+  (`metadata-postgres`) and its Secret carry `helm.sh/resource-policy: keep`, so Helm itself never
+  deletes them. But a namespace the chart created (the example profile, `additionalUsers[]`) is
+  deleted on `helm uninstall` or when you remove the user from `additionalUsers`, and the PVC goes
+  with it — as upstream, where deleting a Profile deletes its namespace. Only namespaces listed in
+  `extraNamespaces` (not created by the chart) keep the data. Back up the registry first if you
+  need it.
+- **Installs rendered with `helm template`** (no cluster access, so no Helm `lookup`) would
+  generate a new embedded-DB password on every render. Set
+  `user-namespace.modelRegistry.db.embedded.existingSecret` and create that Secret (keys
+  `POSTGRES_USER` / `POSTGRES_PASSWORD`) in every registry namespace.
+- **Server image is set twice.** The per-profile servers use `user-namespace.modelRegistry.server.image`;
+  the catalog (and the shared server) use `hub.server.image`. Override both together.
 
 ```bash
-# REST API smoke test
-kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
-  --annotations='sidecar.istio.io/inject=false' -- \
-  wget -qO- --timeout=10 \
-  http://model-registry-service.kubeflow:8080/api/model_registry/v1alpha3/registered_models
-# Expected: {"items":[],"nextPageToken":"","pageSize":0,"totalSize":0}
+# REST API smoke test for one profile (port-forward bypasses the mesh)
+kubectl port-forward -n kubeflow-user-example-com svc/model-registry-service 8080:8080 & PF=$!; sleep 2
+curl -s http://localhost:8080/api/model_registry/v1alpha3/registered_models
+# Expected (empty registry): {"items":[],"nextPageToken":"","pageSize":0,"size":0}
+kill $PF
 ```
 
 ## Optional features
@@ -91,13 +114,17 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 |-----|---------|-------------|
 | `networkPolicies.enabled` | `false` | Deny-all NetworkPolicies with explicit allow rules. Requires a CNI that enforces NetworkPolicy (Calico, Cilium, Canal). Disable with bare Flannel or any CNI that does not enforce NetworkPolicy. |
 | `network-policies.knativeServingPolicies.enabled` | `true` | Render the NetworkPolicies for the `knative-serving` namespace. Set `false` when `networkPolicies.enabled=true` but Knative Serving is not installed (e.g. trainer-only); the chart refuses that combination otherwise. |
-| `preflightChecks.enabled` | `false` | Pre-install hook Job that validates the default StorageClass and, when a cert-manager consumer is enabled (admission webhook, Katib, KServe, pipelines, volumes web app, or a cert-manager gateway TLS source), the cert-manager CRDs |
+| `preflightChecks.enabled` | `false` | Pre-install hook Job that validates the default StorageClass and, when a cert-manager consumer is enabled (admission webhook, Katib, KServe, pipelines, volumes web app, or a cert-manager gateway TLS source), the cert-manager CRDs, and (with profile namespaces) that Istio CNI matches `global.istio.cni` |
 | `preflightChecks.image.repository` | `containers/kubectl` | Repository for the preflight kubectl image |
 | `preflightChecks.image.tag` | `1.36.2` | Tag for the preflight kubectl image |
 | `preflightChecks.resources` | requests `50m`/`64Mi`, limits `500m`/`256Mi` | Resources for the preflight and webhook-secret-migration Jobs (the Trainer runtimes applier uses `trainer.runtimes.applier.resources`), so they run in namespaces whose ResourceQuota requires them |
 | `monitoring.enabled` | `false` | ServiceMonitors + PrometheusRules (requires Rancher Monitoring) |
 | `pipelines.mariadb.backup.enabled` | `false` | Daily MariaDB backup CronJob to a dedicated PVC |
 | `certManager.install` | `false` | Install bundled cert-manager v1.20.2 via this chart (not recommended — install separately) |
+| `pipelines.artifacts.proxyEnabled` | `false` | Per-profile KFP artifact proxy (`ml-pipeline-ui-artifact`). Off by default, as upstream: the KFP UI reads artifacts directly. A change reaches existing profiles at metacontroller's hourly resync; to apply it now, `kubectl rollout restart statefulset/metacontroller -n kubeflow` |
+| `pipelines.artifacts.retentionDays` | `-1` | Delete pipeline artifacts under `private-artifacts/` older than N days (SeaweedFS lifecycle rule). `-1` keeps them. The rule is bucket-wide and is written only when the KFP profile controller creates a profile's access key (a new profile, or after deleting a profile's `mlpipeline-minio-artifact` Secret), so a change takes effect at the next such event, not on `helm upgrade`. |
+| `hub.kserve.storageContainer.enabled` | `false` | Model Registry storage initializer: KServe loads models by `model-registry://` URI. Extra steps in per-profile mode — see [Optional Features](optional-features.md#model-registry-kserve-integration) |
+| `hub.controller.enabled` | `false` | Model Registry InferenceService controller: records deployments in the registry. Needs `hub.controller.env.registriesNamespace` in per-profile mode — see [Optional Features](optional-features.md#model-registry-kserve-integration) |
 
 ## Storage and persistence
 
@@ -133,8 +160,6 @@ kubectl run mr-test --rm -i --restart=Never --image=busybox:1.36 -n kubeflow \
 | `global.kserveDomain` | `""` | Root domain for KServe InferenceService ingress — the **enforced single source of truth** and the recommended single place to set the inference domain. When set, it overrides and auto-wires the legacy `knativeServing.domain` / `kserve.ingressDomain`. Setting those subchart keys alone (without `global.kserveDomain`) **fails fast** — they feed the Knative/KServe configs but not the dedicated `kserve-ingress-gateway`'s hosts, so the chart rejects the divergence rather than silently stranding inference at `READY=Unknown`. Empty = the whole stack stays on `example.com` (the subchart-local defaults). With `global.kserveExternalHttps: true` it is also the wildcard cert/gateway base and is **required** |
 | `dex.existingOidcClientSecret` | `""` | Not read by this chart. To supply the OIDC credentials yourself, set `auth.oidc.existingSecret: true` |
 | `dex.resources` | `{requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}` | CPU/memory for the Dex container |
-| `user-namespace.pipelines.seaweedfs.accessKey` | (demo default, copied from `pipelines.seaweedfs.accessKey` in values.yaml only; `-f`/`--set` overrides are not copied, set both — the render fails if they differ) | SeaweedFS S3 access key injected into every user namespace |
-| `user-namespace.pipelines.seaweedfs.secretKey` | (demo default, copied from `pipelines.seaweedfs.secretKey` in values.yaml only; `-f`/`--set` overrides are not copied, set both — the render fails if they differ) | SeaweedFS S3 secret key injected into every user namespace |
 
 ## Registry Overrides
 

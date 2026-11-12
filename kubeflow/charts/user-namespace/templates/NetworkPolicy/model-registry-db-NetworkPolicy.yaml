@@ -1,0 +1,29 @@
+{{- if and (include "user-namespace.modelRegistry.enabled" .) (eq .Values.modelRegistry.db.mode "embedded") .Values.modelRegistry.db.embedded.networkPolicy }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+# The DB pod is not meshed, so Istio cannot restrict it: only the registry server may connect.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-registry-db
+  namespace: {{ .namespace }}
+  labels:
+    component: db
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      component: db
+      app.kubernetes.io/name: model-registry-db
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          component: model-registry-server
+          app.kubernetes.io/name: model-registry-server
+    ports:
+    - protocol: TCP
+      port: 5432
+{{- end }}
+{{- end }}

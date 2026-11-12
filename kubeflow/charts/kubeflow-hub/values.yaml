@@ -16,6 +16,12 @@ global:
       selector:
         istio: istio
 
+modelRegistry:
+  # -- perProfile | shared (deprecated). perProfile renders only the UI/BFF, catalog, controller and
+  # CSI here; the per-profile servers come from user-namespace. In the umbrella chart set
+  # global.modelRegistry.mode instead (it wins); this is the standalone-render default.
+  mode: perProfile
+
 # Istio AuthorizationPolicy posture for the model-registry server/UI/catalog.
 # Escape hatch so operators can adjust mesh authz per-cluster without editing templates.
 authorizationPolicy:
@@ -115,7 +121,7 @@ ui:
     timeoutSeconds: 15
     failureThreshold: 3
 
-# Database: shares KFP's MariaDB (requires pipelines.enabled=true)
+# Database (modelRegistry.mode=shared only): shares KFP's MariaDB (requires pipelines.enabled=true)
 # Credentials from mysql-secret (username=root, password=<root password>)
 # Host/port/dbname from pipeline-install-config (embedmdDb key added by this chart)
 db:
@@ -148,9 +154,22 @@ controller:
       cpu: 200m
       memory: 128Mi
   env:
-    inferenceServiceController: "false"
+    # "managed" records labelled InferenceServices in the registry; anything else leaves the
+    # controller idle. "" → managed in perProfile mode (upstream), "false" in shared mode.
+    inferenceServiceController: ""
+    # Default registry namespace for the reconciler (InferenceServices override it with
+    # namespaceLabel). "" → kubeflow in shared mode; required in perProfile mode when managed.
     registriesNamespace: ""
     skipTlsVerify: "false"
+    # Upstream options/controller/overlays/base/params.env (release-26.03.1).
+    namespaceLabel: modelregistry.kubeflow.org/namespace
+    nameLabel: modelregistry.kubeflow.org/name
+    urlAnnotation: modelregistry.kubeflow.org/url
+    inferenceServiceIdLabel: modelregistry.kubeflow.org/inference-service-id
+    modelVersionIdLabel: modelregistry.kubeflow.org/model-version-id
+    registeredModelIdLabel: modelregistry.kubeflow.org/registered-model-id
+    finalizer: modelregistry.kubeflow.org/finalizer
+    serviceAnnotation: routing.kubeflow.org/external-address-rest
   livenessProbe:
     httpGet:
       path: /healthz

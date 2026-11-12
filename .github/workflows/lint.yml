@@ -52,19 +52,19 @@ jobs:
         # Pure file check — no registry/Helm needed, so it runs unconditionally
         # (including on fork PRs where the umbrella render steps skip). The KFP
         # version is hand-maintained as a `tag:` on every ai/containers/kubeflow/kfp-*
-        # image in three files (umbrella values.yaml, user-namespace sub-chart,
-        # kubeflow-pipelines sub-chart). A bump that misses one file ships a skewed
-        # control plane (e.g. api-server 2.17.4 against launcher 2.17.3). Pair each
-        # kfp-* repository with the tag on its next `tag:` line and assert exactly one
-        # distinct value across all three files. Version-agnostic: a future 2.17->2.18
-        # bump that touches only some files still trips the distinct-count check.
+        # image in the kubeflow-pipelines sub-chart (the frontend image included — the KFP
+        # profile controller reads it from there for the optional per-profile artifact
+        # proxy; user-namespace no longer renders KFP objects). A bump that misses
+        # one image ships a skewed control plane (e.g. api-server 2.17.4 against launcher
+        # 2.17.3). Pair each kfp-* repository with the tag on its next `tag:` line and
+        # assert exactly one distinct value. Version-agnostic: a future 2.17->2.18 bump
+        # that touches only some images still trips the distinct-count check. Add a file
+        # to the list if KFP images are ever pinned anywhere else.
         # Commented-out example blocks (ai/containers/kfp-*, no `kubeflow/`) are not
         # matched, so they never false-trigger.
         run: |
           set -euo pipefail
-          files=(kubeflow/values.yaml
-                 kubeflow/charts/user-namespace/values.yaml
-                 kubeflow/charts/kubeflow-pipelines/values.yaml)
+          files=(kubeflow/charts/kubeflow-pipelines/values.yaml)
           tags="$(awk '
             /^[[:space:]]*repository:.*ai\/containers\/kubeflow\/kfp-/ { want=1; next }
             want && /^[[:space:]]*tag:/ { gsub(/[" ]/,"",$2); print $2; want=0 }
@@ -76,6 +76,56 @@ jobs:
             exit 1
           fi
           echo "OK: all KFP image tags are consistent ($tags)."
+
+      - name: Model Registry server image tags stay consistent across values files
+        # Pure file check. The registry server image (ai/containers/kubeflow/hub/server) is pinned in
+        # kubeflow-hub (shared-mode server + Model Catalog) and in user-namespace (per-profile
+        # servers). A bump that misses one file runs the UI/BFF and catalog against per-profile
+        # servers of a different version. Same pairing logic as the KFP check above.
+        run: |
+          set -euo pipefail
+          files=(kubeflow/charts/kubeflow-hub/values.yaml
+                 kubeflow/charts/user-namespace/values.yaml)
+          tags="$(awk '
+            /^[[:space:]]*repository:.*ai\/containers\/kubeflow\/hub\/server[[:space:]]*$/ { want=1; next }
+            want && /^[[:space:]]*tag:/ { gsub(/[" ]/,"",$2); print $2; want=0 }
+          ' "${files[@]}" | sort -u)"
+          if [ "$(printf '%s\n' "$tags" | grep -c .)" -ne 1 ]; then
+            echo "FAIL: Model Registry server (hub/server) image tags differ across values files. Distinct tags found:" >&2
+            printf '%s\n' "$tags" >&2
+            echo "Bump the hub/server tag in all of: ${files[*]}" >&2
+            exit 1
+          fi
+          echo "OK: Model Registry server image tags are consistent ($tags)."
+
+      - name: KFP profile-controller hook unit tests
+        # Pure Python — no registry/Helm needed, so it runs unconditionally (fork PRs too). Drives
+        # the vendored upstream KFP 2.17 sync.py (charts/kubeflow-pipelines/files/profile-controller)
+        # with mocked SeaweedFS IAM/S3: per-profile scoped credentials, upstream's ConfigMap set,
+        # artifact proxy off by default, and the SUSE pull-secret and aws CLI patches. (Upstream's own
+        # test_sync.py is stale for 2.17 and fails against pristine upstream.) A venv because the
+        # runner's system Python is externally managed (PEP 668).
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/kfp-ut
+          /tmp/kfp-ut/bin/pip install --quiet pytest==9.2.0
+          /tmp/kfp-ut/bin/python -m pytest -q -p no:cacheprovider kubeflow/test/unit
+
+      - name: Vendored KFP sync.py is upstream + suse.patch
+        # Keeps the SUSE change to the vendored profile-controller hook explicit: a re-vendor that
+        # drops or alters it, or an edit to sync.py not reflected in suse.patch, fails here.
+        # Needs network access to raw.githubusercontent.com (no registry credentials).
+        run: |
+          set -euo pipefail
+          d=kubeflow/charts/kubeflow-pipelines/files/profile-controller
+          ver="$(tr -d '[:space:]' < "$d/UPSTREAM_VERSION")"
+          tmp="$(mktemp -d)"
+          curl -sfL --retry 3 -o "$tmp/sync.py" \
+            "https://raw.githubusercontent.com/kubeflow/pipelines/${ver}/manifests/kustomize/base/installs/multi-user/pipelines-profile-controller/sync.py"
+          patch -s -d "$tmp" -p1 < "$d/suse.patch"
+          diff -u "$tmp/sync.py" "$d/sync.py" \
+            || { echo "FAIL: $d/sync.py differs from upstream KFP ${ver} + suse.patch. Regenerate the patch (see the header of sync.py)." >&2; exit 1; }
+          echo "OK: sync.py == upstream KFP ${ver} + suse.patch"
 
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
@@ -118,6 +168,25 @@ jobs:
         # (hostname FQDN, kserveExternalHttps prerequisites, gateway selector), so
         # render it on its own to prove those guards hold outside the umbrella.
         run: helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" --set global.demoMode=true >/dev/null
+
+      - name: helm template (Model Registry sub-charts, standalone)
+        # Runs unconditionally: kubeflow-hub and user-namespace need no registry login. Covers both
+        # modes and the policy / route / existing-Secret variants the umbrella renders don't.
+        run: |
+          set -euo pipefail
+          d="$(mktemp -d)"; H=./kubeflow/charts/kubeflow-hub; U=./kubeflow/charts/user-namespace
+          k=(--kube-version "$KUBE_VERSION")
+          helm template ci "$H" "${k[@]}" >"$d/hub-default.yaml"
+          helm template ci "$H" "${k[@]}" --set modelRegistry.mode=shared >"$d/hub-shared.yaml"
+          helm template ci "$U" "${k[@]}" >"$d/uns-default.yaml"
+          helm template ci "$U" "${k[@]}" --set modelRegistry.enabled=false >"$d/uns-off.yaml"
+          helm template ci "$U" "${k[@]}" --set profile.enabled=false \
+            --set 'additionalUsers[0].email=alice@example.com' --set 'additionalUsers[0].namespace=alice' >"$d/uns-noprofile.yaml"
+          helm template ci "$U" "${k[@]}" --set profile.name=team-demo >"$d/uns-renamed.yaml"
+          helm template ci "$U" "${k[@]}" --set modelRegistry.authorizationPolicy.strict=false \
+            --set modelRegistry.istio.virtualService.enabled=false \
+            --set modelRegistry.db.embedded.existingSecret=my-db >"$d/uns-variants.yaml"
+          python3 kubeflow/test/ci/check_model_registry_subcharts.py "$d"
 
       - name: helm lint
         if: ${{ env.APPCO_TOKEN != '' }}
@@ -342,7 +411,7 @@ jobs:
             #    chart's own guards require alongside the toggle.
             deps=(--set profiles.enabled=true --set kubeflowRoles.enabled=true)
             case "$t" in
-              hub.enabled)             deps+=(--set pipelines.enabled=true) ;;
+              userNamespace.enabled)   deps+=(--set user-namespace.modelRegistry.enabled=false) ;;
               networkPolicies.enabled) deps+=(--set network-policies.knativeServingPolicies.enabled=false) ;;
             esac
             if out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
@@ -750,18 +819,119 @@ jobs:
                  echo "$err" >&2; exit 1; }
           echo "OK: opt-in fails closed on the oauth2-proxy guard when it is disabled."
 
+      - name: helm template (Model Registry topology — perProfile multi-profile, shared, external DB, guards)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        # The default render above only covers the example profile. This pins the
+        # per-profile fan-out (example profile + additionalUsers[] + extraNamespaces[]),
+        # the shared-mode fallback, the external-Postgres variant and the mode guards,
+        # so a template edit can't silently drop a profile's registry, leak a server back
+        # into `kubeflow` in perProfile mode, or break the BFF discovery label.
+        run: |
+          set -euo pipefail
+          base=(--kube-version "$KUBE_VERSION" --set global.demoMode=true)
+          opt=(--set hub.controller.enabled=true --set hub.kserve.storageContainer.enabled=true)
+          multi=(--set 'user-namespace.additionalUsers[0].email=alice@example.com'
+                 --set 'user-namespace.additionalUsers[0].namespace=alice'
+                 --set 'user-namespace.modelRegistry.extraNamespaces[0]=team-x')
+          d="$(mktemp -d)"
+          helm template ci ./kubeflow "${base[@]}" "${opt[@]}" "${multi[@]}" \
+            --set hub.controller.env.registriesNamespace=kubeflow-user-example-com >"$d/perProfile.yaml"
+          helm template ci ./kubeflow "${base[@]}" "${opt[@]}" \
+            --set global.modelRegistry.mode=shared >"$d/shared.yaml"
+          helm template ci ./kubeflow "${base[@]}" "${multi[@]}" \
+            --set user-namespace.modelRegistry.db.mode=external \
+            --set user-namespace.modelRegistry.db.external.host=pg.example.com \
+            --set user-namespace.modelRegistry.db.external.existingSecret=pg >"$d/external.yaml"
+          python3 kubeflow/test/ci/check_model_registry_topology.py "$d"
+          # The mode and first-namespace rules are written in three charts (they cannot share templates):
+          # render a matrix of values and check the umbrella, kubeflow-hub and user-namespace agree.
+          python3 kubeflow/test/ci/check_model_registry_consistency.py ./kubeflow "${base[@]}"
+          python3 kubeflow/test/ci/check_kfp_profile_controller.py "$d/perProfile.yaml" kubeflow-user-example-com alice team-x
+          # Guards must fail closed, each on its OWN message (not a masking error).
+          check_fail() {
+            local want="$1"; shift
+            if err="$(helm template ci ./kubeflow "${base[@]}" "$@" 2>&1)"; then
+              echo "FAIL: render succeeded but should fail ($want): $*" >&2; exit 1
+            fi
+            grep -qF -- "$want" <<<"$err" \
+              || { echo "FAIL: render failed for the wrong reason (want '$want'): $*" >&2; echo "$err" >&2; exit 1; }
+          }
+          check_fail 'requires pipelines.enabled=true' --set global.modelRegistry.mode=shared --set pipelines.enabled=false
+          check_fail 'conflicts with global.modelRegistry.mode=shared' --set global.modelRegistry.mode=shared --set user-namespace.modelRegistry.enabled=true
+          check_fail 'also set user-namespace.modelRegistry.enabled=false' --set hub.enabled=false
+          check_fail 'requires controller.env.registriesNamespace' --set hub.controller.enabled=true
+          check_fail 'requires modelRegistry.db.external.host' --set user-namespace.modelRegistry.db.mode=external
+          check_fail '/global/modelRegistry/mode' --set global.modelRegistry.mode=bogus
+          check_fail 'Postgres truncates identifiers to 63' --set user-namespace.modelRegistry.db.mode=external \
+            --set user-namespace.modelRegistry.db.external.host=pg.example.com \
+            --set user-namespace.modelRegistry.db.external.existingSecret=pg \
+            --set user-namespace.modelRegistry.db.external.databasePrefix=model_registry_with_a_deliberately_long_prefix_
+          # Value guards added with the per-profile layout.
+          check_fail 'global.istio.ingressGateway.principal must not be empty' --set-string global.istio.ingressGateway.principal=
+          check_fail 'REMOVED VALUE KEY: user-namespace.pipelines' --set user-namespace.pipelines.seaweedfs.accessKey=x
+          check_fail 'is not a profile namespace' --set 'user-namespace.modelRegistry.extraNamespaces[0]=kubeflow'
+          check_fail 'profile.name "kube-system" is not a profile namespace' --set user-namespace.profile.name=kube-system
+          check_fail 'is listed more than once' --set 'user-namespace.modelRegistry.extraNamespaces[0]=kubeflow-user-example-com'
+          echo "OK: Model Registry mode guards fail closed."
+
+      - name: Postgres major version changes only on purpose
+        if: ${{ env.APPCO_TOKEN != '' }}
+        # Postgres data on PVCs (per-profile Model Registry DBs, Model Catalog) cannot be read by a newer
+        # major version. Change PG_MAJOR only together with a migration note
+        # (docs/upgrade-notes.md#postgres-major-versions).
+        run: |
+          set -euo pipefail
+          PG_MAJOR=18
+          majors="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
+                      --set hub.catalog.enabled=true \
+                    | grep -oE 'image: "?[^" ]*postgresql:[0-9]+' | sed -E 's/.*postgresql:([0-9]+)/\1/' | sort -u)"
+          [ -n "$majors" ] || { echo "FAIL: no Postgres image found in the render" >&2; exit 1; }
+          [ "$majors" = "$PG_MAJOR" ] \
+            || { echo "FAIL: Postgres major version(s) $(echo $majors) != PG_MAJOR=$PG_MAJOR. See docs/upgrade-notes.md#postgres-major-versions." >&2; exit 1; }
+          echo "OK: every Postgres image is major version $PG_MAJOR."
+
+      - name: helm template (Istio CNI mode — profile namespace labels + PSS baseline)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        # global.istio.cni (default true) decides whether profile namespaces enforce Pod Security
+        # Standards 'baseline' (upstream kubeflow-pss). Both modes must label Helm-created profile
+        # namespaces istio-injection: enabled; only cni=true adds the PSS label, both on the Namespaces
+        # and in the profile controller's namespace-labels ConfigMap (runtime-created profiles).
+        # Under cni=true every workload the chart renders into a profile namespace must pass
+        # 'baseline', or the default install breaks there (kubeflow/test/unit/pss_baseline.py).
+        run: |
+          set -euo pipefail
+          multi=(--set 'user-namespace.additionalUsers[0].email=alice@example.com'
+                 --set 'user-namespace.additionalUsers[0].namespace=alice'
+                 --set 'user-namespace.modelRegistry.extraNamespaces[0]=team-x')
+          d="$(mktemp -d)"
+          for m in true false; do
+            helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
+              "${multi[@]}" --set global.istio.cni=$m >"$d/cni-$m.yaml"
+          done
+          python3 kubeflow/test/ci/check_istio_cni_mode.py "$d"
+          # The preflight Job's CNI check is shell that only runs in a cluster: run it against fake
+          # cluster states (kubectl comes with the runner image).
+          python3 kubeflow/test/ci/check_preflight_istio_cni.py ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true
+          # Sub-charts cannot share templates, so each chart that reads global.istio.cni has its own
+          # copy of the istioCni helper; their bodies must stay identical.
+          bodies="$(for f in kubeflow/templates/_helpers.tpl kubeflow/charts/*/templates/_helpers.tpl; do
+            sed -n '/define "[a-z-]*\.istioCni"/,/^{{- end -}}/p' "$f" | sed 1d; done | sort | uniq -c)"
+          [ "$(wc -l <<<"$bodies")" -eq 2 ] && grep -q '^ *3 ' <<<"$bodies" \
+            || { echo "FAIL: expected 3 identical istioCni helper copies, got:" >&2; echo "$bodies" >&2; exit 1; }
+          python3 kubeflow/test/unit/pss_baseline.py "$d/cni-true.yaml" kubeflow-user-example-com alice team-x \
+            || { echo "FAIL: workloads rendered into profile namespaces violate PSS baseline (enforced when global.istio.cni=true)" >&2; exit 1; }
+          echo "OK: everything rendered into profile namespaces passes PSS baseline."
+
       - name: helm template (credential overrides must reach every consumer)
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
           set -euo pipefail
           sw=(--set pipelines.seaweedfs.accessKey=ci-ak
               --set pipelines.seaweedfs.secretKey=ci-sk)
-          uns=(--set user-namespace.pipelines.seaweedfs.accessKey=ci-ak
-               --set user-namespace.pipelines.seaweedfs.secretKey=ci-sk)
           # 1. OIDC: overriding auth.oidc.* must reach Dex and oauth2-proxy (both read
           #    the chart-managed kubeflow-oidc-client Secret), so the default
           #    values.yaml client/cookie secrets must not appear anywhere in the output.
-          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${sw[@]}" "${uns[@]}" \
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${sw[@]}" \
                    --set auth.oidc.clientSecret=ci-client \
                    --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde)"
           # Secret data is base64-encoded (Dex keeps its config in one), so decode
@@ -783,19 +953,44 @@ jobs:
           done
           grep -q 'secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET' <<<"$plain" \
             || { echo "FAIL: Dex static client no longer reads the shared Secret" >&2; exit 1; }
-          # 2. SeaweedFS: user-namespace still copies the credentials via YAML
-          #    anchors, which -f/--set don't follow, so overriding only the source
-          #    must fail on the consistency check rather than render mismatched keys.
-          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${sw[@]}" \
-                      --set auth.oidc.clientSecret=ci-client \
-                      --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde 2>&1)"; then
-            echo "FAIL: overriding only pipelines.seaweedfs.* rendered with stale user-namespace keys" >&2
+          # 2. SeaweedFS: pipelines.seaweedfs.* is the single source. The KFP profile
+          #    controller copies it from the kubeflow-namespace mlpipeline-minio-artifact
+          #    Secret into each profile at runtime, so the chart itself must render NO
+          #    per-profile copy, and the override must reach the source Secret.
+          python3 -c '
+          import sys, yaml
+          s = [d for d in yaml.safe_load_all(sys.stdin) if d and d.get("kind") == "Secret"
+               and d["metadata"]["name"] == "mlpipeline-minio-artifact" and d["metadata"].get("namespace") == "kubeflow"]
+          sys.exit(0 if s and (s[0].get("stringData") or {}).get("secretkey") == "ci-sk" else 1)
+          ' <<<"$out" \
+            || { echo "FAIL: pipelines.seaweedfs.secretKey override did not reach the kubeflow mlpipeline-minio-artifact Secret" >&2; exit 1; }
+          if python3 -c '
+          import sys, yaml
+          sys.exit(0 if any(d and d.get("kind") == "Secret" and d["metadata"]["name"] == "mlpipeline-minio-artifact"
+                            and d["metadata"].get("namespace") not in (None, "kubeflow")
+                            for d in yaml.safe_load_all(sys.stdin)) else 1)
+          ' <<<"$out"; then
+            echo "FAIL: the chart renders a per-profile mlpipeline-minio-artifact Secret (KFP profile controller owns it)" >&2
             exit 1
           fi
-          grep -q 'Credential mismatch' <<<"$err" \
-            || { echo "FAIL: render failed, but not on the credential consistency check. Got:" >&2
-                 echo "$err" >&2; exit 1; }
-          echo "OK: OIDC overrides reach every consumer; mismatched SeaweedFS copies fail the render."
+          # 3. oauth2-proxy only starts with a 16/24/32-byte cookie secret (raw, or URL-safe
+          #    base64 of one); validations.yaml mirrors its parsing. A bad value must fail the
+          #    render, a good one must render, and auth.oidc.existingSecret skips the check.
+          ck() { helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true "$@" 2>&1; }
+          # tooshort: 8 bytes; 20 chars: 20 raw / 15 decoded; standard base64 with "+" (oauth2-proxy
+          # doesn't decode it) is 44 raw bytes.
+          for bad in tooshort aaaaaaaaaaaaaaaaaaaa '+++++++++++++++++++++++++++++++++++++++++++='; do
+            if err="$(ck --set-string auth.oidc.cookieSecret="$bad")"; then
+              echo "FAIL: auth.oidc.cookieSecret='$bad' rendered; oauth2-proxy would not start." >&2; exit 1
+            fi
+            grep -q 'auth.oidc.cookieSecret must be 16, 24 or 32 bytes' <<<"$err" \
+              || { echo "FAIL: cookieSecret='$bad' failed, but not on the length guard. Got:" >&2; echo "$err" >&2; exit 1; }
+          done
+          ck --set-string auth.oidc.cookieSecret="$(head -c 32 /dev/urandom | base64 | tr -- '+/' '-_')" >/dev/null \
+            || { echo "FAIL: a URL-safe base64 32-byte cookieSecret was rejected." >&2; exit 1; }
+          ck --set-string auth.oidc.cookieSecret=tooshort --set auth.oidc.existingSecret=my-oidc >/dev/null \
+            || { echo "FAIL: the cookieSecret length check ran although auth.oidc.existingSecret is set." >&2; exit 1; }
+          echo "OK: OIDC overrides reach every consumer; SeaweedFS credentials are single-sourced (no per-profile copy rendered); cookieSecret length is enforced."
 
       - name: helm template (hostname schema rejects bare public suffixes)
         if: ${{ env.APPCO_TOKEN != '' }}

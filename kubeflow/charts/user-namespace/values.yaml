@@ -5,26 +5,30 @@ global:
   imageRegistry: ""
   # -- SUSE AI image registry (required unless imageRegistry is set)
   suseRegistry: ""
+  # -- Global override for Application Collection image registry (e.g. dp.apps.rancher.io mirror)
+  suseApplicationCollectionRegistry: ""
   # -- Global override for container image pull secrets
   imagePullSecrets: []
+  # Set by the umbrella (global.modelRegistry.mode); "" means perProfile.
+  modelRegistry:
+    mode: ""
 
-  # Istio ingress-gateway identity (single source of truth; umbrella parent overrides).
-  # The per-profile ingress-gateway access AuthorizationPolicies use .principal.
-  # Rancher/AppCo Istio: SA 'istio'. Upstream: 'istio-ingressgateway-service-account'.
-  # The profiles controller hardcodes the upstream name, so we add a supplementary policy.
+  # Ingress-gateway identity (set by the umbrella); used by the Model Registry AuthorizationPolicy.
   istio:
     ingressGateway:
       principal: "cluster.local/ns/istio-system/sa/istio"
       selector:
         istio: istio
 
+# Example profile (namespace, Profile, ServiceAccounts). false keeps only additionalUsers[] and
+# modelRegistry.extraNamespaces.
 profile:
+  enabled: true
+  # Profile and namespace name.
+  name: kubeflow-user-example-com
   owner:
     kind: User
     name: user@example.com
-
-# Header name that carries the authenticated user identity (must match profiles-config)
-userIdHeader: "kubeflow-userid"
 
 awsIamForServiceAccount:
   awsIamRole:
@@ -33,20 +37,104 @@ awsIamForServiceAccount:
 # 'namespace' is optional (defaults to a slug derived from the email).
 additionalUsers: []
 
-# KFP per-namespace resources.
-# Replaces metacontroller-based provisioning (metacontroller v4.x cannot use
-# core 'namespaces' as CompositeController parent — known v4 regression).
-pipelines:
-  seaweedfs:
-    # DEMO DEFAULTS — CHANGE IN PRODUCTION.
-    # These values must match the credentials in the 'mlpipeline-minio-artifact' Secret.
-    accessKey: kubeflow      # DEMO DEFAULT
-    secretKey: kubeflow123   # DEMO DEFAULT
-  visualizationServer:
-    registry: registry.suse.com
-    repository: ai/containers/kubeflow/kfp-visualization-server
-    tag: "2.17.3"
-  frontend:
-    registry: registry.suse.com
-    repository: ai/containers/kubeflow/kfp-frontend
-    tag: "2.17.3"
+# KFP per-profile resources are created by the KFP profile controller (kubeflow-pipelines), not here.
+
+# Per-profile Model Registry (upstream layout): server + Postgres (or external DB) + Istio objects
+# in the example profile and every additionalUsers[] namespace.
+modelRegistry:
+  # null = follow global.modelRegistry.mode; true/false overrides it.
+  enabled: null
+  # Existing profile namespaces created outside this chart (must already exist); only the
+  # registry objects are rendered there. Remove an entry before deleting its profile, or the
+  # next helm upgrade fails with "namespace not found".
+  extraNamespaces: []
+  server:
+    image:
+      registry: registry.suse.com
+      repository: ai/containers/kubeflow/hub/server
+      tag: v0.3.18          # must equal hub server.image.tag (enforced by CI lint)
+      pullPolicy: IfNotPresent
+      digest: ""
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Probes match upstream base/model-registry-deployment.yaml.
+    livenessProbe:
+      httpGet: { path: /readyz/isDirty, port: 8080 }
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    startupProbe:
+      httpGet: { path: /readyz/isDirty, port: 8080 }
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 12
+    readinessProbe:
+      httpGet: { path: /readyz/health, port: 8080 }
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+  db:
+    # embedded : one Postgres per profile namespace (upstream overlays/postgres default).
+    # external : one managed Postgres server, one database per profile namespace.
+    mode: embedded
+    # Postgres image — runs the embedded DB and the server's wait-for-db/create-db initContainer.
+    # AppCo image ships the official docker-entrypoint.sh (POSTGRES_USER/PASSWORD/DB, uid 999).
+    image:
+      registry: dp.apps.rancher.io
+      repository: containers/postgresql
+      tag: "18.4-13.1"
+      pullPolicy: IfNotPresent
+      digest: ""
+    embedded:
+      database: metadb      # upstream params.env POSTGRES_DB
+      username: modelregistry
+      storage: 10Gi
+      storageClassName: ""
+      # NetworkPolicy so only the registry server can reach the DB (ignored where the CNI does not
+      # enforce NetworkPolicy).
+      networkPolicy: true
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      # "" = generated per namespace via Helm lookup; set it when rendering with helm template.
+      existingSecret: ""
+    external:
+      host: ""
+      port: 5432
+      # Database = prefix + namespace ('-' → '_'); pre-create it, or it is created on first start (needs CREATEDB).
+      databasePrefix: model_registry_
+      # disable | allow | prefer | require (no CA bundle mount, so no verify-*).
+      sslMode: require
+      # Secret with POSTGRES_USER / POSTGRES_PASSWORD in every profile namespace. Use a separate role
+      # per namespace that owns only its database (profile owners can read this Secret); avoid
+      # URL-reserved characters in the password (it is embedded in the DSN).
+      existingSecret: ""
+  istio:
+    # REST API on the gateway at /api/model_registry/<namespace>/ for SDK/REST clients (upstream's
+    # bare prefix would collide across profiles; the UI does not need it). Only the profile's
+    # owner and contributors get through (the profile's own AuthorizationPolicies).
+    virtualService:
+      enabled: true
+  authorizationPolicy:
+    # true: admit only the UI/BFF (upstream's gateway and token-presence rules are dropped: neither
+    # checks who the caller is); false: allow kubeflow and the profile namespace. Owners,
+    # contributors and pods in the profile namespace are admitted by the profile's own policies.
+    strict: true
+    # The UI/BFF's ServiceAccount (it calls the servers over mesh mTLS).
+    bffPrincipal: "cluster.local/ns/kubeflow/sa/model-registry-ui"
+    # The Model Registry controller's ServiceAccount (hub.controller.enabled; it syncs
+    # InferenceServices to the registries). "" omits the rule.
+    controllerPrincipal: "cluster.local/ns/kubeflow/sa/model-registry-controller"

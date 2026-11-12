@@ -6,7 +6,7 @@
 #
 # Usage:
 #   chmod +x test/e2e/e2e.sh
-#   ./test/e2e/e2e.sh [--suse-registry=stgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests]
+#   ./test/e2e/e2e.sh [--suse-registry=stgregistry.suse.com] [--suse-app-collection=mirror.example.com] [--include-gpu-tests] [--include-gateway-tests]
 #
 # What it tests:
 #   1.  KFP pipeline      — inline spec → submit run → wait for SUCCEEDED
@@ -14,13 +14,22 @@
 #   3.  PyTorchJob        — 1-replica CPU job → wait for Succeeded
 #   4.  KServe            — build sklearn model → upload → deploy IS → predict
 #   4b. KServe TensorFlow — build SavedModel → upload → deploy IS → predict
-#   5.  Model Registry    — register → list → archive
+#   5.  Model Registry    — register → list → archive; perProfile: BFF discovery, cross-ns authz, SAR isolation,
+#                           controller identity admitted (with hub.controller.enabled)
 #   6.  Tensorboard canary — leading-slash subPath bug still present
 #   7.  Trainer V2        — TrainJob → wait for Complete
 #   8.  TFJob             — 1-worker CPU job → wait for Succeeded
 #   9.  Katib HPO         — 1-trial experiment → Succeeded
 #   10. Tensorboard       — create CR + PVC → controller creates Deployment
 #   11. PVCViewer         — create CR → controller creates viewer pod → Ready
+#   12. Gateway auth      — unauthenticated request denied, /dex allowlisted
+#
+# Ingress gateway login tests (opt-in, pass --include-gateway-tests). Both log in through Dex with
+# a username and password (E2E_DEX_USER / E2E_DEX_PASSWORD; default: the demo user), so they need
+# a Dex password login (static password), not an external OIDC connector:
+#   12b. KServe via gateway — 403 without per-model policy, 200 with it
+#   12c. Model Registry via gateway — owner 200 on own profile, 403 on another profile (needs a
+#        second profile with a registry, e.g. from user-namespace.additionalUsers; else skipped)
 #
 # GPU tests (opt-in, pass --include-gpu-tests):
 #   GPU-1. Node capability  — at least one node has nvidia.com/gpu
@@ -47,9 +56,11 @@ FAIL=0
 # Parse flags
 INCLUDE_GPU=false
 INCLUDE_DRA=false
+INCLUDE_GATEWAY=false
 for arg in "$@"; do
   case "$arg" in
     --include-gpu-tests)       INCLUDE_GPU=true ;;
+    --include-gateway-tests)   INCLUDE_GATEWAY=true ;;
     --include-dra-tests)       INCLUDE_DRA=true ;;
     --user-namespace=*)        USER_NS="${arg#*=}" ;;
     --user-email=*)            KFP_USER="${arg#*=}" ;;
@@ -99,6 +110,8 @@ wait_for_value() {
 # ── Cleanup ────────────────────────────────────────────────────────────────────
 cleanup() {
   info "Cleaning up E2E resources..."
+  # Background port-forwards (Tests 4b, 5) if a test was interrupted
+  for _pf in ${TF_PF_PID:-} ${MR_PF:-}; do kill "$_pf" &>/dev/null || true; done
   # Tests 1-7
   kubectl delete pod              kfp-e2e-helper       -n "$NS"      --ignore-not-found &>/dev/null || true
   kubectl delete notebook         e2e-test-notebook    -n "$USER_NS" --ignore-not-found &>/dev/null || true
@@ -119,6 +132,7 @@ cleanup() {
   kubectl delete pvc              e2e-test-pvc         -n "$USER_NS" --ignore-not-found &>/dev/null || true
   # Test 12: gateway auth deny path
   kubectl delete pod              e2e-gw-auth-helper   -n "$NS"      --ignore-not-found &>/dev/null || true
+  kubectl delete authorizationpolicy allow-e2e-sklearn -n "$USER_NS" --ignore-not-found &>/dev/null || true
   # GPU tests
   kubectl delete notebook         e2e-gpu-notebook     -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pytorchjob       e2e-gpu-pytorch      -n "$USER_NS" --ignore-not-found &>/dev/null || true
@@ -672,26 +686,39 @@ EOF
 fi
 
 # ── Test 5: Model Registry ────────────────────────────────────────────────────
+# perProfile (default): server + Postgres in $USER_NS, UI/BFF in $NS; shared: one server in $NS.
 header "5. Model Registry — register model → list → verify"
-if ! kubectl get deploy model-registry-deployment -n "$NS" &>/dev/null; then
-  info "Model Registry not deployed — skipping"
+MR_MODE=""
+if kubectl get deploy model-registry-deployment -n "$USER_NS" &>/dev/null; then
+  MR_MODE=perProfile; MR_NS="$USER_NS"; MR_CONTAINER=rest-container
+elif kubectl get deploy model-registry-deployment -n "$NS" &>/dev/null; then
+  MR_MODE=shared; MR_NS="$NS"; MR_CONTAINER=model-registry-server
+fi
+
+if [ -z "$MR_MODE" ] && kubectl get deploy model-registry-ui -n "$NS" &>/dev/null; then
+  fail "Model Registry: no Model Registry server in $USER_NS or $NS although the Model Registry UI is installed. In perProfile mode every profile gets one: check that userNamespace is enabled, and list profiles created outside the chart in user-namespace.modelRegistry.extraNamespaces"
+elif [ -z "$MR_MODE" ]; then
+  info "Model Registry not deployed (no server in $USER_NS or $NS) — skipping"
 else
-  # Exec into the model-registry-server pod (already in-mesh) to run API calls against
-  # localhost, which bypasses the sidecar's inbound AuthorizationPolicy entirely.
-  # The server carries a strict Istio AuthorizationPolicy (aligned to
-  # kubeflow/community-distribution release-26.03.1): it only admits the ingress-gateway
-  # SA principal, in-cluster callers bearing an `authorization` header without a
-  # `kubeflow-userid` header, or the model-registry-ui BFF service account (which calls the
-  # server pod-to-pod in internal auth mode). A bare call from any other pod is denied with 403.
-  MR_POD=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=model-registry-server \
+  info "Mode: $MR_MODE (server in $MR_NS)"
+  # Exec into the server pod (already in-mesh) and call localhost, which bypasses the sidecar's
+  # inbound AuthorizationPolicy. perProfile: the server's policy admits only the model-registry-ui
+  # BFF; owners/contributors and pods in the profile namespace come in through the profile's own
+  # policies. shared: upstream's policy (gateway, `authorization` header without `kubeflow-userid`,
+  # BFF).
+  # Per-profile server pods carry upstream's `component: model-registry-server`; the legacy shared
+  # server carries `app.kubernetes.io/component: model-registry-server` — try both.
+  MR_POD=$(kubectl get pods -n "$MR_NS" -l component=model-registry-server \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  [ -z "$MR_POD" ] && MR_POD=$(kubectl get pods -n "$MR_NS" -l app.kubernetes.io/component=model-registry-server \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
   if [ -z "$MR_POD" ]; then
-    fail "Model Registry: server pod not found"
+    fail "Model Registry: server pod not found in $MR_NS"
   else
     # Use heredoc-via-stdin to avoid nested-quote mangling inside sh -c '...'
-    kubectl exec -n "$NS" "$MR_POD" -c model-registry-server -i -- sh << 'MRSCRIPT' 2>&1 \
-      && pass "Model Registry: register, list, and cleanup succeeded" \
-      || fail "Model Registry: e2e test failed"
+    kubectl exec -n "$MR_NS" "$MR_POD" -c "$MR_CONTAINER" -i -- sh << 'MRSCRIPT' 2>&1 \
+      && pass "Model Registry ($MR_MODE): register, list, and cleanup succeeded" \
+      || fail "Model Registry ($MR_MODE): e2e test failed"
 set -e
 # 1. POST: register a model with a unique name to avoid conflicts from previous runs
 MODEL_NAME="e2e-test-$(date +%s)"
@@ -729,29 +756,96 @@ curl -sf -X PATCH \
   && echo "Archived model $MODEL_ID"
 MRSCRIPT
 
-    # ── Authz path: BFF (model-registry-ui SA) → server, pod-to-pod ──
-    # The dashboard runs the BFF in --deployment-mode=kubeflow / default --auth-method=internal,
-    # so it calls the server directly by ClusterIP with NO authorization header and NO
-    # kubeflow-userid header. The strict AuthorizationPolicy admits this only via the
-    # model-registry-ui SA principal rule (mesh mTLS populates the principal). This exercises the
-    # real dashboard path that a localhost probe cannot — a regression here (e.g. removing that
-    # rule) surfaces to users as "RBAC: access denied". We send no auth headers on purpose to
-    # mirror internal-mode BFF traffic; the SA principal alone must be sufficient.
-    UI_POD=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=model-registry-ui \
-      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [ -z "$UI_POD" ]; then
-      info "Model Registry: UI pod not found — skipping BFF authz-path check"
-    elif ! kubectl exec -n "$NS" "$UI_POD" -c model-registry-ui -- sh -c 'command -v curl' &>/dev/null; then
-      info "Model Registry: no curl in UI container — skipping BFF authz-path check"
-    else
-      MR_SVC="model-registry-service.${NS}.svc.cluster.local:8080"
-      MR_API="http://${MR_SVC}/api/model_registry/v1alpha3/registered_models"
-      CODE=$(kubectl exec -n "$NS" "$UI_POD" -c model-registry-ui -- \
-        curl -s -o /dev/null -w '%{http_code}' "$MR_API" 2>/dev/null)
-      if [ "$CODE" = "200" ]; then
-        pass "Model Registry: BFF SA principal path (no auth headers) allowed"
+    if [ "$MR_MODE" = perProfile ]; then
+      # ── perProfile: the real dashboard path through the single BFF in $NS ──
+      # Port-forward to the (distroless) BFF; its call to the server is a real in-mesh call admitted
+      # only by the BFF principal rule, after a SubjectAccessReview of kubeflow-userid.
+      if kubectl get svc model-registry-service -n "$NS" &>/dev/null; then
+        fail "Model Registry (perProfile): a shared model-registry-service still exists in $NS (mode/data-plane mismatch?)"
       else
-        fail "Model Registry: BFF SA principal path denied (HTTP ${CODE:-none}) — check the model-registry-ui SA principal rule in the strict AuthorizationPolicy"
+        pass "Model Registry (perProfile): no shared server in $NS"
+      fi
+      kubectl port-forward -n "$NS" deploy/model-registry-ui 18090:8080 >/tmp/e2e-mr-pf.log 2>&1 &
+      MR_PF=$!
+      BFF=http://localhost:18090/api/v1/model_registry
+      MR_PF_UP=false
+      for _ in $(seq 1 10); do
+        curl -s -o /dev/null "http://localhost:18090/healthcheck" && { MR_PF_UP=true; break; }
+        sleep 1
+      done
+      $MR_PF_UP || info "Model Registry (perProfile): port-forward to model-registry-ui not answering after 10s (see /tmp/e2e-mr-pf.log); the BFF checks below will fail"
+
+      DISC=$(curl -s -w '\n%{http_code}' -H "kubeflow-userid: ${KFP_USER}" "${BFF}?namespace=${MR_NS}")
+      if [ "$(echo "$DISC" | tail -1)" = "200" ] && echo "$DISC" | grep -q '"name": *"model-registry-service"'; then
+        pass "Model Registry (perProfile): BFF discovers the ${MR_NS} registry for its owner"
+      else
+        fail "Model Registry (perProfile): BFF discovery for ${MR_NS} failed (HTTP $(echo "$DISC" | tail -1)) — Service needs label component=model-registry"
+      fi
+
+      CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "kubeflow-userid: ${KFP_USER}" \
+        "${BFF}/model-registry-service/registered_models?namespace=${MR_NS}")
+      if [ "$CODE" = "200" ]; then
+        pass "Model Registry (perProfile): BFF → server cross-namespace call allowed"
+      else
+        fail "Model Registry (perProfile): BFF → server denied (HTTP ${CODE:-none}) — check the bffPrincipal rule in ${MR_NS}/model-registry-service AuthorizationPolicy"
+      fi
+
+      CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "kubeflow-userid: e2e-not-a-member@example.com" \
+        "${BFF}?namespace=${MR_NS}")
+      if [ "$CODE" = "403" ]; then
+        pass "Model Registry (perProfile): non-member denied by BFF SubjectAccessReview (403)"
+      else
+        fail "Model Registry (perProfile): non-member got HTTP ${CODE:-none}, expected 403 — tenant isolation broken"
+      fi
+      kill "$MR_PF" 2>/dev/null; wait "$MR_PF" 2>/dev/null; MR_PF=
+      # hub.controller.enabled: the controller calls the registries from kubeflow as its own
+      # ServiceAccount; the per-profile policy must admit that mesh identity. Probe with a meshed pod
+      # running as the same ServiceAccount (no credentials: the policy matches on mTLS identity).
+      if kubectl get serviceaccount model-registry-controller -n "$NS" &>/dev/null; then
+        MR_CTL_PROBE=e2e-mr-controller-probe
+        kubectl run "$MR_CTL_PROBE" -n "$NS" --restart=Never \
+          --image="${SUSE_APP_COLLECTION}/containers/curl:8.14.1" \
+          --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"true","sidecar.istio.io/nativeSidecar":"true"}},"spec":{"serviceAccountName":"model-registry-controller","imagePullSecrets":[{"name":"application-collection"}]}}' \
+          --command -- sleep 300 &>/dev/null || true
+        CODE=000
+        if kubectl wait --for=condition=Ready "pod/$MR_CTL_PROBE" -n "$NS" --timeout=120s &>/dev/null; then
+          CODE=$(kubectl exec -n "$NS" "$MR_CTL_PROBE" -c "$MR_CTL_PROBE" -- curl -s -o /dev/null -w '%{http_code}' \
+            "http://model-registry-service.${MR_NS}.svc.cluster.local:8080/api/model_registry/v1alpha3/registered_models" 2>/dev/null || echo 000)
+        fi
+        if [ "$CODE" = "200" ]; then
+          pass "Model Registry (perProfile): controller identity admitted by the ${MR_NS} registry"
+        else
+          fail "Model Registry (perProfile): controller identity got HTTP ${CODE} from the ${MR_NS} registry, expected 200 — check controllerPrincipal in ${MR_NS}/model-registry-service AuthorizationPolicy"
+        fi
+        kubectl delete pod "$MR_CTL_PROBE" -n "$NS" --ignore-not-found --wait=false &>/dev/null || true
+      else
+        info "Model Registry (perProfile): controller not deployed (hub.controller.enabled=false) — controller authz check skipped"
+      fi
+    else
+      # ── Authz path: BFF (model-registry-ui SA) → server, pod-to-pod ──
+      # The dashboard runs the BFF in --deployment-mode=kubeflow / default --auth-method=internal,
+      # so it calls the server directly by ClusterIP with NO authorization header and NO
+      # kubeflow-userid header. The strict AuthorizationPolicy admits this only via the
+      # model-registry-ui SA principal rule (mesh mTLS populates the principal). This exercises the
+      # real dashboard path that a localhost probe cannot — a regression here (e.g. removing that
+      # rule) surfaces to users as "RBAC: access denied". We send no auth headers on purpose to
+      # mirror internal-mode BFF traffic; the SA principal alone must be sufficient.
+      UI_POD=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=model-registry-ui \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+      if [ -z "$UI_POD" ]; then
+        info "Model Registry: UI pod not found — skipping BFF authz-path check"
+      elif ! kubectl exec -n "$NS" "$UI_POD" -c model-registry-ui -- sh -c 'command -v curl' &>/dev/null; then
+        info "Model Registry: no curl in UI container — skipping BFF authz-path check"
+      else
+        MR_SVC="model-registry-service.${NS}.svc.cluster.local:8080"
+        MR_API="http://${MR_SVC}/api/model_registry/v1alpha3/registered_models"
+        CODE=$(kubectl exec -n "$NS" "$UI_POD" -c model-registry-ui -- \
+          curl -s -o /dev/null -w '%{http_code}' "$MR_API" 2>/dev/null)
+        if [ "$CODE" = "200" ]; then
+          pass "Model Registry: BFF SA principal path (no auth headers) allowed"
+        else
+          fail "Model Registry: BFF SA principal path denied (HTTP ${CODE:-none}) — check the model-registry-ui SA principal rule in the strict AuthorizationPolicy"
+        fi
       fi
     fi
   fi
@@ -1428,7 +1522,7 @@ kind: ServiceAccount
 metadata:
   name: e2e-kserve-sa
   namespace: ${USER_NS}
-imagePullSecrets
+imagePullSecrets:
 - name: suse-ai-registry
 secrets:
 - name: e2e-s3-secret
@@ -1702,6 +1796,7 @@ fi  # end INCLUDE_DRA
 # (oauth2-proxy 302 -> Dex login, or a hard 401/403), while the /dex/ path stays
 # allowlisted so the OIDC login flow itself is reachable. A 200 on the protected
 # path would mean the gateway is serving Kubeflow with NO authentication.
+# Always runs: this is the fail-open check. Only 12b (Dex login) is opt-in.
 header "12. Ingress gateway auth — unauthenticated request denied, /dex allowlisted"
 
 # Ingress-gateway Service DNS. Rancher/AppCo Istio names it `istio`; upstream Istio
@@ -1761,6 +1856,9 @@ kubectl run "$GW_HELPER" -n "$NS" --restart=Never \
 
 if kubectl wait --for=condition=Ready pod/"$GW_HELPER" -n "$NS" --timeout=120s &>/dev/null; then
   GW_EXEC="kubectl exec -n $NS $GW_HELPER -- "
+  # With stdin: secrets go to curl as `-K -` config on stdin, never on the exec command line
+  # (which ends up in the API server's request URL / audit log and the pod's process list).
+  GW_EXEC_I="kubectl exec -i -n $NS $GW_HELPER -- "
 
   # 1) Protected path, no auth cookie/header -> must be denied.
   PROT_CODE=$($GW_EXEC curl "${GW_CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' \
@@ -1782,6 +1880,170 @@ if kubectl wait --for=condition=Ready pod/"$GW_HELPER" -n "$NS" --timeout=120s &
 else
   fail "Gateway auth: curl helper pod $GW_HELPER did not become Ready"
 fi
+# ── Test 12b: KServe inference through the ingress gateway ──────────────────────
+# Calls e2e-sklearn as an external client (Dex login, bearer token): 403 until the InferenceService
+# has its own ALLOW policy, as upstream. Opt-in (--include-gateway-tests); E2E_DEX_USER/PASSWORD.
+if $INCLUDE_GATEWAY; then
+E2E_DEX_USER="${E2E_DEX_USER:-$KFP_USER}"
+E2E_DEX_PASSWORD="${E2E_DEX_PASSWORD:-12341234}"
+OIDC_CID=$(kubectl get secret kubeflow-oidc-client -n "$NS" -o jsonpath='{.data.client-id}' 2>/dev/null | base64 -d 2>/dev/null || true)
+OIDC_CSEC=$(kubectl get secret kubeflow-oidc-client -n "$NS" -o jsonpath='{.data.client-secret}' 2>/dev/null | base64 -d 2>/dev/null || true)
+urlpath() { printf '%s' "$1" | sed -E 's#^[a-zA-Z]+://[^/]+##'; }
+cfgq() { printf '%s' "$1" | sed 's/[\\"]/\\&/g'; }   # quote a value for a curl config line
+# Dex authorization-code login through the gateway (same flow as a browser); prints the ID token.
+gw_dex_id_token() {  # $1 = login, $2 = password
+  local jar=/tmp/e2e-dex-jar l1 l2 cb code token=
+  $GW_EXEC rm -f "$jar" &>/dev/null || true
+  l1=$($GW_EXEC curl "${GW_CURL_OPTS[@]}" -c "$jar" -o /dev/null -w '%{redirect_url}' \
+    "${GW_BASE_URL}/dex/auth?client_id=${OIDC_CID}&redirect_uri=%2Foauth2%2Fcallback&response_type=code&scope=openid+profile+email+groups&state=e2e" 2>/dev/null || true)
+  l2=$($GW_EXEC curl "${GW_CURL_OPTS[@]}" -b "$jar" -c "$jar" -o /dev/null -w '%{redirect_url}' \
+    "${GW_BASE_URL}$(urlpath "$l1")" 2>/dev/null || true)
+  cb=$(printf 'data-urlencode = "password=%s"\n' "$(cfgq "$2")" \
+    | $GW_EXEC_I curl "${GW_CURL_OPTS[@]}" -K - -b "$jar" -c "$jar" -o /dev/null -w '%{redirect_url}' \
+    --data-urlencode "login=$1" "${GW_BASE_URL}$(urlpath "$l2")" 2>/dev/null || true)
+  code=$(printf '%s' "$cb" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
+  if [[ -n "$code" ]]; then
+    token=$(printf 'data-urlencode = "client_secret=%s"\n' "$(cfgq "$OIDC_CSEC")" \
+      | $GW_EXEC_I curl "${GW_CURL_OPTS[@]}" -K - "${GW_BASE_URL}/dex/token" \
+      -d grant_type=authorization_code -d "client_id=${OIDC_CID}" \
+      --data-urlencode redirect_uri=/oauth2/callback -d "code=${code}" 2>/dev/null \
+      | sed -n 's/.*"id_token":"\([^"]*\)".*/\1/p')
+  fi
+  $GW_EXEC rm -f "$jar" &>/dev/null || true
+  printf '%s' "$token"
+}
+ID_TOKEN=
+if kubectl get pod "$GW_HELPER" -n "$NS" &>/dev/null && [[ -n "$OIDC_CID" && -n "$OIDC_CSEC" ]]; then
+  ID_TOKEN=$(gw_dex_id_token "$E2E_DEX_USER" "$E2E_DEX_PASSWORD")
+fi
+
+header "12b. KServe through the ingress gateway — 403 without a per-model policy, 200 with it"
+ISVC_URL=$(kubectl get inferenceservice e2e-sklearn -n "$USER_NS" \
+  -o jsonpath='{.status.components.predictor.url}' 2>/dev/null || true)
+if [[ -z "$ISVC_URL" ]]; then
+  info "KServe via gateway: skipped (e2e-sklearn from Test 4 is not Ready)"
+elif ! kubectl get pod "$GW_HELPER" -n "$NS" &>/dev/null; then
+  info "KServe via gateway: skipped (gateway curl helper from Test 12 is missing)"
+elif [[ -z "$OIDC_CID" || -z "$OIDC_CSEC" ]]; then
+  info "KServe via gateway: skipped (Secret kubeflow-oidc-client not readable)"
+else
+  # Predictor host as routed by the gateway; dial the in-cluster gateway Service.
+  ISVC_SCHEME=${ISVC_URL%%://*}
+  ISVC_HOST=${ISVC_URL#*://}; ISVC_HOST=${ISVC_HOST%%/*}
+  if [[ "$ISVC_SCHEME" == https ]]; then
+    ISVC_CURL=(-sk --connect-to "${ISVC_HOST}:443:${GW_HOST}:443"); ISVC_BASE="https://${ISVC_HOST}"
+  else
+    ISVC_CURL=(-s -H "Host: ${ISVC_HOST}"); ISVC_BASE="http://${GW_HOST}"
+  fi
+  PREDICT_URL="${ISVC_BASE}/v1/models/e2e-sklearn:predict"
+  PREDICT_BODY='{"instances":[[2.5]]}'
+
+  if [[ -z "$ID_TOKEN" ]]; then
+    fail "KServe via gateway: Dex login through the gateway as ${E2E_DEX_USER} failed (set E2E_DEX_USER/E2E_DEX_PASSWORD for this install)"
+  else
+    gw_predict() {  # $1 = bearer token (optional, sent via stdin); prints "<body> <http_code>"
+      local cfg=""
+      [[ -n "${1-}" ]] && cfg=$(printf 'header = "Authorization: Bearer %s"' "$(cfgq "$1")")
+      printf '%s\n' "$cfg" | $GW_EXEC_I curl "${ISVC_CURL[@]}" -K - -w ' %{http_code}' \
+        -H 'Content-Type: application/json' -d "$PREDICT_BODY" "$PREDICT_URL" 2>/dev/null || echo " 000"
+    }
+    # 1) Authenticated, but no per-model policy yet -> denied by the profile's policy (upstream).
+    OUT=$(gw_predict "$ID_TOKEN")
+    CODE=${OUT##* }
+    if [[ "$CODE" == "403" ]]; then
+      pass "KServe via gateway: authenticated call denied without a per-InferenceService policy (HTTP 403, upstream behaviour)"
+    else
+      fail "KServe via gateway: expected HTTP 403 before the per-InferenceService policy exists, got $CODE"
+    fi
+
+    # 2) Add the documented per-model ALLOW policy -> authenticated call succeeds.
+    kubectl apply -f - &>/dev/null <<EOF
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-e2e-sklearn
+  namespace: ${USER_NS}
+spec:
+  action: ALLOW
+  rules:
+  - {}
+  selector:
+    matchLabels:
+      serving.knative.dev/service: e2e-sklearn-predictor
+EOF
+    CODE=000
+    for _i in $(seq 1 12); do   # policy propagation to the predictor sidecar
+      OUT=$(gw_predict "$ID_TOKEN"); CODE=${OUT##* }
+      [[ "$CODE" == "200" ]] && break
+      sleep 5
+    done
+    if [[ "$CODE" == "200" ]] && echo "$OUT" | grep -q '"predictions"'; then
+      pass "KServe via gateway: authenticated call with the per-InferenceService policy returned predictions (HTTP 200)"
+    else
+      fail "KServe via gateway: expected HTTP 200 with predictions after adding the policy, got $CODE"
+    fi
+
+    # 3) The gateway still rejects missing and forged credentials.
+    OUT=$(gw_predict); CODE=${OUT##* }
+    if [[ "$CODE" =~ ^(302|401|403)$ ]]; then
+      pass "KServe via gateway: unauthenticated call refused at the gateway (HTTP $CODE)"
+    else
+      fail "KServe via gateway: unauthenticated call was not refused (HTTP $CODE; expected 302/401/403)"
+    fi
+    OUT=$(gw_predict "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlMmUifQ.forged"); CODE=${OUT##* }
+    if [[ "$CODE" =~ ^(401|403)$ ]]; then
+      pass "KServe via gateway: forged bearer token refused at the gateway (HTTP $CODE)"
+    else
+      fail "KServe via gateway: forged bearer token was not refused (HTTP $CODE; expected 401/403)"
+    fi
+    kubectl delete authorizationpolicy allow-e2e-sklearn -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  fi
+fi
+
+# ── Test 12c: per-profile Model Registry through the ingress gateway ────────────
+# The registry server does no authorisation, so the gateway route /api/model_registry/<ns>/ must
+# only admit that profile's owner/contributors (the profile's own policies), never any logged-in user.
+header "12c. Model Registry through the ingress gateway — owner allowed, other profile denied"
+if [[ "$MR_MODE" != perProfile ]]; then
+  info "Model Registry via gateway: skipped (not in perProfile mode)"
+elif [[ -z "$ID_TOKEN" ]]; then
+  fail "Model Registry via gateway: Dex login through the gateway as ${E2E_DEX_USER} failed (set E2E_DEX_USER/E2E_DEX_PASSWORD for this install)"
+else
+  gw_mr() {  # $1 = namespace; prints the HTTP code of a registry list call as E2E_DEX_USER
+    printf 'header = "Authorization: Bearer %s"\n' "$(cfgq "$ID_TOKEN")" \
+      | $GW_EXEC_I curl "${GW_CURL_OPTS[@]}" -K - -o /dev/null -w '%{http_code}' \
+      "${GW_BASE_URL}/api/model_registry/$1/v1alpha3/registered_models?pageSize=1" 2>/dev/null || echo 000
+  }
+  CODE=$(gw_mr "$MR_NS")
+  if [[ "$CODE" == "200" ]]; then
+    pass "Model Registry via gateway: owner ${E2E_DEX_USER} reaches the ${MR_NS} registry (HTTP 200)"
+  else
+    fail "Model Registry via gateway: owner ${E2E_DEX_USER} got HTTP $CODE from the ${MR_NS} registry, expected 200"
+  fi
+  # Another profile with a registry route that E2E_DEX_USER does not own.
+  OTHER_NS=
+  for _ns in $(kubectl get virtualservice -A --field-selector metadata.name=model-registry \
+      -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{end}' 2>/dev/null); do
+    [[ "$_ns" == "$MR_NS" ]] && continue
+    _owner=$(kubectl get profile "$_ns" -o jsonpath='{.spec.owner.name}' 2>/dev/null || true)
+    [[ -n "$_owner" && "$_owner" != "$E2E_DEX_USER" ]] && { OTHER_NS=$_ns; break; }
+  done
+  if [[ -z "$OTHER_NS" ]]; then
+    info "Model Registry via gateway: cross-profile check skipped (no other profile with a registry; add one via user-namespace.additionalUsers)"
+  else
+    CODE=$(gw_mr "$OTHER_NS")
+    if [[ "$CODE" == "403" ]]; then
+      pass "Model Registry via gateway: ${E2E_DEX_USER} denied the ${OTHER_NS} registry (HTTP 403, tenant isolation)"
+    else
+      fail "Model Registry via gateway: ${E2E_DEX_USER} got HTTP $CODE from the ${OTHER_NS} registry, expected 403 — any logged-in user can reach another profile's registry (unless ${E2E_DEX_USER} is a contributor there)"
+    fi
+  fi
+fi
+
+else
+  info "Ingress gateway login tests (12b, 12c) skipped — pass --include-gateway-tests to run them"
+fi  # end INCLUDE_GATEWAY
+
 kubectl delete pod "$GW_HELPER" -n "$NS" --ignore-not-found &>/dev/null || true
 
 # ── Summary ────────────────────────────────────────────────────────────────────

@@ -13,6 +13,9 @@
 #   --namespace=<ns>                   Helm release namespace (default: kubeflow)
 #   --include-gpu-tests                Pass --include-gpu-tests to smoke/e2e (opt-in GPU tests)
 #   --include-dra-tests                Pass --include-dra-tests to smoke/e2e (opt-in DRA tests)
+#   --include-gateway-tests            Pass --include-gateway-tests to e2e (opt-in gateway Dex-login tests 12b and 12c; 12 always runs).
+#                                      They log in as E2E_DEX_USER / E2E_DEX_PASSWORD (export them; default: the demo
+#                                      user), which must be a Dex password login, not an external OIDC connector
 #   --additional-user-namespace=<ns>   Also run Tier 2+3 against this extra profile namespace
 #   --additional-user-email=<email>    Email for the extra profile (used by e2e KFP tests)
 #   --suse-registry=<mirror>           SUSE AI registry mirror (default: registry.suse.com)
@@ -28,6 +31,7 @@ SKIP_TIER2=false
 SKIP_TIER3=false
 INCLUDE_GPU=false
 INCLUDE_DRA=false
+INCLUDE_GATEWAY=false
 ADDITIONAL_USER_NS=""
 ADDITIONAL_USER_EMAIL=""
 SUSE_REGISTRY=registry.suse.com
@@ -43,6 +47,7 @@ for arg in "$@"; do
     --namespace=*)                     NAMESPACE="${arg#*=}" ;;
     --include-gpu-tests)               INCLUDE_GPU=true ;;
     --include-dra-tests)               INCLUDE_DRA=true ;;
+    --include-gateway-tests)           INCLUDE_GATEWAY=true ;;
     --additional-user-namespace=*)     ADDITIONAL_USER_NS="${arg#*=}" ;;
     --additional-user-email=*)         ADDITIONAL_USER_EMAIL="${arg#*=}" ;;
     --suse-registry=*)                 SUSE_REGISTRY="${arg#*=}" ;;
@@ -115,6 +120,7 @@ else
   E2E_ARGS=("--suse-registry=${SUSE_REGISTRY}" "--suse-app-collection=${SUSE_APP_COLLECTION}")
   $INCLUDE_GPU && E2E_ARGS+=(--include-gpu-tests)
   $INCLUDE_DRA && E2E_ARGS+=(--include-dra-tests)
+  $INCLUDE_GATEWAY && E2E_ARGS+=(--include-gateway-tests)
   if bash "$SCRIPT_DIR/e2e/e2e.sh" "${E2E_ARGS[@]}"; then
     T3_STATUS="PASSED"
   else
@@ -147,6 +153,7 @@ if [[ -n "$ADDITIONAL_USER_NS" ]]; then
     E2E_ARGS=("--suse-registry=${SUSE_REGISTRY}" "--suse-app-collection=${SUSE_APP_COLLECTION}")
     $INCLUDE_GPU && E2E_ARGS+=(--include-gpu-tests)
     $INCLUDE_DRA && E2E_ARGS+=(--include-dra-tests)
+    $INCLUDE_GATEWAY && E2E_ARGS+=(--include-gateway-tests)
     E2E_ARGS+=("--user-namespace=${ADDITIONAL_USER_NS}")
     [[ -n "$ADDITIONAL_USER_EMAIL" ]] && E2E_ARGS+=("--user-email=${ADDITIONAL_USER_EMAIL}")
     if bash "$SCRIPT_DIR/e2e/e2e.sh" "${E2E_ARGS[@]}"; then

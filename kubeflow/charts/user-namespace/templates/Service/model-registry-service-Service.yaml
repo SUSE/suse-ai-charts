@@ -1,0 +1,32 @@
+{{- if (include "user-namespace.modelRegistry.enabled" .) }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+# Upstream base/model-registry-service.yaml. `component: model-registry` is the label the BFF
+# (--deployment-mode=kubeflow) and the controller's ISVC reconciler discover registries by.
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-registry-service
+  namespace: {{ .namespace }}
+  labels:
+    app: model-registry-service
+    app.kubernetes.io/component: model-registry
+    app.kubernetes.io/instance: model-registry-service
+    app.kubernetes.io/name: model-registry-service
+    component: model-registry
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+  annotations:
+    displayName: Kubeflow Model Registry
+    description: Model Registry for profile {{ .namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    component: model-registry-server
+    app.kubernetes.io/name: model-registry-server
+  ports:
+  - name: http-api
+    port: 8080
+    protocol: TCP
+    appProtocol: http
+{{- end }}
+{{- end }}

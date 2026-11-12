@@ -1,0 +1,28 @@
+{{- if .Values.profileController.networkPolicy }}
+# The profile controller's webhook has no authentication and creates SeaweedFS keys for whatever
+# profile a request names, so only metacontroller (its only caller) may reach it. The pod is not
+# meshed, so Istio cannot restrict it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app: kubeflow-pipelines-profile-controller
+    application-crd-id: kubeflow-pipelines
+  name: kubeflow-pipelines-profile-controller
+  namespace: kubeflow
+spec:
+  podSelector:
+    matchLabels:
+      app: kubeflow-pipelines-profile-controller
+      application-crd-id: kubeflow-pipelines
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: metacontroller
+          application-crd-id: kubeflow-pipelines
+    ports:
+    - protocol: TCP
+      port: 8080
+{{- end }}

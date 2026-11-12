@@ -2,8 +2,14 @@
 Chart-level prerequisite validations. This file renders nothing but fails fast
 with a human-readable error when required dependencies are misconfigured.
 */}}
-{{- if and .Values.hub.enabled (not .Values.pipelines.enabled) }}
-{{- fail "hub.enabled=true requires pipelines.enabled=true (Kubeflow Hub shares KFP's MariaDB and mysql-secret)" }}
+{{- /* Removed in 0.6.0 (the KFP profile controller owns these objects): fail on leftovers. */}}
+{{- if hasKey (index .Values "user-namespace" | default dict) "pipelines" }}
+{{- fail "REMOVED VALUE KEY: user-namespace.pipelines.* is no longer read — the KFP profile controller creates the per-profile KFP objects. Remove it from your overrides; set the SeaweedFS credentials only in pipelines.seaweedfs.* (see docs/upgrade-notes.md#kfp-profile-controller)." }}
+{{- end }}
+{{- /* Empty would make the profiles controller fall back to upstream's gateway SA, breaking Rancher Istio. */}}
+{{- $igw := dig "istio" "ingressGateway" (dict) (.Values.global | default dict) }}
+{{- if and (hasKey $igw "principal") (eq (toString ($igw.principal | default "")) "") }}
+{{- fail "global.istio.ingressGateway.principal must not be empty. Set it to the ingress gateway's ServiceAccount principal (Rancher/AppCo Istio: cluster.local/ns/istio-system/sa/istio; upstream: cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account)." }}
 {{- end }}
 
 {{- /*
@@ -56,6 +62,7 @@ with a human-readable error when required dependencies are misconfigured.
         (list .Values.centralDashboard.enabled "centralDashboard.enabled")
         (list .Values.dex.enabled "dex.enabled")
         (list .Values.global.oauth2Proxy.enabled "global.oauth2Proxy.enabled")
+        (list .Values.hub.enabled "hub.enabled")
         (list .Values.pipelines.enabled "pipelines.enabled")
         (list .Values.profiles.enabled "profiles.enabled")
         (list .Values.knativeServing.enabled "knativeServing.enabled")
@@ -73,6 +80,49 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   if $needGw }}
 {{-     fail (printf "istioResources.enabled=false is meant for installs without Istio (e.g. trainer-only), but these settings need Istio or the kubeflow-gateway (they render Istio resources, create them at runtime, or route through the gateway/Dex). Disable/unset them, or install Istio and set istioResources.enabled=true:\n  - %s" (join "\n  - " $needGw)) }}
 {{-   end }}
+{{- end }}
+{{- /* Istio CNI must match the cluster, or Pod Security baseline rejects istio-init pods (live lookup;
+     the preflight Job runs the same rules from kubeflow.istioCniProbe for helm template / GitOps). */}}
+{{- if include "kubeflow.istioCniCheckNeeded" . }}
+{{-   $p := include "kubeflow.istioCniProbe" . | fromYaml }}
+{{-   $istiod := false }}
+{{-   range ((lookup "apps/v1" "Deployment" "istio-system" "").items | default list) }}
+{{-     if or (eq .metadata.name $p.istiod) (hasPrefix (printf "%s-" $p.istiod) .metadata.name) }}{{ $istiod = true }}{{ end }}
+{{-   end }}
+{{-   if $istiod }}
+{{-     $cniFound := false }}
+{{-     range ((lookup "apps/v1" "DaemonSet" "" "").items | default list) }}
+{{-       if eq .metadata.name $p.cniDaemonSet }}{{ $cniFound = true }}{{ end }}
+{{-     end }}
+{{-     if not $cniFound }}
+{{-       fail (include "kubeflow.istioCniMissingMsg" .) }}
+{{-     end }}
+{{-     $f := $p.injectorField }}
+{{-     range ((lookup "v1" "ConfigMap" "istio-system" "").items | default list) }}
+{{-       if or (eq .metadata.name $p.injector) (hasPrefix (printf "%s-" $p.injector) .metadata.name) }}
+{{-         $inj := (.data | default dict).values | default "{}" | fromJson }}
+{{-         if eq (toString (dig (index $f 0) (index $f 1) (index $f 2) "" $inj)) "false" }}
+{{-           fail (include "kubeflow.istioCniInjectorMsg" .metadata.name) }}
+{{-         end }}
+{{-       end }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+{{- /* Model Registry: hub and user-namespace both follow global.modelRegistry.mode. */}}
+{{- $mrMode := include "kubeflow.modelRegistryMode" . }}
+{{- $mrDataPlane := include "kubeflow.modelRegistryDataPlane" . }}
+
+{{- /* Only the SHARED registry server uses KFP's MariaDB + mysql-secret. */}}
+{{- if and .Values.hub.enabled (eq $mrMode "shared") (not .Values.pipelines.enabled) }}
+{{- fail "global.modelRegistry.mode=shared requires pipelines.enabled=true (the shared Kubeflow Hub registry uses KFP's MariaDB and mysql-secret). Use global.modelRegistry.mode=perProfile (each profile gets its own Postgres) or enable pipelines." }}
+{{- end }}
+{{- /* A shared registry AND per-profile registries side by side is ambiguous for the UI and clients. */}}
+{{- if and .Values.hub.enabled (eq $mrMode "shared") $mrDataPlane }}
+{{- fail "user-namespace.modelRegistry.enabled=true conflicts with global.modelRegistry.mode=shared. Remove the explicit user-namespace.modelRegistry.enabled override (the data plane follows the mode)." }}
+{{- end }}
+{{- /* user-namespace cannot see hub.enabled: refuse registries without a UI. */}}
+{{- if and (not .Values.hub.enabled) $mrDataPlane }}
+{{- fail "hub.enabled=false: also set user-namespace.modelRegistry.enabled=false (or userNamespace.enabled=false) — otherwise per-profile Model Registry servers would be deployed with no Model Registry UI/control plane." }}
 {{- end }}
 
 {{- /*
@@ -228,15 +278,6 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   end }}
 {{-   if ne ($o2cfg.cookieSecret | default "") $cookieSecret }}
 {{-     $credErrs = append $credErrs "oauth2-proxy.config.cookieSecret differs from auth.oidc.cookieSecret" }}
-{{-   end }}
-{{- end }}
-{{- $uns := dig "pipelines" "seaweedfs" dict (index .Values "user-namespace" | default dict) }}
-{{- if and .Values.pipelines.enabled .Values.pipelines.seaweedfs }}
-{{-   if ne ($uns.accessKey | default "") (.Values.pipelines.seaweedfs.accessKey | default "") }}
-{{-     $credErrs = append $credErrs "user-namespace.pipelines.seaweedfs.accessKey differs from pipelines.seaweedfs.accessKey" }}
-{{-   end }}
-{{-   if ne ($uns.secretKey | default "") (.Values.pipelines.seaweedfs.secretKey | default "") }}
-{{-     $credErrs = append $credErrs "user-namespace.pipelines.seaweedfs.secretKey differs from pipelines.seaweedfs.secretKey" }}
 {{-   end }}
 {{- end }}
 {{- /* oauth2-proxy refuses to start unless the cookie secret is 16, 24 or 32 bytes. It first

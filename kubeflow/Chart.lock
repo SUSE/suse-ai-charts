@@ -28,7 +28,7 @@ dependencies:
   version: 0.2.1
 - name: kubeflow-pipelines
   repository: file://./charts/kubeflow-pipelines
-  version: 0.2.7
+  version: 0.2.8
 - name: notebook-controller
   repository: file://./charts/notebook-controller
   version: 0.2.1
@@ -49,7 +49,7 @@ dependencies:
   version: 0.2.2
 - name: profiles-and-kfam
   repository: file://./charts/profiles-and-kfam
-  version: 0.2.1
+  version: 0.2.2
 - name: volumes-web-app
   repository: file://./charts/volumes-web-app
   version: 0.2.1
@@ -70,13 +70,13 @@ dependencies:
   version: 0.2.1
 - name: kubeflow-hub
   repository: file://./charts/kubeflow-hub
-  version: 0.2.0
+  version: 0.2.1
 - name: user-namespace
   repository: file://./charts/user-namespace
-  version: 0.2.2
+  version: 0.2.3
 - name: network-policies
   repository: file://./charts/network-policies
-  version: 0.1.1
+  version: 0.1.2
 - name: monitoring
   repository: file://./charts/monitoring
   version: 0.1.0
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:1eb9d349d10a9988ccbe44599727626b6da6e7d3889f6664f255f4c12ac80b7b
-generated: "2026-10-30T11:09:32.476562633-07:00"
+digest: sha256:102ed3ee18658392b2d8bae3a321a5395968d14fbd0e1ab61ff65ad1e4a377a1
+generated: "2026-11-13T16:54:52.088148177-08:00"
