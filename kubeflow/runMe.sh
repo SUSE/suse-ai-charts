@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Kubeflow deployment script
 # Usage:
-#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>] [--disable-cert-manager] [--legacy-authz]
+#   ./runMe.sh <appco-registry-username> <appco-registry-token> <suse-ai-registry-username> <suse-ai-registry-token> [--cloudflare-api-key <CloudFlare API Key>] [-f | --values-file <path to values.yaml file>] [--kubeconfig <path>] [--disable-cert-manager] [--legacy-authz] [--no-istio-cni]
 #
 # Ingress-auth: native Istio ext_authz is the DEFAULT (registers the oauth2-proxy
 # provider in istiod MeshConfig via istio-native-authz-values.yaml). Pass
 # --legacy-authz to use the self-contained EnvoyFilter instead (BYO-istio; no
 # MeshConfig change).
+#
+# Istio is installed with istio-cni (global.istio.cni=true); --no-istio-cni uses classic istio-init.
 # Or set env vars:
 #   APPCO_REGISTRY_USER=<user> APPCO_REGISTRY_TOKEN=<token> SUSE_AI_REGISTRY_USER=<user> SUSE_AI_REGISTRY_TOKEN=<token> [CLOUDFLARE_API_KEY=<CloudFlare API Key>] [KUBECONFIG=<path>] ./runMe.sh
 
@@ -44,6 +46,8 @@ ENABLE_CERT_MANAGER=1
 # --legacy-authz switches to the self-contained EnvoyFilter (values-envoyfilter-authz.yaml)
 # and skips the istiod MeshConfig change (for BYO-istio you cannot modify).
 AUTH_MODE=native
+# Istio CNI plugin (default on) — drives both the Istio install and global.istio.cni.
+ISTIO_CNI=true
 while [ $# -gt 0 ] ; do
   case "$1" in
     -f | --values-file)
@@ -95,6 +99,12 @@ while [ $# -gt 0 ] ; do
       AUTH_MODE=envoyfilter
       shift
       ;;
+    --no-istio-cni)
+      # Classic istio-init sidecars (no istio-cni DaemonSet); profile namespaces then get no
+      # Pod Security Standards label (baseline would reject the istio-init container).
+      ISTIO_CNI=false
+      shift
+      ;;
     *)
       # for now assume they are AppCo cred args and SUSE registry cred args
       shift
@@ -127,6 +137,18 @@ if [[ "$AUTH_MODE" == "native" ]]; then
   ISTIO_AUTHZ_ARG="--values $SCRIPT_DIR/istio-native-authz-values.yaml"
 else
   AUTHZ_VALUES_ARG="--values $SCRIPT_DIR/values-envoyfilter-authz.yaml"
+fi
+
+# ── Istio CNI wiring ─────────────────────────────────────────
+ISTIO_CNI_ARG=
+if [[ "$ISTIO_CNI" == "true" ]]; then
+  ISTIO_CNI_ARG="--values $SCRIPT_DIR/istio-cni-values.yaml"
+  # K3s (also Rancher Desktop) keeps CNI binaries/config under /var/lib/rancher/k3s; Istio's
+  # k3s platform profile points istio-cni-node there. RKE2 uses the default paths.
+  if kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null | grep -q '+k3s'; then
+    echo "K3s detected: installing istio-cni with --set global.platform=k3s"
+    ISTIO_CNI_ARG="$ISTIO_CNI_ARG --set global.platform=k3s"
+  fi
 fi
 echo "Ingress-gateway auth mode: $AUTH_MODE"
 
@@ -187,6 +209,7 @@ helm upgrade --install istio oci://${SUSE_APP_COLLECTION}/charts/istio \
   --set global.imagePullSecrets[0].name=application-collection \
   --set gateway.enabled=true \
   $ISTIO_AUTHZ_ARG \
+  $ISTIO_CNI_ARG \
   --force-conflicts \
   --server-side=true \
   --wait --timeout 5m
@@ -232,6 +255,7 @@ helm upgrade --install kubeflow "$SCRIPT_DIR" \
   --wait --timeout 15m \
   --set global.suseRegistry="${SUSE_REGISTRY}" \
   --set global.suseApplicationCollectionRegistry="${SUSE_APP_COLLECTION}" \
+  --set global.istio.cni="${ISTIO_CNI}" \
   $AUTHZ_VALUES_ARG \
   $VALUES_ARGUMENT
 

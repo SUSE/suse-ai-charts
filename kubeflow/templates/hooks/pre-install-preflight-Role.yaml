@@ -12,11 +12,17 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 rules:
 - apiGroups: ['']
-  resources: [namespaces, storageclasses, persistentvolumes, secrets]
+  resources: [namespaces, storageclasses, persistentvolumes, secrets, configmaps]
   verbs: [get, list]
 - apiGroups: [storage.k8s.io]
   resources: [storageclasses]
   verbs: [get, list]
+- apiGroups: [apps]
+  resources: [daemonsets, deployments]
+  verbs: [get, list]
+- apiGroups: [apiextensions.k8s.io]
+  resources: [customresourcedefinitions]
+  verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

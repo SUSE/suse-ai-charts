@@ -102,12 +102,31 @@ pipelines:
       storageSize: 20Gi
 ```
 
-To restore a backup:
+This dumps the KFP databases (`mlpipeline`, `metadb`) as `kubeflow_<timestamp>.sql.gz` to PVC
+`mariadb-backup-pvc`. Model Registry databases are not included; back them up separately. With
+`networkPolicies.enabled`, make sure the restore pod below may reach `mysql`.
+
+To take a backup now, list backups, or restore one (stop pipeline runs first):
 
 ```bash
-kubectl exec -n kubeflow sts/mysql -- ls /backup/        # list available backups
-kubectl exec -n kubeflow sts/mysql -- \
-  sh -c "mariadb --ssl=false -u root < /backup/<filename>.sql"
+kubectl create job -n kubeflow --from=cronjob/mariadb-backup mariadb-backup-manual   # backup now
+
+# Shell with the backups mounted, using the backup job's image, pull secret and credentials
+JOB='{.spec.jobTemplate.spec.template.spec'
+IMG=$(kubectl get cronjob mariadb-backup -n kubeflow -o jsonpath="$JOB.containers[0].image}")
+PULL=$(kubectl get cronjob mariadb-backup -n kubeflow -o jsonpath="$JOB.imagePullSecrets[0].name}")
+kubectl run mariadb-restore -n kubeflow --rm -it --restart=Never --image="$IMG" \
+  --annotations=sidecar.istio.io/nativeSidecar=true --overrides='{"spec":{
+  "imagePullSecrets":[{"name":"'"$PULL"'"}],
+  "securityContext":{"runAsNonRoot":true,"runAsUser":1000,"fsGroup":1000},
+  "volumes":[{"name":"backup","persistentVolumeClaim":{"claimName":"mariadb-backup-pvc"}}],
+  "containers":[{"name":"mariadb-restore","image":"'"$IMG"'","stdin":true,"tty":true,"command":["sh"],
+    "env":[{"name":"MYSQL_PWD","valueFrom":{"secretKeyRef":{"name":"mysql-secret","key":"password"}}}],
+    "volumeMounts":[{"name":"backup","mountPath":"/backup"}]}]}}'
+
+# Inside that shell:
+ls -t /backup/
+gunzip -c /backup/kubeflow_<timestamp>.sql.gz | mariadb -h mysql -u root --ssl=false
 ```
 
 ### 6. Enable pre-install validation
@@ -117,8 +136,9 @@ preflightChecks:
   enabled: true
 ```
 
-Runs a hook Job before install that validates the default StorageClass exists and cert-manager CRDs are
-registered.
+Runs a hook Job before install that validates the default StorageClass exists, cert-manager CRDs are
+registered, and Istio CNI matches `global.istio.cni` (see [Pod Security Standards on profile
+namespaces](#9-pod-security-standards-on-profile-namespaces)).
 
 ### 7. Enable High Availability
 
@@ -145,6 +165,42 @@ additionalUsers:
       requests.memory: "8Gi"
       requests.nvidia.com/gpu: "1"
 ```
+
+
+<a id="pod-security-standards-on-profile-namespaces"></a>
+
+### 9. Pod Security Standards on profile namespaces
+
+With `global.istio.cni: true` (the default), every profile namespace enforces the Kubernetes
+[Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+`baseline` level (`pod-security.kubernetes.io/enforce: baseline`), as upstream Kubeflow does: pods
+that request privileged mode, host namespaces, `hostPath` volumes or extra capabilities are rejected.
+This needs Istio installed **with the istio-cni plugin** — without it, every meshed pod carries the
+`istio-init` container, which needs `NET_ADMIN`/`NET_RAW` and would be rejected.
+
+| | `global.istio.cni: true` (default) | `global.istio.cni: false` |
+|---|---|---|
+| Istio install | with istio-cni (`runMe.sh` default, `istio-cni-values.yaml`) | classic `istio-init` (`runMe.sh --no-istio-cni`) |
+| User pods | no privileged init container | `istio-init` with `NET_ADMIN`/`NET_RAW` |
+| Profile namespaces | `istio-injection: enabled` + PSS `enforce: baseline` | `istio-injection: enabled` |
+
+The label is set on namespaces the chart creates (example profile, `additionalUsers[]`) and through
+the profile controller on profiles created at runtime (including `extraNamespaces`). If
+`cni: true` and istiod runs in `istio-system` (including a revisioned `istiod-<rev>`) but no
+`istio-cni-node` DaemonSet exists in any namespace (or istiod's injector has
+`pilot.cni.enabled: false`), `helm install` / `helm upgrade` fails with an explanatory error. Renders with `helm template` cannot see the cluster: set `global.istio.cni`
+explicitly, or enable `preflightChecks.enabled` if your tool runs Helm hooks before other resources.
+Switching `cni` from `true` to `false` needs a one-time label clean-up
+([upgrade notes](upgrade-notes.md#istio-cni)).
+
+**Security trade-off when running without CNI (`global.istio.cni: false`).** Profile namespaces are
+still labelled `istio-injection: enabled` (as upstream's profile controller does), so every pod in
+them — notebooks, pipeline steps, model servers — joins the mesh and starts with the `istio-init`
+container, which holds the `NET_ADMIN` and `NET_RAW` capabilities. That buys mTLS and
+AuthorizationPolicy enforcement for user workloads, but it also means user-controlled pods run a
+container with network-administration privileges, and no Pod Security level is enforced on the
+namespace. Prefer Istio with CNI wherever the platform supports it; use `false` only where it does
+not.
 
 ---
 
@@ -187,10 +243,17 @@ helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
 helm upgrade kubeflow -n kubeflow --force-conflicts -f my-values.yaml .
 ```
 
-This creates the Profile CR and deploys all required KFP per-namespace resources (pipeline artifact
-server, visualization server, credentials, authorization policies) in a single step.
+This creates the Profile and namespace and the user's own Model Registry (server + Postgres) in a
+single step. Gateway access comes from the profiles controller's `ns-owner-access-istio`
+AuthorizationPolicy (see the note below). The KFP per-namespace resources (the profile's own
+artifact-store credentials, the launcher and artifact-repository ConfigMaps, and authorization
+policies; the per-profile artifact proxy only with `pipelines.artifacts.proxyEnabled`) are then
+created automatically by the KFP profile controller, as upstream, for every profile namespace labelled
+`pipelines.kubeflow.org/enabled=true` (the profiles controller sets that label).
 
-> **Note:** Do not add users by applying a `Profile` CR directly with `kubectl`. The profiles
-> controller only creates namespace-level RBAC — it does not deploy the KFP per-namespace resources
-> that pipelines depend on. Users added this way will have an incomplete environment and pipeline runs
-> will fail.
+> **Note:** A profile created with `kubectl` (or the dashboard registration flow) gets the same
+> namespace setup as one from `additionalUsers`: the profiles controller creates RBAC and the
+> `ns-owner-access-istio` AuthorizationPolicy (admitting the gateway principal from
+> `global.istio.ingressGateway.principal`), and the KFP profile controller creates the KFP resources.
+> The one difference is the Model Registry: list the namespace in
+> `user-namespace.modelRegistry.extraNamespaces` and run `helm upgrade` to get one.

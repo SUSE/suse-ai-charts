@@ -26,21 +26,23 @@ spec:
   - apiVersion: apps/v1
     resource: deployments
     updateStrategy:
-      method: OnDelete
+      method: InPlace
   - apiVersion: v1
     resource: services
     updateStrategy:
-      method: OnDelete
+      method: InPlace
   - apiVersion: networking.istio.io/v1alpha3
     resource: destinationrules
     updateStrategy:
-      method: OnDelete
+      method: InPlace
   - apiVersion: security.istio.io/v1beta1
     resource: authorizationpolicies
     updateStrategy:
-      method: OnDelete
+      method: InPlace
   hooks:
     sync:
       webhook:
         url: http://kubeflow-pipelines-profile-controller/sync
+        # A new profile's sync makes several aws CLI calls (~0.5-1s each at the controller's CPU limit).
+        timeout: 30s
   resyncPeriodSeconds: 3600

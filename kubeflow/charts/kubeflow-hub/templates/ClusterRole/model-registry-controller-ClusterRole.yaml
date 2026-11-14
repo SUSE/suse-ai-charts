@@ -9,6 +9,15 @@ metadata:
     kustomize.component: model-registry
   name: model-registry-controller
 rules:
+# Cluster-wide Service discovery so per-profile registries resolve (upstream role.yaml).
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - serving.kserve.io
   resources:
@@ -19,6 +28,18 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - inferenceservices/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - ""
   resources:

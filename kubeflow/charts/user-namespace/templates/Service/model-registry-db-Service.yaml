@@ -1,0 +1,22 @@
+{{- if and (include "user-namespace.modelRegistry.enabled" .) (eq .Values.modelRegistry.db.mode "embedded") }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-registry-db
+  namespace: {{ .namespace }}
+  labels:
+    component: db
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    component: db
+    app.kubernetes.io/name: model-registry-db
+  ports:
+  - name: tcp-postgres
+    port: 5432
+    protocol: TCP
+{{- end }}
+{{- end }}

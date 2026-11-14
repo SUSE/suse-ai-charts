@@ -28,7 +28,7 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | Tensorboard Controller | local | kubeflow | TensorBoard CRD controller |
 | Tensorboards Web App | local | kubeflow | TensorBoard UI |
 | Models Web App | local | kubeflow | Model serving UI (co-enabled with KServe via `kserve.enabled`) |
-| Model Registry | local | kubeflow | Model versioning and metadata |
+| Model Registry | local | kubeflow (UI) + each profile namespace (server + DB) | Model versioning and metadata, one registry per profile |
 | Admission Webhook | local | kubeflow | PodDefault mutating webhook (always installed — no condition) |
 | Knative Serving | local | knative-serving | Serverless layer required by KServe |
 | Knative Eventing | local | knative-eventing | Optional event-driven pipeline triggers (disabled by default) |
@@ -48,7 +48,8 @@ Targets **Rancher / RKE2** clusters using images from the SUSE AI Library.
 | Kubernetes | >= 1.35 | Required by Knative Serving/Eventing v1.24.0; tested on RKE2 / K3s |
 | Helm | >= 4.0.1 | Required for OCI chart support |
 | cert-manager | 1.20.2 | Installed by `runMe.sh`; or pre-install manually |
-| Istio | mesh ≥ 1.9 (chart 1.3.0) | `1.3.0` is the SUSE AppCo **chart** version installed by `runMe.sh` (or pre-install manually); it ships a mesh well past the floor. The **mesh** floor is Istio ≥ 1.9 / Envoy ≥ 1.17 — the legacy [EnvoyFilter auth mode](#ingress-gateway-authentication-mode) uses ext_authz `filter_enabled_metadata` `invert`, added in Envoy 1.17.0 (Istio 1.9). On an older proxy istiod NACKs the filter and auth can **fail open** (the default native ext_authz auth mode has no such floor). Any currently-supported Istio (≥ 1.16) satisfies this. |
+| Istio | mesh ≥ 1.27 (chart 1.3.0) | `1.3.0` is the SUSE AppCo **chart** version installed by `runMe.sh`. The mesh must be Istio ≥ 1.27 (native sidecars, so Jobs and pipeline steps with a sidecar complete). |
+| Istio CNI plugin | recommended (default) | `runMe.sh` installs Istio with istio-cni; without it set `global.istio.cni: false` (`runMe.sh --no-istio-cni`). See [Istio CNI and Pod Security](docs/production-and-tenancy.md#9-pod-security-standards-on-profile-namespaces) |
 | Load Balancer (i.e. metallb) | - | Required when used in conjunction with external-dns and cert-manager. Tested with MetalLB v0.15.3 |
 | Default StorageClass | — | Local Path Provisioner (dev) or Longhorn (prod) |
 | SUSE Application Collection credentials | — | Username + token for `dp.apps.rancher.io` (application-collection secret) |
@@ -94,7 +95,7 @@ Prerequisite for either mode: a RKE2 cluster with a default StorageClass configu
 3. Creates `application-collection` and `suse-ai-registry` image pull secrets in `istio-system`, `kubeflow`, `knative-serving`, and `cert-manager`. User namespaces (`kubeflow-user-example-com`, profile namespaces) receive these secrets automatically via the External Secrets Operator (ESO), installed as part of the chart.
 4. Labels the `kubeflow` and `knative-serving` namespaces for Helm ownership
 5. Installs cert-manager from `oci://dp.apps.rancher.io/charts/cert-manager`
-6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway enabled
+6. Installs Istio from `oci://dp.apps.rancher.io/charts/istio` with the gateway and the istio-cni plugin enabled (`--no-istio-cni` skips the plugin)
 7. Installs External Secrets Operator and waits for CRDs to be established
 8. Packages sub-charts via `helm dependency update`
 9. Installs the Kubeflow umbrella chart
@@ -144,6 +145,7 @@ The repo ships an example `demo-overrides.yaml`. **Never use `demo-overrides.yam
 | `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
 | `--disable-cert-manager` | — | Do not upgrade/install cert-manager, use an existing one instead |
+| `--no-istio-cni` | — | Install Istio **without** the istio-cni plugin (classic `istio-init` sidecars) and set `global.istio.cni=false`, so profile namespaces get no Pod Security Standards label. For clusters that cannot run istio-cni. (`runMe.sh` sets `global.istio.cni` itself, overriding your `-f` files.) |
 | `--legacy-authz` | — | Use the legacy self-contained EnvoyFilter ingress-auth mode instead of the default Istio-native ext_authz. See [Ingress gateway authentication mode](#ingress-gateway-authentication-mode). |
 | `--suse-registry=<mirror>` | `SUSE_REGISTRY` | SUSE AI registry mirror (default: `registry.suse.com`); redirects all `registry.suse.com/*` image pulls and the registry login |
 | `--suse-app-collection=<mirror>` | `SUSE_APP_COLLECTION` | Application Collection mirror (default: `dp.apps.rancher.io`); redirects all `dp.apps.rancher.io/*` image pulls, the registry login, and the cert-manager / Istio / ESO OCI chart URLs |
@@ -264,6 +266,8 @@ helm upgrade --install cert-manager oci://dp.apps.rancher.io/charts/cert-manager
 #### Step 6 — Install Istio
 
 ```bash
+# istio-native-authz-values.yaml: native ingress auth mode (default) — see "Ingress auth mode" below
+# istio-cni-values.yaml:          istio-cni plugin (default) — see "Istio CNI" below
 helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --version 1.3.0 \
   --namespace istio-system \
@@ -272,8 +276,14 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
   --force-conflicts \
   --server-side=true \
   --wait --timeout 5m \
-  -f istio-native-authz-values.yaml   # native auth mode (default) — see note below
+  -f istio-native-authz-values.yaml \
+  -f istio-cni-values.yaml
 ```
+
+> **Istio CNI:** with CNI on K3s / Rancher Desktop, add `--set global.platform=k3s` to the Istio command
+> above. Omit `-f istio-cni-values.yaml` only for classic `istio-init`, and then install Kubeflow with
+> `--set global.istio.cni=false`. See
+> [Pod Security Standards on profile namespaces](docs/production-and-tenancy.md#9-pod-security-standards-on-profile-namespaces).
 
 > **Ingress auth mode:** the chart defaults to Istio-native ext_authz
 > (`global.oauth2Proxy.gatewayAuthMode: native`), which requires istiod's MeshConfig
@@ -373,6 +383,24 @@ networked use.
 
 ---
 
+## Uninstall
+
+`helm uninstall` deletes the `kubeflow` and `knative-serving` namespaces with everything in them —
+including PVCs marked `keep` (pipeline data, artifacts, backups) and any other release installed
+there (e.g. External Secrets Operator) — and the profile namespaces the chart created. Back up what
+you need first. While the profiles controller still runs, delete the Profiles the chart created (the
+example profile and `additionalUsers`); otherwise their finalizers block the uninstall. Deleting a
+Profile deletes its namespace.
+
+```bash
+kubectl delete profiles.kubeflow.org kubeflow-user-example-com <additionalUsers namespaces>
+helm uninstall kubeflow -n kubeflow
+```
+
+CRDs are left in place.
+
+---
+
 ## Trainer-only install
 
 To deploy only Kubeflow Trainer V2 (TrainJob / TrainingRuntime / ClusterTrainingRuntime) with JobSet,
@@ -462,6 +490,7 @@ Istio).
 | [Accessing & TLS / Configuration Scenarios](docs/access-and-tls.md) | Port-forward / NodePort / LoadBalancer access, hostname + TLS scenarios (self-signed, Let's Encrypt, BYO cert, existing external-dns/cert-manager), external HTTPS for KServe inference |
 | [Trainer-only Install](docs/use-cases/trainer-only-install.md) | Installing only Trainer V2 + JobSet (no Istio, cert-manager, Profiles or KFP): values, install, sample TrainJob, upgrade/uninstall |
 | [Values Reference](docs/values-reference.md) | Every configurable value — globals, credentials, component toggles, storage, networking, registry overrides |
+| [Optional Features](docs/optional-features.md) | Model Registry KServe integration (storage initializer, InferenceService controller) |
 | [Production Hardening & Multi-tenancy](docs/production-and-tenancy.md) | Credential rotation, external IdP, NetworkPolicies, backups, HA, resource quotas, adding users / profiles |
 | [Upgrade Notes](docs/upgrade-notes.md) | Version migrations, breaking changes, and required manual steps per release |
 | [Testing, Troubleshooting & Known Limitations](docs/troubleshooting.md) | Smoke / e2e / helm tests, common failure fixes, and known constraints |

@@ -212,6 +212,13 @@ viewerCrdController:
       cpu: 500m
       memory: 512Mi
 
+# Per-profile artifact settings (upstream KFP 2.17); see docs/values-reference.md.
+artifacts:
+  # Per-profile ml-pipeline-ui-artifact proxy (upstream default: off).
+  proxyEnabled: false
+  # Delete objects under private-artifacts/ older than N days; -1 keeps them.
+  retentionDays: -1
+
 # Visualization server
 visualizationServer:
   image:
@@ -332,12 +339,15 @@ metacontroller:
       cpu: 100m
       memory: 256Mi
 
-# Profile controller
+# Profile controller: sync.py runs on this image's Python and `aws` CLI.
 profileController:
+  # NetworkPolicy so only metacontroller can call the controller's webhook (ignored where the CNI
+  # does not enforce NetworkPolicy).
+  networkPolicy: true
   image:
-    registry: registry.suse.com
-    repository: ai/containers/python
-    tag: "3.15.2"
+    registry: dp.apps.rancher.io
+    repository: containers/aws-cli
+    tag: "2.40.1"
     pullPolicy: IfNotPresent
     digest: ""  # optional: sha256:... pins this image for supply-chain security
   resources:

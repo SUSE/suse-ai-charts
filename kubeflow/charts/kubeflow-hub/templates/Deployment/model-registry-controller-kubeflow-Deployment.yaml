@@ -43,11 +43,29 @@ spec:
         - --health-probe-bind-address=:8081
         env:
         - name: INFERENCE_SERVICE_CONTROLLER
-          value: {{ .Values.controller.env.inferenceServiceController | quote }}
+          value: {{ include "kubeflow-hub.inferenceServiceController" . | quote }}
         - name: REGISTRIES_NAMESPACE
-          value: {{ .Values.controller.env.registriesNamespace | quote }}
+          value: {{ include "kubeflow-hub.registriesNamespace" . | quote }}
         - name: SKIP_TLS_VERIFY
           value: {{ .Values.controller.env.skipTlsVerify | quote }}
+        # Upstream options/controller/overlays/base/params.env — required (non-empty) when
+        # INFERENCE_SERVICE_CONTROLLER=managed, otherwise the manager exits at startup.
+        - name: NAMESPACE_LABEL
+          value: {{ .Values.controller.env.namespaceLabel | quote }}
+        - name: NAME_LABEL
+          value: {{ .Values.controller.env.nameLabel | quote }}
+        - name: URL_ANNOTATION
+          value: {{ .Values.controller.env.urlAnnotation | quote }}
+        - name: INFERENCE_SERVICE_ID_LABEL
+          value: {{ .Values.controller.env.inferenceServiceIdLabel | quote }}
+        - name: MODEL_VERSION_ID_LABEL
+          value: {{ .Values.controller.env.modelVersionIdLabel | quote }}
+        - name: REGISTERED_MODEL_ID_LABEL
+          value: {{ .Values.controller.env.registeredModelIdLabel | quote }}
+        - name: FINALIZER
+          value: {{ .Values.controller.env.finalizer | quote }}
+        - name: SERVICE_ANNOTATION
+          value: {{ .Values.controller.env.serviceAnnotation | quote }}
         image: "{{- $registry := include "kubeflow-hub.suseImageRegistry" (dict "ctx" . "registry" .Values.controller.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.controller.image.repository }}{{- if .Values.controller.image.digest }}@{{ .Values.controller.image.digest }}{{- else }}:{{ .Values.controller.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
         securityContext:

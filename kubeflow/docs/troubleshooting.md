@@ -27,8 +27,15 @@ gateway is denied while `/dex/` stays allowlisted). Requires `kubectl` and `curl
 
 ```bash
 chmod +x test/e2e/e2e.sh
-./test/e2e/e2e.sh [--suse-registry=<mirror>] [--suse-app-collection=<mirror>] [--include-gpu-tests]
+./test/e2e/e2e.sh [--suse-registry=<mirror>] [--suse-app-collection=<mirror>] [--include-gpu-tests] [--include-gateway-tests]
 ```
+
+`--include-gateway-tests` adds two calls through the gateway with a Dex login: KServe (403 without a
+per-model AuthorizationPolicy, 200 with one) and the per-profile Model Registry (200 for the owner,
+403 on another profile; that check needs a second profile with a registry, e.g. from
+`user-namespace.additionalUsers`). They log in as `E2E_DEX_USER` / `E2E_DEX_PASSWORD` (default: the
+demo user), which must be a Dex password login rather than an external OIDC connector, and fail if
+that login fails.
 
 ### Helm chart tests
 
@@ -141,20 +148,19 @@ If either is missing, re-run `helm upgrade` — the chart installs them.
 
 ### "RBAC: access denied" for user namespace traffic
 
-Rancher Istio uses the `istio` ServiceAccount (not `istio-ingressgateway-service-account`). The
-`rancher-ingressgateway-access` AuthorizationPolicy in each user namespace handles this.
-
-If you pre-created the AuthorizationPolicy with `kubectl` before the first Helm install, add Helm
-ownership labels/annotations before upgrade:
+Rancher Istio runs the ingress gateway as the `istio` ServiceAccount (not upstream's
+`istio-ingressgateway-service-account`). The profiles controller admits whatever
+`global.istio.ingressGateway.principal` is set to in each profile's `ns-owner-access-istio`
+AuthorizationPolicy. Check that it matches your gateway and that the policy carries it:
 
 ```bash
-kubectl label authorizationpolicy rancher-ingressgateway-access \
-  -n kubeflow-user-example-com app.kubernetes.io/managed-by=Helm --overwrite
-kubectl annotate authorizationpolicy rancher-ingressgateway-access \
-  -n kubeflow-user-example-com \
-  meta.helm.sh/release-name=kubeflow \
-  meta.helm.sh/release-namespace=kubeflow --overwrite
+kubectl get pod -n istio-system -l app=istio -o jsonpath='{.items[0].spec.serviceAccountName}'
+kubectl get authorizationpolicy ns-owner-access-istio -n <profile> \
+  -o jsonpath='{.spec.rules[0].from[0].source.principals}'
 ```
+
+If the policy still shows the upstream ServiceAccount, restart the profiles controller so it
+re-reconciles every profile: `kubectl rollout restart deploy/profiles-deployment -n kubeflow`.
 
 ### SeaweedFS pod stuck ContainerCreating
 

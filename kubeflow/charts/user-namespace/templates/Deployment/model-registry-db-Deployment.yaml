@@ -1,0 +1,88 @@
+{{- if and (include "user-namespace.modelRegistry.enabled" .) (eq .Values.modelRegistry.db.mode "embedded") }}
+{{- $mr := .Values.modelRegistry }}
+{{- $secret := $mr.db.embedded.existingSecret | default "model-registry-db-secrets" }}
+{{- $dbImage := include "user-namespace.image" (dict "registry" (include "user-namespace.suseApplicationCollectionRegistry" (dict "ctx" $ "registry" $mr.db.image.registry)) "image" $mr.db.image) }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+# Upstream overlays/postgres/model-registry-db-deployment.yaml, on the AppCo Postgres image
+# (official docker-entrypoint.sh; postgres uid 999).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-registry-db
+  namespace: {{ .namespace }}
+  labels:
+    component: db
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  # Selector adds a registry-specific label: profile namespaces host arbitrary user workloads,
+  # and upstream's bare `component: db` could match a user's own database pods.
+  selector:
+    matchLabels:
+      component: db
+      app.kubernetes.io/name: model-registry-db
+  template:
+    metadata:
+      labels:
+        component: db
+        app.kubernetes.io/name: model-registry-db
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "user-namespace.imagePullSecrets" $ | nindent 6 }}
+      containers:
+      - name: db-container
+        image: {{ $dbImage | quote }}
+        imagePullPolicy: {{ $mr.db.image.pullPolicy }}
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_DB
+          value: {{ $mr.db.embedded.database | quote }}
+        - name: POSTGRES_USER
+          valueFrom: { secretKeyRef: { name: {{ $secret }}, key: POSTGRES_USER } }
+        - name: POSTGRES_PASSWORD
+          valueFrom: { secretKeyRef: { name: {{ $secret }}, key: POSTGRES_PASSWORD } }
+        ports:
+        - name: postgres
+          containerPort: 5432
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1 -q"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1 -q"]
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 6
+        {{- with $mr.db.embedded.resources }}
+        resources: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: run
+          mountPath: /var/run/postgresql
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: { drop: [ALL] }
+          seccompProfile: { type: RuntimeDefault }
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: metadata-postgres
+      - name: run
+        emptyDir: {}
+{{- end }}
+{{- end }}

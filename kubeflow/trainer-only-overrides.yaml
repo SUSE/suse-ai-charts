@@ -30,7 +30,7 @@ istioResources:
 admissionWebhook:
   enabled: false     # PodDefaults webhook (cert-manager Issuer + Certificate)
 userNamespace:
-  enabled: false     # kubeflow-user-example-com Profile + per-namespace KFP servers
+  enabled: false     # example Profile, additionalUsers + per-profile Model Registry
 kubeflowRoles:
   enabled: false     # kubeflow-{admin,edit,view} aggregated ClusterRoles (used by Profiles)
 

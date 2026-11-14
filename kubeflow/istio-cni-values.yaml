@@ -1,0 +1,8 @@
+# Istio with the istio-cni plugin (upstream Kubeflow default), for the AppCo Istio chart.
+# runMe.sh uses it unless --no-istio-cni; on K3s also pass --set global.platform=k3s.
+cni:
+  enabled: true
+istiod:
+  pilot:
+    cni:
+      enabled: true

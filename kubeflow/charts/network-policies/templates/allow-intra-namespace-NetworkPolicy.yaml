@@ -6,7 +6,10 @@ metadata:
   name: allow-intra-namespace
   namespace: kubeflow
 spec:
-  podSelector: {}
+  # Every pod except the KFP profile controller, which admits only metacontroller (its own policy).
+  podSelector:
+    matchExpressions:
+    - {key: app, operator: NotIn, values: [kubeflow-pipelines-profile-controller]}
   policyTypes:
   - Ingress
   ingress:
