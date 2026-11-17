@@ -1,0 +1,32 @@
+{{- if and (include "user-namespace.modelRegistry.enabled" .) .Values.modelRegistry.istio.virtualService.enabled }}
+{{- $gw := "kubeflow/kubeflow-gateway" }}
+{{- with .Values.global.gateway }}{{- if .name }}{{- $gw = .name }}{{- end }}{{- end }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+# Upstream options/istio/virtual-service.yaml, made multi-profile-safe: a namespace-scoped prefix
+# instead of the bare /api/model_registry/ (which every profile would claim on the shared gateway).
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: model-registry
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  gateways:
+  - {{ $gw }}
+  hosts:
+  - '*'
+  http:
+  - match:
+    - uri:
+        prefix: /api/model_registry/{{ .namespace }}/
+    rewrite:
+      uri: /api/model_registry/
+    route:
+    - destination:
+        host: model-registry-service.{{ .namespace }}.svc.cluster.local
+        port:
+          number: 8080
+{{- end }}
+{{- end }}

@@ -1,1 +1,5 @@
 kubeflow/charts/*.tgz
+
+# Python bytecode (unit tests / vendored KFP profile-controller hook)
+__pycache__/
+*.pyc

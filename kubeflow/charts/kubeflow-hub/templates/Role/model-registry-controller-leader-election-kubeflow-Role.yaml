@@ -1,0 +1,46 @@
+{{- if .Values.controller.enabled }}
+# Leader election for the controller manager (runs with --leader-elect). Namespaced to where the
+# controller runs. Upstream options/controller/rbac/leader_election_role.yaml (release-26.03.1).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: model-registry
+    app.kubernetes.io/component: model-registry-controller
+    app.kubernetes.io/name: model-registry
+    kustomize.component: model-registry
+  name: model-registry-controller-leader-election
+  namespace: kubeflow
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+{{- end }}

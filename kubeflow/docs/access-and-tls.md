@@ -380,6 +380,42 @@ auth:
 >
 > **Note:** if you use `runMe.sh`, pass `--disable-cert-manager` to skip installing `cert-manager`.
 
+<a id="calling-an-inferenceservice-from-outside-the-cluster"></a>
+
+### Calling an InferenceService from outside the cluster
+
+Profile namespaces are Istio-injected, so every KServe predictor runs with a sidecar, and the
+profile's `ns-owner-access-istio` policy does not admit requests that arrive through the ingress
+gateway and Knative. As in upstream Kubeflow, **each InferenceService that must be callable from
+outside the cluster needs its own ALLOW policy** in its namespace. Without it, authenticated callers
+get `403 RBAC: access denied`.
+
+```yaml
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-sklearn-iris                     # one per InferenceService
+  namespace: kubeflow-user-example-com         # the profile namespace
+spec:
+  action: ALLOW
+  rules:
+  - {}
+  selector:
+    matchLabels:
+      serving.knative.dev/service: sklearn-iris-predictor   # <inferenceservice>-predictor
+```
+
+- **Authentication stays at the gateway.** Requests without a Kubeflow session cookie or a valid
+  Dex-issued bearer token are still rejected there (redirect to login / `401`); the policy only lets
+  authenticated requests reach this one predictor.
+- **Any logged-in user can then call the model**, not only the profile owner — the same as upstream.
+  Serve models that must stay private to a profile from inside the cluster instead.
+- **Do not narrow it with a `from: namespaces` rule.** Knative's activator calls the predictor pod
+  IP without an mTLS identity, so such a rule fails intermittently depending on whether the
+  activator is in the request path.
+- Calls from inside the same profile (for example a notebook using the predictor's
+  `…-private` Service) need no policy.
+
 ### External HTTPS for KServe inference (opt-in)
 
 KServe inference always routes through its own **dedicated** `kserve-ingress-gateway`

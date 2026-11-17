@@ -5,7 +5,7 @@ name: kubeflow-hub
 # the /api/model_registry/ routes are kept as "model-registry" to match upstream.
 description: Kubeflow Hub - Model Registry and Model Catalog for the ML model lifecycle
 type: application
-version: 0.2.0
+version: 0.2.1
 # All Hub component images (server, ui, controller, storage-initializer) are pinned
 # to v0.3.10 under the hub/* path, matching community-distribution release-26.03.1.
 appVersion: v0.3.10

@@ -64,7 +64,7 @@ Open `http://<KUBEFLOW_HOST>` in your browser.
 > **Note — Demo mode:** This tutorial uses `demo-overrides.yaml` which sets `global.demoMode: true`
 > and retains well-known demo credentials. The chart's credential validation is suppressed in this
 > mode. **Never use these credentials in production.** See
-> [Production Hardening](README.md#production-hardening) before any real deployment.
+> [Production Hardening](docs/production-and-tenancy.md#production-hardening) before any real deployment.
 
 After login you land on the **Central Dashboard**.  All features are accessible from the left-hand navigation menu.
 
@@ -589,6 +589,9 @@ kubectl logs -n kubeflow-user-example-com \
 
 ## Part 7 — Model Registry
 
+Each profile namespace has its **own** registry (server + Postgres); the UI is shared and runs in
+`kubeflow`. This part uses the example profile `kubeflow-user-example-com` — substitute your own.
+
 Model Registry is the **model versioning and approval layer** between your training pipelines
 and your serving infrastructure. It answers two questions that raw S3 storage cannot:
 *"Which version of this model is approved for production?"* and
@@ -599,8 +602,8 @@ and your serving infrastructure. It answers two questions that raw S3 storage ca
 - Create versions (v1, v2, …) and track their state: `LIVE`, `CANDIDATE`, `ARCHIVED`
 - Record lineage — link a version back to the KFP run ID, dataset, and metrics that produced it
 - Promote a `CANDIDATE` to `LIVE` after review, giving teams a controlled release workflow
-- Deploy directly from the registry into KServe using `model-registry://` storage URIs
-  (requires `kserve.storageContainer.enabled=true`)
+- Optionally, deploy directly from the registry into KServe using `model-registry://` storage
+  URIs — off by default; see [Optional Features](docs/optional-features.md#model-registry-kserve-integration)
 
 **Relationship to the Models UI:** Model Registry is the catalog of *what exists and has been
 vetted*. The Models UI (KServe) shows *what is currently running*. Nothing should reach the
@@ -611,14 +614,20 @@ Models UI without first passing through Model Registry.
 ### 7.1 Verify Model Registry Is Running
 
 ```bash
+# The UI (shared) runs in kubeflow:
 kubectl get pods -n kubeflow | grep model-registry
 # Expected:
-#   model-registry-deployment-xxxxx   2/2   Running
 #   model-registry-ui-xxxxx           2/2   Running
+
+# Your profile's registry server + database run in the profile namespace:
+kubectl get pods -n kubeflow-user-example-com | grep model-registry
+# Expected:
+#   model-registry-db-xxxxx           1/1   Running
+#   model-registry-deployment-xxxxx   2/2   Running
 ```
 
-Open the Kubeflow dashboard → click **"Model Registry"** in the left sidebar.
-You should see an empty list — no models registered yet.
+Open the Kubeflow dashboard → click **"Model Registry"** in the left sidebar and select your
+profile namespace. You should see an empty list — no models registered yet.
 
 ---
 
@@ -672,7 +681,7 @@ kubectl port-forward svc/seaweedfs 9333:9333 -n kubeflow
 
 Port-forward the registry API (run in a separate terminal):
 ```bash
-kubectl port-forward svc/model-registry-service -n kubeflow 8080:8080
+kubectl port-forward svc/model-registry-service -n kubeflow-user-example-com 8080:8080
 ```
 
 Register the model:
@@ -747,7 +756,8 @@ curl -sf -X PATCH \
 
 ### 7.6 View in the UI
 
-1. Refresh the **Model Registry** sidebar page in the Kubeflow dashboard.
+1. Refresh the **Model Registry** sidebar page in the Kubeflow dashboard (with your profile
+   namespace selected).
 2. You should see `sklearn-iris` listed with version `v1` in state `LIVE`.
 3. Click the model → click the version → inspect the artifact URI, custom properties,
    and state history.
@@ -773,9 +783,12 @@ curl -sf -X PATCH \
 ### 7.8 Helm Test
 
 ```bash
-helm test kubeflow -n kubeflow --filter name=kubeflow-test-model-registry
 helm test kubeflow -n kubeflow --filter name=kubeflow-test-model-registry-ui
 ```
+
+The UI test is the only Model Registry Helm test in the default per-profile mode. To check a
+profile's registry server, use the port-forward from 7.3 or run
+`./test/smoke/smoke.sh --user-namespace=<profile>`.
 
 ---
 
@@ -900,7 +913,27 @@ print(resp.json())   # {"predictions": [0, 1, 2]}
 
 #### External Access (requires domain configuration)
 
-Two external access modes are available. Both require setting a real domain first.
+Two external access modes are available. Both require setting a real domain first, and both need
+an AuthorizationPolicy that lets authenticated requests reach the predictor (profile namespaces are
+Istio-injected; see
+[Calling an InferenceService from outside the cluster](docs/access-and-tls.md#calling-an-inferenceservice-from-outside-the-cluster)):
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-sklearn-iris
+  namespace: kubeflow-user-example-com
+spec:
+  action: ALLOW
+  rules:
+  - {}
+  selector:
+    matchLabels:
+      serving.knative.dev/service: sklearn-iris-predictor
+EOF
+```
 
 **Authenticated inference** (Kubeflow login required):
 
@@ -910,23 +943,29 @@ NODE_IP=$(kubectl get nodes \
   -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 [[ -z "$NODE_IP" ]] && { echo "ERROR: could not determine node IP"; exit 1; }
 
-# Two sub-charts consume the domain; both must be set together.
+# global.kserveDomain is the single source of truth for the inference domain: it feeds Knative,
+# KServe and the dedicated kserve-ingress-gateway together (setting knativeServing.domain or
+# kserve.ingressDomain on their own fails the upgrade).
 # --force-conflicts: cert-manager-cainjector holds SSA field ownership on some ClusterRoles;
 # this flag lets Helm win the conflict rather than failing the upgrade.
-helm upgrade kubeflow charts/kubeflow --reuse-values \
-  --set "knativeServing.domain=${NODE_IP}.nip.io" \
-  --set "kserve.ingressDomain=${NODE_IP}.nip.io" \
+# -f: re-supply the values file you installed with (e.g. demo-overrides.yaml); avoid --reuse-values,
+# which carries forward an old value tree (see docs/upgrade-notes.md).
+helm upgrade kubeflow charts/kubeflow -f <your-values.yaml> \
+  --set "global.kserveDomain=${NODE_IP}.nip.io" \
   -n kubeflow \
   --force-conflicts
 
-# Get the external URL
-kubectl get inferenceservice sklearn-iris -n kubeflow-user-example-com
-# URL column: http://sklearn-iris-kubeflow-user-example-com.<NODE_IP>.nip.io
+# Get the predictor's external URL (call the predictor host: the top-level InferenceService
+# host redirects). With the default domain template it looks like
+#   http://sklearn-iris-predictor.kubeflow-user-example-com.<NODE_IP>.nip.io
+PREDICTOR_URL=$(kubectl get inferenceservice sklearn-iris -n kubeflow-user-example-com \
+  -o jsonpath='{.status.components.predictor.url}')
+echo "${PREDICTOR_URL}"
 
 # Extract your session cookie from browser DevTools
 # (Application → Cookies → oauth2_proxy_kubeflow), then:
 curl -s -X POST \
-  "http://sklearn-iris-kubeflow-user-example-com.${NODE_IP}.nip.io/v1/models/sklearn-iris:predict" \
+  "${PREDICTOR_URL}/v1/models/sklearn-iris:predict" \
   -H "Content-Type: application/json" \
   -H "Cookie: oauth2_proxy_kubeflow=<paste-cookie-here>" \
   -d '{"instances": [[5.1, 3.5, 1.4, 0.2], [6.7, 3.1, 4.7, 1.5], [6.3, 2.7, 4.9, 1.8]]}'
@@ -973,9 +1012,9 @@ if 'error' in r:
     sys.exit(f\"Dex error: {r['error']}: {r.get('error_description', '')}\")
 print(r['id_token'])")
 
-# Step 2: Use token for inference (no cookie needed)
+# Step 2: Use token for inference (no cookie needed); PREDICTOR_URL comes from the domain setup above
 curl -s -X POST \
-  "http://sklearn-iris-kubeflow-user-example-com.${NODE_IP}.nip.io/v1/models/sklearn-iris:predict" \
+  "${PREDICTOR_URL}/v1/models/sklearn-iris:predict" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"instances": [[5.1, 3.5, 1.4, 0.2], [6.7, 3.1, 4.7, 1.5], [6.3, 2.7, 4.9, 1.8]]}'
@@ -1001,6 +1040,7 @@ curl -s -X POST \
 
 ```bash
 kubectl delete inferenceservice sklearn-iris -n kubeflow-user-example-com
+kubectl delete authorizationpolicy allow-sklearn-iris -n kubeflow-user-example-com --ignore-not-found
 ```
 
 ---
@@ -1371,8 +1411,8 @@ If it is set to `"kubeflow"`, redeploy with the fix in the chart values.
 
 ### Artifact preview shows "Failed to initialize Minio Client"
 
-The `ml-pipeline-ui-artifact` pod in the user namespace must read the S3
-credentials secret from its own namespace:
+Only with `pipelines.artifacts.proxyEnabled: true` (off by default): the `ml-pipeline-ui-artifact`
+pod in the user namespace must read the S3 credentials secret from its own namespace:
 
 ```bash
 kubectl get deploy ml-pipeline-ui-artifact -n kubeflow-user-example-com \

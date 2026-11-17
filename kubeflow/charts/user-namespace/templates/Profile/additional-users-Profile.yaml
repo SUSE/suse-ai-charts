@@ -1,6 +1,5 @@
 {{- range .Values.additionalUsers }}
-{{- $emailSlug := .email | lower | replace "." "-" | replace "@" "--" }}
-{{- $namespaceName := .namespace | default $emailSlug }}
+{{- $namespaceName := include "user-namespace.profileNamespace" . }}
 ---
 apiVersion: kubeflow.org/v1beta1
 kind: Profile

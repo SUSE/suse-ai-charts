@@ -1,0 +1,11 @@
+# Patterns excluded from the packaged chart (helm package / OCI push).
+# Developer-only unit tests (run in CI via pytest); test/smoke and test/e2e still ship — users run them.
+test/unit/
+# Python bytecode from local test runs
+__pycache__/
+*.pyc
+# Developer-only CI render checks (run by .github/workflows/lint.yml)
+test/ci/
+# Vendoring metadata for the KFP profile-controller hook (used by CI only)
+charts/kubeflow-pipelines/files/profile-controller/suse.patch
+charts/kubeflow-pipelines/files/profile-controller/UPSTREAM_VERSION

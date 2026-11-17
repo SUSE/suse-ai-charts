@@ -20,6 +20,12 @@ spec:
     metadata:
       annotations:
         sidecar.istio.io/inject: 'false'
+        # Restart on code/config change: the ConfigMap names are fixed, so without this an
+        # upgrade would keep running the previous sync.py.
+        checksum/sync-py: {{ .Files.Get "files/profile-controller/sync.py" | sha256sum | trunc 16 }}
+        checksum/env: {{ include (print $.Template.BasePath "/ConfigMap/kubeflow-pipelines-profile-controller-env-5252m69c4c-kubeflow-ConfigMap.yaml") . | sha256sum | trunc 16 }}
+        # ARTIFACTS_PROXY_ENABLED / ARTIFACT_RETENTION_DAYS come from pipeline-install-config.
+        checksum/artifacts: {{ printf "%v/%v" .Values.artifacts.proxyEnabled .Values.artifacts.retentionDays | sha256sum | trunc 16 }}
       labels:
         app: kubeflow-pipelines-profile-controller
         app.kubernetes.io/component: ml-pipeline
@@ -27,46 +33,76 @@ spec:
         application-crd-id: kubeflow-pipelines
     spec:
       {{- include "kubeflow-pipelines.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - command:
-        - python
-        - /hooks/sync.py
+        # The aws-cli image ships only python3.<minor>: run whichever it has, so a tag bump that
+        # moves Python to a new minor version keeps working.
+        - /bin/sh
+        - -c
+        - for p in /usr/bin/python3 /usr/bin/python3.[0-9]*; do case "$p" in *-*) continue ;; esac;
+          [ -x "$p" ] && exec "$p" /hooks/sync.py; done; echo "no python3 in the image" >&2; exit 1
+        # Upstream KFP 2.17 env: sync.py mints per-profile SeaweedFS keys with the admin identity.
         env:
         - name: KFP_VERSION
           valueFrom:
             configMapKeyRef:
               key: appVersion
               name: pipeline-install-config
+        - name: AWS_ENDPOINT_URL
+          value: http://seaweedfs.kubeflow:8111
+        - name: S3_ENDPOINT_URL
+          value: http://seaweedfs.kubeflow:8333
+        - name: AWS_REGION
+          value: us-east-1
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              key: accesskey
+              name: mlpipeline-minio-artifact
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              key: secretkey
+              name: mlpipeline-minio-artifact
         - name: KFP_DEFAULT_PIPELINE_ROOT
           valueFrom:
             configMapKeyRef:
               key: defaultPipelineRoot
               name: pipeline-install-config
               optional: true
-        - name: MINIO_ACCESS_KEY
+        - name: ARTIFACTS_PROXY_ENABLED
           valueFrom:
-            secretKeyRef:
-              key: accesskey
-              name: mlpipeline-minio-artifact
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              key: secretkey
-              name: mlpipeline-minio-artifact
-        {{- if .Values.global.imagePullSecrets }}
-        - name: DOCKER_CONFIG_JSON
-          valueFrom:
-            secretKeyRef:
-              key: .dockerconfigjson
-              name: {{ (index .Values.global.imagePullSecrets 0).name }}
+            configMapKeyRef:
+              key: ARTIFACTS_PROXY_ENABLED
+              name: pipeline-install-config
               optional: true
-        {{- end }}
+        - name: OBJECT_STORE_HOST
+          value: seaweedfs
+        - name: ARTIFACT_RETENTION_DAYS
+          valueFrom:
+            configMapKeyRef:
+              key: ARTIFACT_RETENTION_DAYS
+              name: pipeline-install-config
         envFrom:
         - configMapRef:
             name: kubeflow-pipelines-profile-controller-env-5252m69c4c
-        image: "{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.profileController.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
+        image: "{{- $registry := include "kubeflow-pipelines.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.profileController.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.profileController.image.repository }}{{- if .Values.profileController.image.digest }}@{{ .Values.profileController.image.digest }}{{- else }}:{{ .Values.profileController.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.profileController.image.pullPolicy }}
         name: profile-controller
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 0  # as upstream KFP's profile-controller Deployment
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
         ports:
         - containerPort: 8080
         {{- with .Values.profileController.resources }}

@@ -2,7 +2,7 @@ apiVersion: v2
 name: kubeflow
 description: Kubeflow ML Platform - End-to-end Machine Learning on Kubernetes
 type: application
-version: "0.5.0"
+version: "0.6.0"
 appVersion: "26.03.1"
 kubeVersion: ">=1.35.0-0"
 
@@ -102,7 +102,7 @@ dependencies:
     condition: centralDashboard.enabled
 
   - name: kubeflow-pipelines
-    version: "0.2.7"
+    version: "0.2.8"
     repository: "file://./charts/kubeflow-pipelines"
     alias: pipelines
     condition: pipelines.enabled
@@ -138,7 +138,7 @@ dependencies:
     condition: trainer.enabled
 
   - name: profiles-and-kfam
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/profiles-and-kfam"
     condition: profiles.enabled
 
@@ -175,20 +175,20 @@ dependencies:
   # Kubeflow Hub (formerly Model Registry) — Model Registry + Model Catalog.
   # Consolidated single chart; values live under the "hub" key.
   - name: kubeflow-hub
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://./charts/kubeflow-hub"
     alias: hub
     condition: hub.enabled
 
   - name: user-namespace
-    version: "0.2.2"
+    version: "0.2.3"
     repository: "file://./charts/user-namespace"
     condition: userNamespace.enabled
 
   # NetworkPolicies — deny-by-default with explicit allow rules
   # Set networkPolicies.enabled: false for CNIs that do not enforce NetworkPolicy
   - name: network-policies
-    version: "0.1.1"
+    version: "0.1.2"
     repository: "file://./charts/network-policies"
     condition: networkPolicies.enabled
 

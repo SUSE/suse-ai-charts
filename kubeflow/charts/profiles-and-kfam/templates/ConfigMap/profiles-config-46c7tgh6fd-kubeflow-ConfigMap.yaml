@@ -4,6 +4,11 @@ data:
   USERID_HEADER: {{ .Values.configMapData.USERID_HEADER | quote }}
   USERID_PREFIX: {{ .Values.configMapData.USERID_PREFIX | quote }}
   WORKLOAD_IDENTITY: {{ .Values.configMapData.WORKLOAD_IDENTITY | quote }}
+  # Principals admitted by each profile's ns-owner-access-istio (upstream params.env); the gateway
+  # one comes from global.istio.ingressGateway.principal.
+  ISTIO_INGRESS_GATEWAY_PRINCIPAL: {{ dig "istio" "ingressGateway" "principal" .Values.configMapData.ISTIO_INGRESS_GATEWAY_PRINCIPAL (.Values.global | default dict) | quote }}
+  NOTEBOOK_CONTROLLER_PRINCIPAL: {{ .Values.configMapData.NOTEBOOK_CONTROLLER_PRINCIPAL | quote }}
+  KFP_UI_PRINCIPAL: {{ .Values.configMapData.KFP_UI_PRINCIPAL | quote }}
 kind: ConfigMap
 metadata:
   labels:

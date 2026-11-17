@@ -1,0 +1,17 @@
+{{- if (include "user-namespace.modelRegistry.enabled" .) }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: model-registry-service
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+spec:
+  host: model-registry-service.{{ .namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}

@@ -3,8 +3,8 @@ data:
   DISABLE_ISTIO_SIDECAR: 'false'
   FRONTEND_IMAGE: '{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.frontend.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.frontend.image.repository }}'
   FRONTEND_TAG: '{{ .Values.frontend.image.tag }}'
-  VISUALIZATION_SERVER_IMAGE: '{{- $registry := include "kubeflow-pipelines.suseImageRegistry" (dict "ctx" . "registry" .Values.visualizationServer.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.visualizationServer.image.repository }}'
-  VISUALIZATION_SERVER_TAG: '{{ .Values.visualizationServer.image.tag }}'
+  # SUSE: pull secrets for the optional per-profile artifact-proxy Deployment
+  IMAGE_PULL_SECRETS: '{{ range $i, $s := .Values.global.imagePullSecrets }}{{ if $i }},{{ end }}{{ if kindIs "string" $s }}{{ $s }}{{ else }}{{ $s.name }}{{ end }}{{ end }}'
 kind: ConfigMap
 metadata:
   labels:

@@ -19,6 +19,11 @@ spec:
     metadata:
       annotations:
         sidecar.istio.io/inject: 'false'
+        # Restart, and so resync every profile, when what the profile controller syncs changes.
+        checksum/profile-controller: {{ print (.Files.Get "files/profile-controller/sync.py")
+          (include (print $.Template.BasePath "/DecoratorController/kubeflow-pipelines-profile-controller-kubeflow-DecoratorController.yaml") .)
+          (include (print $.Template.BasePath "/ConfigMap/kubeflow-pipelines-profile-controller-env-5252m69c4c-kubeflow-ConfigMap.yaml") .)
+          .Values.artifacts.proxyEnabled .Values.artifacts.retentionDays | sha256sum | trunc 16 }}
       labels:
         app: metacontroller
         application-crd-id: kubeflow-pipelines

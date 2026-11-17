@@ -1,0 +1,26 @@
+{{- if and (include "user-namespace.modelRegistry.enabled" .) (eq .Values.modelRegistry.db.mode "embedded") }}
+{{- $e := .Values.modelRegistry.db.embedded }}
+{{- range (include "user-namespace.modelRegistry.namespaces" . | fromJsonArray) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: metadata-postgres
+  namespace: {{ .namespace }}
+  labels:
+    component: db
+    {{- include "user-namespace.modelRegistry.labels" $ | nindent 4 }}
+  annotations:
+    # Helm never deletes the registry data (helm uninstall, disabling the data plane). Deleting
+    # the namespace still does: chart-created profile namespaces are removed on uninstall.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $e.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $e.storage }}
+{{- end }}
+{{- end }}
