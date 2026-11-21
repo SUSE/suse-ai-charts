@@ -10,7 +10,7 @@
 
 Runs outside the cluster using `kubectl`. Checks pod health, Deployment readiness, CRDs, Secrets, TCP
 service connectivity, SeaweedFS bucket presence, HTTP health endpoints, and the active
-[ingress gateway auth mode](../README.md#ingress-gateway-authentication-mode) (asserts the native
+[ingress gateway auth mode](access-and-tls.md#ingress-gateway-authentication-mode) (asserts the native
 CRs and the legacy EnvoyFilter are never both present, and that native mode's istiod extension
 provider is registered).
 
@@ -210,12 +210,6 @@ kubectl get authorizationpolicy -A
 - **CRDs are not automatically upgraded by `helm upgrade`.** Kubeflow CRDs are placed in `crds/`
   subdirectories; Helm intentionally skips them on upgrade. After a chart version bump, apply them
   manually — see [Applying CRDs on upgrade](upgrade-notes.md#applying-crds).
-- **Dex must be v0.23.0 (dex 2.42.0).** v0.24.0 (dex 2.44.0) uses Go 1.25 which introduced strict IPv6
-  URL parsing. Kubernetes API server addresses like `[10.43.0.1]:443` are rejected, crashing Dex on
-  startup. The chart pins v0.23.0.
-- **SeaweedFS image is pulled from Docker Hub** (`chrislusf/seaweedfs:4.00`). Air-gapped clusters or
-  environments with Docker Hub pull-rate limits will fail to start Kubeflow Pipelines. Mirror the image
-  to a private registry and set `global.imageRegistry` (or `global.suseRegistry`) to override.
 - **Native ingress-auth denies cookie-less external KServe inference on the shared gateway.** In the
   default native mode (`global.oauth2Proxy.gatewayAuthMode: native`), the `require-jwt` `DENY` policy
   denies any request without a verified JWT request-principal on all paths except `/dex/*` and
@@ -224,4 +218,4 @@ kubectl get authorizationpolicy -A
   is unaffected. Serve external inference via the dedicated KServe gateway / wildcard-TLS opt-in, or use
   the legacy EnvoyFilter mode (`--legacy-authz` / `-f values-envoyfilter-authz.yaml`). See
   [Upgrade Notes](upgrade-notes.md) and
-  [Ingress gateway authentication mode](../README.md#ingress-gateway-authentication-mode).
+  [Ingress gateway authentication mode](access-and-tls.md#ingress-gateway-authentication-mode).

@@ -1,0 +1,78 @@
+# components: admissionWebhook centralDashboard dex istioResources kubeflowRoles notebookController notebookWebApp oauth2Proxy profiles trainer userNamespace
+# optional: volumesWebApp
+# install-checks: trainer
+# ============================================================================
+# NOTEBOOKS + TRAINER PRESET
+# Jupyter notebooks and the Central Dashboard, with Kubeflow Trainer V2 for
+# TrainJobs submitted from notebooks (Kubeflow SDK). Keeps what notebooks need:
+# Istio gateway, Dex + oauth2-proxy login, Profiles + KFAM, the example profile
+# and PodDefaults. Pipelines, Katib, KServe, Model Registry, TensorBoard,
+# Volumes and Training Operator V1 are off.
+#
+# Needs Istio (with CNI, or global.istio.cni=false), cert-manager and the
+# External Secrets Operator, like the full install: ./install.sh --preset
+# notebooks-trainer installs them. Combine with your own values:
+#   -f presets/notebooks-trainer.yaml -f my-values.yaml
+# The Volumes web app can be turned back on (volumesWebApp.enabled=true).
+# ============================================================================
+
+trainer:
+  enabled: true
+
+notebooks:
+  enabled: true
+  controller:
+    enabled: true
+  webApp:
+    enabled: true
+
+user-namespace:
+  modelRegistry:
+    enabled: false   # per-profile registries need hub; with hub.enabled=true set this to null
+
+# No KServe or Knative Serving, so no KServe inference gateway either.
+kubeflow-istio-resources:
+  kserveGateway:
+    enabled: false
+
+# Dashboard menu: only what this preset installs.
+central-dashboard:
+  dashboardLinks: |-
+    {
+      "menuLinks": [
+        {"type": "item", "link": "/jupyter/", "text": "Notebooks", "icon": "book"}
+      ],
+      "externalLinks": [],
+      "quickLinks": [
+        {"text": "Create a new Notebook server", "desc": "Notebook Servers", "link": "/jupyter/new?namespace=kubeflow"}
+      ],
+      "documentationItems": [
+        {"text": "Getting Started with Kubeflow", "desc": "Get your machine-learning workflow up and running on Kubeflow", "link": "https://www.kubeflow.org/docs/started/getting-started/"},
+        {"text": "Kubeflow Trainer", "desc": "Submit TrainJobs from a notebook with the Kubeflow SDK", "link": "https://www.kubeflow.org/docs/components/trainer/"}
+      ]
+    }
+
+# ---- Generated: every component not in "# components:" is off. Regenerate with
+# ---- test/ci/check_component_registry.py <chart-dir> --fix-presets; don't edit by hand.
+hub:
+  enabled: false
+katib:
+  enabled: false
+knativeEventing:
+  enabled: false
+knativeServing:
+  enabled: false
+kserve:
+  enabled: false
+pipelines:
+  enabled: false
+tensorboard:
+  controller:
+    enabled: false
+  webApp:
+    enabled: false
+trainingOperator:
+  enabled: false
+volumesWebApp:
+  enabled: false
+# ---- End of generated block ----

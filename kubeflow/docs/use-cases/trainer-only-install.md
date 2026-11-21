@@ -21,7 +21,8 @@ other components. **You don't need cert-manager, Istio or the External Secrets O
 
 **Shortcut for dev/test clusters:** `installTrainerOnly.sh`, in the chart root (also included in the
 packaged chart), runs Steps 1–6 for you, and Step 7 with `--sample`. It requires Helm 4 and refuses to
-convert an existing `kubeflow` release that isn't trainer-only unless you pass `--force`.
+convert an existing `kubeflow` release that isn't trainer-only; uninstall that first (see the README's
+Uninstall section).
 
 ```bash
 export APPCO_REGISTRY_USER=<appco-registry-username> APPCO_REGISTRY_TOKEN=<appco-registry-token>
@@ -113,16 +114,17 @@ their own pull secret. See [Step 7](#step-7-run-a-sample-trainjob).
 
 ## Step 4: Get the values file
 
-The chart ships the preset **`trainer-only-overrides.yaml`** in its root. It keeps Trainer and turns
-everything else off; its comments explain each switch. Take it from a chart checkout, or from the
-released chart:
+The chart ships the preset **`presets/trainer-only.yaml`**. It keeps Trainer and turns
+everything else off: its header and comments explain the Trainer settings, and a generated block at
+the end switches off every other component. Take it from a chart checkout, or from the released
+chart:
 
 ```bash
 helm pull oci://registry.suse.com/ai/charts/kubeflow --version <chart-version> --untar
-cp kubeflow/trainer-only-overrides.yaml .
+cp kubeflow/presets/trainer-only.yaml .
 ```
 
-Put your own settings in a second values file (`-f trainer-only-overrides.yaml -f my-values.yaml`)
+Put your own settings in a second values file (`-f trainer-only.yaml -f my-values.yaml`)
 rather than editing the preset, so you can take a newer copy on upgrade. You don't need
 `global.demoMode` or demo-credential overrides.
 
@@ -135,7 +137,7 @@ helm upgrade --install "$RELEASE" \
   oci://registry.suse.com/ai/charts/kubeflow \
   --version <chart-version> \
   -n kubeflow \
-  -f trainer-only-overrides.yaml \
+  -f trainer-only.yaml \
   --force-conflicts \
   --server-side=true \
   --wait --timeout 10m
@@ -234,7 +236,7 @@ jobs, start from that file and change `spec.trainer.command` (plus `image` and `
 
 ## Optional configuration
 
-Set these in your own values file (passed after `-f trainer-only-overrides.yaml`) or with `--set`.
+Set these in your own values file (passed after `-f trainer-only.yaml`) or with `--set`.
 
 | Key | Default | Use it when |
 |-----|---------|-------------|

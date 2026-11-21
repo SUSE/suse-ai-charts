@@ -170,7 +170,7 @@
             },
             "passwordHash": {
               "type": "string",
-              "description": "bcrypt hash of the default user password"
+              "description": "bcrypt hash of the initial Dex user's password; \"\" generates a password on first install"
             }
           }
         }
@@ -567,7 +567,12 @@
       "type": "object",
       "description": "kubeflow-istio-resources sub-chart (Gateways, VirtualServices, AuthorizationPolicies). Requires Istio CRDs.",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "externalAuth": {
+          "type": "boolean",
+          "default": false,
+          "description": "true: an auth layer this chart doesn't manage protects the gateway and sets kubeflow-userid, so global.oauth2Proxy.enabled=false is allowed."
+        }
       }
     },
     "kubeflowRoles": {

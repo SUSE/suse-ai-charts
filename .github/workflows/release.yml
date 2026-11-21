@@ -87,7 +87,7 @@ jobs:
             NAME=$(yq -r '.name' Chart.yaml)
             TAG="${NAME}-${VERSION}"
 
-            helm dependency update
+            helm dependency build
             helm package .
 
             echo "chart_name=$NAME" >> "$GITHUB_OUTPUT"

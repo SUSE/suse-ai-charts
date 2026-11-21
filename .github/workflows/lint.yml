@@ -149,9 +149,19 @@ jobs:
           # dependencies can't be pulled. Rather than hard-fail (which paints every
           # fork PR red), the umbrella steps below are gated on APPCO_TOKEN and skip;
           # the standalone kubeflow-istio-resources render (no OCI deps) still runs,
-          # so the sub-chart guards are always exercised. A maintainer re-running
-          # from a same-repo branch gets the full umbrella coverage.
-          echo "APPCO_TOKEN not available (fork PR / missing secret): skipping umbrella steps, running standalone sub-chart render only."
+          # so the sub-chart guards are always exercised, and so does the offline registry
+          # check below. A maintainer re-running from a same-repo branch gets the full coverage.
+          msg="APPCO_TOKEN not available (fork PR or missing secret): the umbrella chart render steps were skipped. Before merging, a maintainer must run the full check locally (needs Application Collection access): helm dependency build ./kubeflow && python3 kubeflow/test/ci/check_component_registry.py ./kubeflow --kube-version 1.35.0, or re-run from a same-repo branch."
+          echo "::warning title=Umbrella chart checks skipped::$msg"
+          echo "### Umbrella chart checks skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Component registry and presets (offline; runs on every PR, including forks)
+        # The registry and preset checks that need only components.yaml, _helpers.tpl and values.yaml
+        # (no sub-chart dependencies): Chart.yaml conditions vs registry entries, the presets'
+        # generated blocks, and what each preset enables. The render checks run in the gated
+        # "Component registry matches the chart" step below.
+        run: python3 kubeflow/test/ci/check_component_registry.py ./kubeflow --offline
 
       - name: Build chart dependencies
         if: ${{ env.APPCO_TOKEN != '' }}
@@ -230,17 +240,17 @@ jobs:
 
           echo "OK: default render succeeds and leaves the Knative domainTemplate un-flattened (flattening stays gated on the opt-in)."
 
-      - name: helm template (trainer-only overrides)
+      - name: helm template (trainer-only preset)
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
           set -euo pipefail
-          # kubeflow/trainer-only-overrides.yaml (used by the trainer-only guide and
+          # kubeflow/presets/trainer-only.yaml (used by the trainer-only guide and
           # installTrainerOnly.sh) must install on a cluster with no Istio, no
           # cert-manager and no Profiles. Render WITHOUT global.demoMode or
           # global.kserveDomain: the demo-credential and inference-domain guards must
           # stay scoped to their (disabled) components. Then assert only the kubeflow
           # Namespace, the trainer sub-chart and the trainer test render.
-          vals=kubeflow/trainer-only-overrides.yaml
+          vals=kubeflow/presets/trainer-only.yaml
           out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f "$vals")"
           if grep -Eq '^apiVersion: (networking\.istio\.io|security\.istio\.io|cert-manager\.io)/' <<<"$out"; then
             echo "FAIL: trainer-only render contains Istio or cert-manager resources." >&2; exit 1
@@ -333,103 +343,41 @@ jobs:
             --set-json "externalSecrets=$sel" -s templates/external-secrets/ClusterExternalSecret.yaml)"
           grep -Fq 'suse.com/trainjob-pull-secrets: "true"' <<<"$out" && ! grep -Fq 'kubeflow-profile' <<<"$out" \
             || { echo "FAIL: trainer-only + externalSecrets with a custom namespaceSelector did not render the expected selector. Got:" >&2; echo "$out" >&2; exit 1; }
-          echo "OK: trainer-only overrides render only Namespace + trainer + test-trainer, no Istio/cert-manager/Profile, and its guards fail closed."
+          echo "OK: trainer-only preset renders only Namespace + trainer + test-trainer, no Istio/cert-manager/Profile, and its guards fail closed."
 
-      - name: helm template (trainer-only detection is explicit and covers every component)
+      - name: Component registry matches the chart (toggles, Istio, cert-manager, presets)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        # kubeflow/components.yaml declares what each component needs; the dependency guards, the
+        # preflight checks, the Trainer-only NOTES banner and install.sh derive from it. Check it
+        # covers every Chart.yaml toggle and matches what each component renders, that the presets'
+        # generated blocks are current, and that install.sh's probe chart agrees with the chart.
+        # Limitation: Istio resources a controller creates at RUNTIME (notebook and TensorBoard
+        # controllers) are invisible to helm template; they stay declared by hand.
+        run: python3 kubeflow/test/ci/check_component_registry.py ./kubeflow --kube-version "$KUBE_VERSION"
+
+      - name: helm template (notebooks + Trainer preset)
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
           set -euo pipefail
-          # kubeflow.trainerOnly (templates/_helpers.tpl) selects the NOTES banner that
-          # installTrainerOnly.sh uses to recognise a trainer-only release. Check that it
-          # lists every component toggle from Chart.yaml, and how it decides.
-          helper="$(sed -n '/define "kubeflow.trainerOnly"/,/end -}}/p' kubeflow/templates/_helpers.tpl)"
-          addons='certManager\.install|externaldns\.enabled|externalSecretsOperator\.enabled|monitoring\.enabled|networkPolicies\.enabled|trainer\.enabled'
-          missing=""
-          for t in $(awk '/^\s*condition:/{print $2}' kubeflow/Chart.yaml | sort -u | grep -vxE "$addons"); do
-            grep -Fq "\$v.$t" <<<"$helper" || missing="$missing $t"
-          done
-          [ -z "$missing" ] \
-            || { echo "FAIL: kubeflow.trainerOnly does not check:$missing. Add them to \$others in templates/_helpers.tpl (or to the add-on list here if they add no Kubeflow component)." >&2; exit 1; }
-          tmp="$(mktemp -d)"; cp -r kubeflow "$tmp/"
-          printf 'apiVersion: v1\nkind: ConfigMap\nmetadata: {name: ci-trainer-only}\ndata:\n  trainerOnly: {{ include "kubeflow.trainerOnly" . | quote }}\n' \
-            > "$tmp/kubeflow/templates/zz-ci-trainer-only.yaml"
-          check() { # want, description, helm args...
-            want="$1"; desc="$2"; shift 2
-            got="$(helm template ci "$tmp/kubeflow" --kube-version "$KUBE_VERSION" -n kubeflow "$@" \
-              -s templates/zz-ci-trainer-only.yaml | sed -n 's/^ *trainerOnly: "\(.*\)"$/\1/p')"
-            [ "$got" = "$want" ] || { echo "FAIL: kubeflow.trainerOnly for $desc is '$got', want '$want'." >&2; exit 1; }
-          }
-          vals=kubeflow/trainer-only-overrides.yaml
-          check true "the trainer-only preset" -f "$vals"
-          check true "the preset plus add-ons" -f "$vals" --set networkPolicies.enabled=true \
-            --set network-policies.knativeServingPolicies.enabled=false --set monitoring.enabled=true
-          check "" "the preset plus the notebook controller without Istio" -f "$vals" \
-            --set notebooks.controller.enabled=true --set notebook-controller.configMapData.USE_ISTIO=false
-          check "" "the preset with Trainer off" -f "$vals" --set trainer.enabled=false
-          check "" "default values" --set global.demoMode=true
-          echo "OK: kubeflow.trainerOnly covers every component toggle and detects trainer-only releases explicitly."
-
-      - name: helm template (istioResources guard and preflight cert-manager list cover every component)
-        if: ${{ env.APPCO_TOKEN != '' }}
-        run: |
-          # The istioResources guard (validations.yaml) and the preflight's
-          # kubeflow.needsCertManager list (_helpers.tpl) are maintained by hand. Derive every sub-chart toggle
-          # from Chart.yaml and fail if a component renders Istio / cert-manager
-          # resources without being covered, so a new or changed component cannot
-          # silently reintroduce mid-install "no matches for kind" failures.
-          # Limitation: Istio resources a controller creates at RUNTIME (notebook and
-          # TensorBoard controllers) are invisible to helm template and stay listed by
-          # hand in validations.yaml.
-          set -euo pipefail
-          vals=kubeflow/trainer-only-overrides.yaml
-          # Every sub-chart toggle, taken from the dependency conditions in Chart.yaml, so a
-          # new component is covered without editing this step. certManager.install deploys
-          # cert-manager itself and istioResources.enabled is the switch under test.
-          toggles="$(awk '/^\s*condition:/{print $2}' kubeflow/Chart.yaml | sort -u \
-            | grep -vxE 'certManager\.install|istioResources\.enabled')"
-          # Messages of the chart's cross-component guards (validations.yaml).
-          known_guards='istioResources\.enabled=false is meant for installs without Istio|requires (pipelines|profiles|kubeflowRoles)\.enabled=true|networkPolicies\.enabled=true with knativeServing\.enabled=false'
-          fail=0
-          for t in $toggles; do
-            # 1. Istio list (validations.yaml): with Istio resources off, a toggle must either be
-            #    refused by the chart or render no Istio resources.
-            #    Only the chart's own guard messages count as "refused": any other render
-            #    error (e.g. a broken template) must fail this step instead of passing it.
-            if out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
-                -f "$vals" --set global.demoMode=true --set "$t=true" 2>&1)"; then
-              if grep -Eq '^apiVersion: [a-z.]*istio\.io/' <<<"$out"; then
-                echo "FAIL: $t=true with istioResources.enabled=false renders Istio resources but is not refused. Add it to the istioResources guard in kubeflow/templates/validations.yaml." >&2
-                fail=1
-              fi
-            elif ! grep -Eq "$known_guards" <<<"$out"; then
-              echo "FAIL: $t=true with istioResources.enabled=false failed to render for a reason other than a known chart guard:" >&2
-              grep -m3 -E 'Error|error' <<<"$out" >&2 || true
-              fail=1
-            fi
-            # 2. cert-manager list (preflight Job): if a toggle renders cert-manager resources,
-            #    the preflight must run its cert-manager CRD check for it. Enable only what the
-            #    chart's own guards require alongside the toggle.
-            deps=(--set profiles.enabled=true --set kubeflowRoles.enabled=true)
-            case "$t" in
-              userNamespace.enabled)   deps+=(--set user-namespace.modelRegistry.enabled=false) ;;
-              networkPolicies.enabled) deps+=(--set network-policies.knativeServingPolicies.enabled=false) ;;
-            esac
-            if out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
-                -f "$vals" --set global.demoMode=true --set istioResources.enabled=true \
-                --set preflightChecks.enabled=true --set "$t=true" "${deps[@]}" 2>&1)"; then
-              if grep -Eq '^apiVersion: cert-manager\.io/' <<<"$out" \
-                 && grep -Fq 'cert-manager CRDs... skipped' <<<"$out"; then
-                echo "FAIL: $t=true renders cert-manager resources but the preflight skips the cert-manager check. Add it to kubeflow.needsCertManager in kubeflow/templates/_helpers.tpl." >&2
-                fail=1
-              fi
-            else
-              echo "FAIL: $t=true does not render with its prerequisites; extend the deps case in this step:" >&2
-              echo "$out" | grep -m3 -E 'Error|fail' >&2 || true
-              fail=1
-            fi
-          done
-          [ "$fail" -eq 0 ] || exit 1
-          echo "OK: the istioResources guard and the preflight cert-manager list cover every sub-chart toggle ($(wc -w <<<"$toggles") checked)."
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow \
+            --set global.demoMode=true -f kubeflow/presets/notebooks-trainer.yaml)"
+          srcs="$(grep -oE '^# Source: kubeflow/charts/[^/]+' <<<"$out" | sed 's|.*/||' | sort -u | tr '\n' ' ')"
+          want='admission-webhook central-dashboard dex jupyter-web-app kubeflow-istio-resources kubeflow-namespace kubeflow-roles notebook-controller oauth2-proxy profiles-and-kfam trainer user-namespace '
+          [ "$srcs" = "$want" ] \
+            || { echo "FAIL: notebooks + Trainer preset renders sub-charts '$srcs', want '$want'." >&2; exit 1; }
+          # The dashboard menu must link only to apps this preset installs.
+          links="$(grep -oE '"link": "/[^"]*"' <<<"$out" | sort -u | tr '\n' ' ')"
+          [ "$links" = '"link": "/jupyter/" "link": "/jupyter/new?namespace=kubeflow" ' ] \
+            || { echo "FAIL: dashboard links to apps the preset does not install: $links" >&2; exit 1; }
+          # No KServe or Knative here, so no KServe inference gateway; adding KServe back must re-enable it.
+          if grep -q 'name: kserve-ingress-gateway$' <<<"$out"; then
+            echo "FAIL: notebooks + Trainer preset renders the unused kserve-ingress-gateway." >&2; exit 1
+          fi
+          if helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+              -f kubeflow/presets/notebooks-trainer.yaml --set kserve.enabled=true --set knativeServing.enabled=true >/dev/null 2>&1; then
+            echo "FAIL: KServe on with kubeflow-istio-resources.kserveGateway.enabled=false rendered." >&2; exit 1
+          fi
+          echo "OK: notebooks + Trainer preset renders only its components and dashboard links."
 
       - name: helm template (KServe external-HTTPS opt-in)
         if: ${{ env.APPCO_TOKEN != '' }}
@@ -797,12 +745,15 @@ jobs:
           # publishes the whole Kubeflow surface unauthenticated. Assert it FAILS,
           # and that it fails for the RIGHT reason (the oauth2Proxy guard message),
           # not some unrelated template error that would mask a regression.
+          # istioResources.externalAuth=true gets past the gateway-login guard: the opt-out
+          # must not lift this requirement.
           if err="$(helm template ci ./kubeflow \
               --kube-version "$KUBE_VERSION" \
               --set global.demoMode=true \
               --set global.kserveExternalHttps=true \
               --set global.kserveDomain=kubeflow.example.com \
               --set global.oauth2Proxy.enabled=false \
+              --set istioResources.externalAuth=true \
               --set kubeflow-istio-resources.hostname=kf.example.com \
               --set kubeflow-istio-resources.tls.source=letsEncrypt \
               --set kubeflow-istio-resources.tls.letsEncrypt.solver=cloudflare \
@@ -818,6 +769,32 @@ jobs:
             || { echo "FAIL: opt-in failed, but not on the oauth2Proxy guard. Got:" >&2
                  echo "$err" >&2; exit 1; }
           echo "OK: opt-in fails closed on the oauth2-proxy guard when it is disabled."
+          # The gateway must not run without login: oauth2-proxy off with Istio resources on
+          # fails unless istioResources.externalAuth=true says another layer authenticates.
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" \
+              --set global.demoMode=true --set global.oauth2Proxy.enabled=false 2>&1)"; then
+            echo "FAIL: oauth2Proxy.enabled=false with istioResources rendered instead of failing closed." >&2
+            exit 1
+          fi
+          grep -qF 'the kubeflow-gateway would serve the Central Dashboard and every app without login' <<<"$err" \
+            || { echo "FAIL: render failed, but not on the gateway-login guard. Got:" >&2; echo "$err" >&2; exit 1; }
+          helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
+              --set global.oauth2Proxy.enabled=false --set istioResources.externalAuth=true >/dev/null \
+            || { echo "FAIL: istioResources.externalAuth=true did not allow oauth2Proxy.enabled=false." >&2; exit 1; }
+          echo "OK: the gateway-login guard fails closed and honours istioResources.externalAuth."
+          # externaldns.cloudflare.apiToken reaches external-dns through the default env; a custom
+          # env without CF_API_TOKEN would drop it silently, so that must fail.
+          dns=(--set global.demoMode=true --set externaldns.enabled=true --set externaldns.cloudflare.apiToken=ci-token)
+          out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${dns[@]}")"
+          grep -q 'name: cloudflare-api-token$' <<<"$out" && grep -q 'name: CF_API_TOKEN$' <<<"$out" \
+            || { echo "FAIL: apiToken did not render the cloudflare-api-token Secret and CF_API_TOKEN env." >&2; exit 1; }
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" "${dns[@]}" \
+              --set-json 'externaldns.env=[{"name":"HTTPS_PROXY","value":"http://proxy:3128"}]' 2>&1)"; then
+            echo "FAIL: apiToken with an env lacking CF_API_TOKEN rendered instead of failing." >&2; exit 1
+          fi
+          grep -qF 'has no CF_API_TOKEN' <<<"$err" \
+            || { echo "FAIL: render failed, but not on the CF_API_TOKEN guard. Got:" >&2; echo "$err" >&2; exit 1; }
+          echo "OK: apiToken reaches external-dns, and a custom env that drops it is refused."
 
       - name: helm template (Model Registry topology — perProfile multi-profile, shared, external DB, guards)
         if: ${{ env.APPCO_TOKEN != '' }}
@@ -865,7 +842,8 @@ jobs:
           check_fail 'db.embedded.existingSecret is empty and this render cannot see the cluster' \
             --set global.demoMode=false --set auth.oidc.clientSecret=ci-client \
             --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde \
-            --set pipelines.seaweedfs.accessKey=ci-ak --set pipelines.seaweedfs.secretKey=ci-sk
+            --set pipelines.seaweedfs.accessKey=ci-ak --set pipelines.seaweedfs.secretKey=ci-sk \
+            --set-string 'auth.initialUser.passwordHash=$2b$10$axMzgOl8gj6ClQ.aoXgKseNmpDVw9w1umbZS1TCnwTczSEy9BrgYy'
           check_fail 'Postgres truncates identifiers to 63' --set user-namespace.modelRegistry.db.mode=external \
             --set user-namespace.modelRegistry.db.external.host=pg.example.com \
             --set user-namespace.modelRegistry.db.external.existingSecret=pg \
@@ -933,6 +911,7 @@ jobs:
           # Offline renders without demoMode must name the registry DB Secret (else a new password per render).
           sw=(--set pipelines.seaweedfs.accessKey=ci-ak
               --set pipelines.seaweedfs.secretKey=ci-sk
+              --set-string 'auth.initialUser.passwordHash=$2b$10$axMzgOl8gj6ClQ.aoXgKseNmpDVw9w1umbZS1TCnwTczSEy9BrgYy'
               --set user-namespace.modelRegistry.db.embedded.existingSecret=ci-mr-db)
           # 1. OIDC: overriding auth.oidc.* must reach Dex and oauth2-proxy (both read
           #    the chart-managed kubeflow-oidc-client Secret), so the default
@@ -997,6 +976,115 @@ jobs:
           ck --set-string auth.oidc.cookieSecret=tooshort --set auth.oidc.existingSecret=my-oidc >/dev/null \
             || { echo "FAIL: the cookieSecret length check ran although auth.oidc.existingSecret is set." >&2; exit 1; }
           echo "OK: OIDC overrides reach every consumer; SeaweedFS credentials are single-sourced (no per-profile copy rendered); cookieSecret length is enforced."
+
+      - name: helm template (generated credentials, extra pull-secret namespaces, Profiles uninstall hook)
+        if: ${{ env.APPCO_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          # The credentials default to "": generated and kept via lookup. Offline renders without
+          # demoMode must refuse that (each render would generate new ones) and list every such value.
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow 2>&1)"; then
+            echo "FAIL: empty credentials rendered offline instead of failing." >&2; exit 1
+          fi
+          for v in auth.oidc.clientSecret auth.oidc.cookieSecret auth.initialUser.passwordHash pipelines.seaweedfs.accessKey pipelines.seaweedfs.secretKey; do
+            grep -qF -- "  - $v" <<<"$err" || { echo "FAIL: the offline-generation error does not list $v. Got:" >&2; echo "$err" >&2; exit 1; }
+          done
+          # With cluster access (simulated: kubeflow.clusterVisible forced true in a copy) they are generated.
+          tmp="$(mktemp -d)"; cp -r kubeflow "$tmp/"
+          sed -i 's|{{- if lookup "v1" "Namespace" "" "kube-system" }}true{{ end -}}|true|' "$tmp/kubeflow/templates/_helpers.tpl"
+          helm template ci "$tmp/kubeflow" --kube-version "$KUBE_VERSION" -n kubeflow \
+            --set user-namespace.modelRegistry.db.embedded.existingSecret=mr-db > "$tmp/generated.yaml"
+          python3 - "$tmp/generated.yaml" <<'PY'
+          import sys, yaml
+          s = {d["metadata"]["name"]: d.get("stringData", {}) for d in yaml.safe_load_all(open(sys.argv[1])) if d and d.get("kind") == "Secret"}
+          checks = [("kubeflow-oidc-client", "client-secret", 32), ("kubeflow-oidc-client", "cookie-secret", 32),
+                    ("kubeflow-initial-user", "password", 20), ("mlpipeline-minio-artifact", "accesskey", 20),
+                    ("mlpipeline-minio-artifact", "secretkey", 40)]
+          bad = [f"{n}.{k}" for n, k, l in checks if len(s.get(n, {}).get(k, "")) != l]
+          if not s.get("kubeflow-initial-user", {}).get("hash", "").startswith("$2a$"):
+              bad.append("kubeflow-initial-user.hash (bcrypt)")
+          sys.exit(f"FAIL: not generated as expected: {', '.join(bad)}" if bad else 0)
+          PY
+          # With demoMode, empty credentials take the published demo values (no generation, works offline).
+          helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true > "$tmp/demo.yaml"
+          python3 - "$tmp/demo.yaml" <<'PY'
+          import sys, yaml
+          s = {d["metadata"]["name"]: d.get("stringData", {}) for d in yaml.safe_load_all(open(sys.argv[1])) if d and d.get("kind") == "Secret"}
+          want = {("kubeflow-oidc-client", "client-secret"): "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok",
+                  ("kubeflow-initial-user", "hash"): "$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm",
+                  ("mlpipeline-minio-artifact", "accesskey"): "kubeflow"}
+          bad = [f"{n}.{k}" for (n, k), v in want.items() if s.get(n, {}).get(k) != v]
+          sys.exit(f"FAIL: demoMode did not fill in the demo value of: {', '.join(bad)}" if bad else 0)
+          PY
+          # An explicit demo password hash without demoMode is refused, like the other demo credentials.
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set auth.oidc.clientSecret=ci \
+              --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde --set pipelines.seaweedfs.accessKey=ci-ak \
+              --set pipelines.seaweedfs.secretKey=ci-sk --set user-namespace.modelRegistry.db.embedded.existingSecret=mr \
+              --set-string 'auth.initialUser.passwordHash=$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm' 2>&1)"; then
+            echo "FAIL: the demo password hash rendered without demoMode." >&2; exit 1
+          fi
+          grep -qF "SECURITY: auth.initialUser.passwordHash" <<<"$err" || { echo "FAIL: wrong error for the demo hash: $err" >&2; exit 1; }
+          # External identity provider (Dex connector, password login off): no password is generated or
+          # required, even offline, and the Secret Dex's env var references holds no password.
+          idp=(--set auth.oidc.clientSecret=ci --set auth.oidc.cookieSecret=ci-cookie-secret-0123456789abcde
+               --set pipelines.seaweedfs.accessKey=ci-ak --set pipelines.seaweedfs.secretKey=ci-sk
+               --set user-namespace.modelRegistry.db.embedded.existingSecret=mr
+               --set dex.config.enablePasswordDB=false --set-json 'dex.config.staticPasswords=[]'
+               --set-json 'dex.config.connectors=[{"type":"oidc","id":"corp","name":"Corp","config":{"issuer":"https://idp.example.com","clientID":"kf","clientSecret":"x","redirectURI":"http://kf.example.com/dex/callback"}}]')
+          helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow "${idp[@]}" \
+              -s templates/secrets/initial-user-Secret.yaml > "$tmp/idp.yaml" \
+            || { echo "FAIL: an external identity provider still requires auth.initialUser.passwordHash." >&2; exit 1; }
+          grep -q '^  hash: ""$' "$tmp/idp.yaml" && ! grep -q '^  password:' "$tmp/idp.yaml" \
+            || { echo "FAIL: kubeflow-initial-user holds a password although Dex's password login is off:" >&2; cat "$tmp/idp.yaml" >&2; exit 1; }
+          # oauth2-proxy's client is registered with Dex: without Dex it needs auth.oidc.existingSecret.
+          if helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+              --set dex.enabled=false >/dev/null 2>&1; then
+            echo "FAIL: oauth2-proxy without Dex and without auth.oidc.existingSecret rendered." >&2; exit 1
+          fi
+          helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+              --set dex.enabled=false --set auth.oidc.existingSecret=true >/dev/null \
+            || { echo "FAIL: oauth2-proxy without Dex but with auth.oidc.existingSecret=true did not render." >&2; exit 1; }
+          # Dex reads the initial user's hash through an env var; dropping it must fail clearly.
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+              --set-json 'dex.envVars=[{"name":"KUBEFLOW_OIDC_CLIENT_SECRET","valueFrom":{"secretKeyRef":{"name":"kubeflow-oidc-client","key":"client-secret"}}}]' 2>&1)"; then
+            echo "FAIL: dex.envVars without KUBEFLOW_INITIAL_USER_HASH rendered." >&2; exit 1
+          fi
+          grep -qF "keep the KUBEFLOW_INITIAL_USER_HASH entry" <<<"$err" || { echo "FAIL: wrong error for missing Dex env var: $err" >&2; exit 1; }
+          if helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+              --set auth.initialUser.email=admin@example.org >/dev/null 2>&1; then
+            echo "FAIL: auth.initialUser.email differing from Dex's staticPasswords email rendered." >&2; exit 1
+          fi
+          # externalSecrets.extraNamespaces adds name-matched namespaces; without it the selector is unchanged.
+          ces="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+            --set-json 'externalSecrets.extraNamespaces=["knative-serving"]' -s templates/external-secrets/ClusterExternalSecret.yaml)"
+          grep -q 'namespaceSelectors:' <<<"$ces" && grep -q -- '- knative-serving' <<<"$ces" \
+            || { echo "FAIL: extraNamespaces did not add knative-serving to namespaceSelectors:" >&2; echo "$ces" >&2; exit 1; }
+          # An empty namespaceSelector must not join namespaceSelectors (it would match every namespace).
+          ces="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+            --set-json 'externalSecrets.extraNamespaces=["knative-serving"]' --set-json 'externalSecrets.namespaceSelector.matchLabels=null' \
+            -s templates/external-secrets/ClusterExternalSecret.yaml)"
+          python3 - "$ces" <<'PY'
+          import sys, yaml
+          for d in yaml.safe_load_all(sys.argv[1]):
+              if d and d.get("kind") == "ClusterExternalSecret" and any(not sel for sel in d["spec"]["namespaceSelectors"]):
+                  sys.exit("FAIL: an empty selector in namespaceSelectors matches every namespace")
+          PY
+          helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
+              -s templates/external-secrets/ClusterExternalSecret.yaml | grep -q '^  namespaceSelector:$' \
+            || { echo "FAIL: the default ClusterExternalSecret no longer uses namespaceSelector." >&2; exit 1; }
+          # The pre-delete hook renders only with the release's Profiles, which carry the labels it selects by.
+          helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true > "$tmp/full.yaml"
+          [ "$(grep -c 'name: profiles-cleanup$' "$tmp/full.yaml")" -ge 2 ] || { echo "FAIL: the Profiles pre-delete hook is missing." >&2; exit 1; }
+          python3 - "$tmp/full.yaml" <<'PY'
+          import sys, yaml
+          ps = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d and d.get("kind") == "Profile"]
+          bad = [p["metadata"]["name"] for p in ps if (p["metadata"].get("labels") or {}).get("app.kubernetes.io/instance") != "ci"]
+          sys.exit(f"FAIL: Profiles without the release label the hook selects by: {bad}" if bad or not ps else 0)
+          PY
+          if helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow -f kubeflow/presets/trainer-only.yaml | grep -q 'name: profiles-cleanup$'; then
+            echo "FAIL: the Profiles pre-delete hook renders without Profiles (trainer-only)." >&2; exit 1
+          fi
+          echo "OK: credentials generate with cluster access, refuse offline and take the demo values in demoMode; external identity providers need no password; Dex wiring is checked; extraNamespaces and the uninstall hook render as intended."
 
       - name: helm template (hostname schema rejects bare public suffixes)
         if: ${{ env.APPCO_TOKEN != '' }}

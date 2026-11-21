@@ -14,8 +14,8 @@
 #   --include-gpu-tests                Pass --include-gpu-tests to smoke/e2e (opt-in GPU tests)
 #   --include-dra-tests                Pass --include-dra-tests to smoke/e2e (opt-in DRA tests)
 #   --include-gateway-tests            Pass --include-gateway-tests to e2e (opt-in gateway Dex-login tests 12b and 12c; 12 always runs).
-#                                      They log in as E2E_DEX_USER / E2E_DEX_PASSWORD (export them; default: the demo
-#                                      user), which must be a Dex password login, not an external OIDC connector
+#                                      They log in as E2E_DEX_USER / E2E_DEX_PASSWORD (export them; default: the initial
+#                                      user with the chart-generated password, else the demo password), which must be a Dex password login, not an external OIDC connector
 #   --additional-user-namespace=<ns>   Also run Tier 2+3 against this extra profile namespace
 #   --additional-user-email=<email>    Email for the extra profile (used by e2e KFP tests)
 #   --suse-registry=<mirror>           SUSE AI registry mirror (default: registry.suse.com)

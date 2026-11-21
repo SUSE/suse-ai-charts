@@ -39,25 +39,123 @@ Usage: {{ include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "re
 {{- end -}}
 
 {{/*
-"true" for a trainer-only release: Trainer is enabled and every other component toggle
-is off (everything trainer-only-overrides.yaml turns off). Used by NOTES.txt; the
-NOTES banner it selects is how installTrainerOnly.sh recognises a trainer-only release.
-Add-ons that add no Kubeflow component (certManager.install, externaldns,
-externalSecretsOperator, monitoring, networkPolicies) don't count. CI checks this list
-against the dependency conditions in Chart.yaml, so add new component toggles here.
+Component registry, from components.yaml (see the comment there). Fails with a clear message
+when the file is missing or isn't valid YAML.
 */}}
-{{- define "kubeflow.trainerOnly" -}}
-{{- $v := .Values -}}
-{{- $others := list
-      $v.admissionWebhook.enabled $v.centralDashboard.enabled $v.dex.enabled
-      $v.global.oauth2Proxy.enabled $v.hub.enabled $v.istioResources.enabled
-      $v.katib.enabled $v.knativeEventing.enabled $v.knativeServing.enabled
-      $v.kserve.enabled $v.kubeflowRoles.enabled $v.notebooks.controller.enabled
-      $v.notebooks.webApp.enabled $v.pipelines.enabled $v.profiles.enabled
-      $v.tensorboard.controller.enabled $v.tensorboard.webApp.enabled
-      $v.trainingOperator.enabled $v.userNamespace.enabled $v.volumesWebApp.enabled -}}
-{{- if and $v.trainer.enabled (not (has true $others)) }}true{{ end -}}
+{{- define "kubeflow.components" -}}
+{{- $raw := .Files.Get "components.yaml" -}}
+{{- if not $raw }}{{ fail "components.yaml is missing from the kubeflow chart" }}{{ end -}}
+{{- $reg := fromYaml $raw -}}
+{{- if hasKey $reg "Error" }}{{ fail (printf "components.yaml is not valid YAML: %s" (index $reg "Error")) }}{{ end -}}
+{{- $raw -}}
 {{- end -}}
+
+{{/* String value at a dotted values path (dict "root" .Values "path" "a.b" "default" "x"). */}}
+{{- define "kubeflow.valueAt" -}}
+{{- $cur := .root -}}
+{{- $found := true -}}
+{{- range $k := splitList "." .path -}}
+{{-   if and $found (kindIs "map" $cur) (hasKey $cur $k) }}{{ $cur = index $cur $k }}{{ else }}{{ $found = false }}{{ end -}}
+{{- end -}}
+{{- if and $found (not (kindIs "invalid" $cur)) }}{{ toString $cur }}{{ else if not (kindIs "invalid" .default) }}{{ toString .default }}{{ end -}}
+{{- end -}}
+
+{{/* "true" when a registry condition holds: {path, default, equals} or {helper} (dict "ctx" . "cond" $cond). */}}
+{{- define "kubeflow.conditionMet" -}}
+{{- if .cond.helper }}{{ include .cond.helper .ctx }}
+{{- else if eq (include "kubeflow.valueAt" (dict "root" .ctx.Values "path" .cond.path "default" .cond.default)) (toString .cond.equals) }}true{{ end -}}
+{{- end -}}
+
+{{/* "true" when KServe's default deployment mode needs Knative: Knative, or its old name Serverless
+     (the default). Read from the JSON in kserve.inferenceServiceConfig.deploy. */}}
+{{- define "kubeflow.kserveKnativeMode" -}}
+{{- $deploy := dig "inferenceServiceConfig" "deploy" "" (index .Values "kserve" | default dict) -}}
+{{- $mode := "" -}}
+{{- if $deploy }}{{ $mode = (fromJson $deploy).defaultDeploymentMode | default "" | toString }}{{ end -}}
+{{- if has ($mode | default "Serverless") (list "Serverless" "Knative") }}true{{ end -}}
+{{- end -}}
+
+{{/* "true" when a registry entry is enabled (dict "ctx" . "c" $entry). */}}
+{{- define "kubeflow.componentOn" -}}
+{{- if .c.enabledBy }}{{ include .c.enabledBy .ctx }}
+{{- else if eq (include "kubeflow.valueAt" (dict "root" .ctx.Values "path" .c.toggle "default" "false")) "true" }}true{{ end -}}
+{{- end -}}
+
+{{/* JSON list of enabled registry entries, sorted (add-ons included). */}}
+{{- define "kubeflow.enabledComponents" -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- $on := list -}}
+{{- range $name := keys $reg | sortAlpha -}}
+{{-   if include "kubeflow.componentOn" (dict "ctx" $ "c" (index $reg $name)) }}{{ $on = append $on $name }}{{ end -}}
+{{- end -}}
+{{- toJson $on -}}
+{{- end -}}
+
+{{/* JSON list of the enabled settings that need Istio, as the user would name them. */}}
+{{- define "kubeflow.istioUsers" -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- $users := list -}}
+{{- range $name := include "kubeflow.enabledComponents" . | fromJsonArray -}}
+{{-   $c := index $reg $name -}}
+{{-   if and $c.istio (not (and $c.istioOptional (include "kubeflow.conditionMet" (dict "ctx" $ "cond" $c.istioOptional)))) -}}
+{{-     $users = append $users ($c.istioHint | default $c.toggle) -}}
+{{-   end -}}
+{{- end -}}
+{{- toJson $users -}}
+{{- end -}}
+
+{{/* JSON list of unmet "requires" of enabled components: {component, requires (component or
+     capability name), message}. CI reads it to add prerequisites; requirementErrors shows the messages. */}}
+{{- define "kubeflow.unmetRequirements" -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- $on := include "kubeflow.enabledComponents" . | fromJsonArray -}}
+{{- $login := or (has "oauth2Proxy" $on) (eq (include "kubeflow.valueAt" (dict "root" .Values "path" "istioResources.externalAuth" "default" "false")) "true") -}}
+{{- $unmet := list -}}
+{{- range $name := $on -}}
+{{-   $c := index $reg $name -}}
+{{-   range $r := $c.requires | default list -}}
+{{-     if or (not $r.when) (include "kubeflow.conditionMet" (dict "ctx" $ "cond" $r.when)) -}}
+{{-       $met := false -}}
+{{-       $dep := "" -}}
+{{-       $depName := $r.capability | default $r.component -}}
+{{-       if eq ($r.capability | default "") "login" -}}
+{{-         $met = $login -}}
+{{-         $dep = "login (global.oauth2Proxy.enabled=true, or istioResources.externalAuth=true)" -}}
+{{-       else -}}
+{{-         $d := index $reg $r.component -}}
+{{-         $met = has $r.component $on -}}
+{{-         $dep = $d.label | default (printf "%s=true" $d.toggle) -}}
+{{-       end -}}
+{{-       if not $met -}}
+{{-         $when := "" -}}
+{{-         if $r.when -}}
+{{-           if $r.when.label }}{{ $when = printf " when %s" $r.when.label }}{{ else }}{{ $when = printf " when %s=%s" $r.when.path (toString $r.when.equals) }}{{ end -}}
+{{-         end -}}
+{{-         $msg := printf "%s requires %s%s: %s" ($c.label | default (printf "%s=true" $c.toggle)) $dep $when $r.why -}}
+{{-         $unmet = append $unmet (dict "component" $name "requires" $depName "message" $msg) -}}
+{{-       end -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}
+{{- toJson $unmet -}}
+{{- end -}}
+
+{{/* JSON list of the messages of kubeflow.unmetRequirements. */}}
+{{- define "kubeflow.requirementErrors" -}}
+{{- $errs := list -}}
+{{- range $u := include "kubeflow.unmetRequirements" . | fromJsonArray }}{{ $errs = append $errs $u.message }}{{ end -}}
+{{- toJson $errs -}}
+{{- end -}}
+
+{{/* "true" when Trainer is the only Kubeflow component enabled (add-ons aside); NOTES then shows the
+     Trainer-only banner. */}}
+{{- define "kubeflow.trainerOnly" -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- $on := list -}}
+{{- range $n := include "kubeflow.enabledComponents" . | fromJsonArray }}{{ if not (index $reg $n).addon }}{{ $on = append $on $n }}{{ end }}{{ end -}}
+{{- if eq (toJson $on) (toJson (list "trainer")) }}true{{ end -}}
+{{- end -}}
+
 
 {{/*
 Gateway TLS source (kubeflow-istio-resources.tls.source), "" when unset. One lookup
@@ -68,14 +166,30 @@ for every umbrella template that branches on it.
 {{- end -}}
 
 {{/*
-"true" when cert-manager is required: a component that ships cert-manager
-Issuers/Certificates is enabled, or cert-manager issues the gateway TLS cert (any
-tls.source except "" and "secret"). Used by the preflight hook; CI checks that every
-component rendering cert-manager resources is covered.
+"true" when cert-manager is required: an enabled component declares certManager in the
+registry, or cert-manager issues the gateway TLS cert (any tls.source except "" and
+"secret"). Used by the preflight hook.
 */}}
 {{- define "kubeflow.needsCertManager" -}}
 {{- $src := include "kubeflow.tlsSource" . -}}
-{{- if or .Values.admissionWebhook.enabled .Values.katib.enabled .Values.kserve.enabled .Values.pipelines.enabled .Values.volumesWebApp.enabled (and $src (ne $src "secret")) }}true{{ end -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- $need := and $src (ne $src "secret") -}}
+{{- range $n := include "kubeflow.enabledComponents" . | fromJsonArray }}{{ if (index $reg $n).certManager }}{{ $need = true }}{{ end }}{{ end -}}
+{{- if $need }}true{{ end -}}
+{{- end -}}
+
+{{/* What must exist in the cluster before this release installs, space-separated: istio, cert-manager,
+     eso (External Secrets Operator, unless the release installs it) and knative-namespace (created
+     and adopted up front). Read by install.sh, which installs or prepares them. */}}
+{{- define "kubeflow.clusterPrerequisites" -}}
+{{- $on := include "kubeflow.enabledComponents" . | fromJsonArray -}}
+{{- $need := list -}}
+{{- if has "istioResources" $on }}{{ $need = append $need "istio" }}{{ end -}}
+{{- if include "kubeflow.needsCertManager" . }}{{ $need = append $need "cert-manager" }}{{ end -}}
+{{- $eso := eq (include "kubeflow.valueAt" (dict "root" .Values "path" "externalSecrets.enabled" "default" "false")) "true" -}}
+{{- if and $eso (not (has "externalSecretsOperator" $on)) }}{{ $need = append $need "eso" }}{{ end -}}
+{{- if has "knativeServing" $on }}{{ $need = append $need "knative-namespace" }}{{ end -}}
+{{- join " " $need -}}
 {{- end -}}
 
 {{/* global.istio.cni as "true"/"false" (default true). Copied per chart; CI keeps the copies equal. */}}
@@ -83,9 +197,37 @@ component rendering cert-manager resources is covered.
 {{- ne (toString (dig "istio" "cni" true (.Values.global | default dict))) "false" -}}
 {{- end -}}
 
-{{/* "true" when cni=true and profile namespaces exist (they get Pod Security baseline). */}}
+{{/* "true" when Dex's built-in password login uses auth.initialUser (enablePasswordDB and a staticPasswords
+     entry reading KUBEFLOW_INITIAL_USER_HASH). Off when an external identity provider replaces it. */}}
+{{- define "kubeflow.dexPasswordLogin" -}}
+{{- if and .Values.dex.enabled (.Values.dex.config | default dict).enablePasswordDB -}}
+{{-   range ((.Values.dex.config | default dict).staticPasswords | default list) -}}
+{{-     if and (eq (.hashFromEnv | default "") "KUBEFLOW_INITIAL_USER_HASH") (not .hash) }}true{{ break }}{{ end -}}
+{{-   end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* The published demo credentials, used for empty credential values when global.demoMode=true. */}}
+{{- define "kubeflow.demoCredentials" -}}
+clientSecret: pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok
+cookieSecret: 3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=
+passwordHash: $2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm
+accessKey: kubeflow
+secretKey: kubeflow123
+{{- end -}}
+
+{{/* "true" when the render sees the cluster (helm install/upgrade); "" for helm template, Argo CD and
+     --dry-run=client, where lookup finds nothing, so generated credentials would change on every render. */}}
+{{- define "kubeflow.clusterVisible" -}}
+{{- if lookup "v1" "Namespace" "" "kube-system" }}true{{ end -}}
+{{- end -}}
+
+{{/* "true" when cni=true and an enabled component creates profile namespaces (they get Pod Security baseline). */}}
 {{- define "kubeflow.istioCniCheckNeeded" -}}
-{{- if and (eq (include "kubeflow.istioCni" .) "true") (or .Values.profiles.enabled .Values.userNamespace.enabled) }}true{{ end -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- $ns := false -}}
+{{- range $n := include "kubeflow.enabledComponents" . | fromJsonArray }}{{ if (index $reg $n).profileNamespaces }}{{ $ns = true }}{{ end }}{{ end -}}
+{{- if and (eq (include "kubeflow.istioCni" .) "true") $ns }}true{{ end -}}
 {{- end -}}
 
 {{/* Istio CNI check rules, shared by validations.yaml (Helm lookup) and the preflight Job (kubectl).

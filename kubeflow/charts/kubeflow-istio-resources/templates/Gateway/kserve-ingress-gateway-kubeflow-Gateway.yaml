@@ -1,3 +1,6 @@
+{{- /* Off (kserveGateway.enabled=false) when neither KServe nor Knative Serving is installed. */}}
+{{- $kserveGw := .Values.kserveGateway | default dict }}
+{{- if or (not (hasKey $kserveGw "enabled")) $kserveGw.enabled }}
 {{- /*
   ── Dedicated KServe inference gateway ──────────────────────────────────────
   KServe/Knative inference ALWAYS routes through this gateway, never the shared
@@ -77,3 +80,4 @@ spec:
       number: 80
       protocol: HTTP
   {{- end }}
+{{- end }}

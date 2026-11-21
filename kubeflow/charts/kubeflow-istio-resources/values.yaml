@@ -125,3 +125,8 @@ tls:
   # "kserve-wildcard-tls" cert (a DNS-01 solver is required for the wildcard) and the
   # Knative route host is flattened to a single "{name}-{namespace}.<domain>" label so
   # the wildcard covers it. See the umbrella values.yaml and README for the naming caveat.
+
+# The dedicated KServe inference gateway (kserve-ingress-gateway). Turn off only when neither KServe
+# nor Knative Serving is installed; the umbrella refuses it otherwise.
+kserveGateway:
+  enabled: true
