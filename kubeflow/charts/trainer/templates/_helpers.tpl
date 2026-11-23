@@ -146,6 +146,21 @@ metadata:
 {{- end -}}
 
 {{/*
+imagePullSecrets for the bundled runtimes' pods: global.imagePullSecrets, the Secrets the External
+Secrets Operator copies into profile namespaces. Entries may be names or {name: ...}.
+*/}}
+{{- define "trainer.runtimePullSecrets" -}}
+{{- $s := list -}}
+{{- range ((.Values.global | default dict).imagePullSecrets | default list) -}}
+{{-   if kindIs "string" . }}{{ $s = append $s (dict "name" .) }}{{ else }}{{ $s = append $s . }}{{ end -}}
+{{- end -}}
+{{- if $s }}
+imagePullSecrets:
+{{- toYaml $s | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Labels on the bundled ClusterTrainingRuntimes. The runtimes applier Job selects on
 managed-by + instance to prune runtimes that are no longer in the chart (renamed,
 dropped, or switched off such as torchtune.enabled=false).

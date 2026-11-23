@@ -13,18 +13,40 @@ with a human-readable error when required dependencies are misconfigured.
 {{- end }}
 
 {{- /*
-  Cross-component guards for the optional infrastructure sub-charts
-  (istioResources, userNamespace). trainer-only-overrides.yaml disables them together
-  with everything that depends on them.
+  Component dependencies, all from the registry (components.yaml, via kubeflow.components):
+  unmet "requires" of enabled components, and, without istioResources, every enabled
+  setting that needs Istio. One error lists everything that is missing.
 */}}
-{{- if and .Values.userNamespace.enabled (not .Values.profiles.enabled) }}
-{{- fail "userNamespace.enabled=true requires profiles.enabled=true: the user-namespace sub-chart creates Profile CRs, and the Profile CRD ships with profiles-and-kfam. Set userNamespace.enabled=false or enable profiles." }}
+{{- $reqErrs := include "kubeflow.requirementErrors" . | fromJsonArray }}
+{{- $needGw := list }}
+{{- if not .Values.istioResources.enabled }}
+{{-   $needGw = include "kubeflow.istioUsers" . | fromJsonArray }}
+{{-   if .Values.global.kserveExternalHttps }}{{ $needGw = append $needGw "global.kserveExternalHttps" }}{{ end }}
+{{-   if include "kubeflow.tlsSource" . }}{{ $needGw = append $needGw "kubeflow-istio-resources.tls.source" }}{{ end }}
 {{- end }}
-{{- /* The Profiles controller and KFAM bind the kubeflow-admin / kubeflow-edit /
-       kubeflow-view ClusterRoles by name; only kubeflow-roles creates them. Without
-       them the RoleBindings point at missing roles and user RBAC fails at runtime. */}}
-{{- if and .Values.profiles.enabled (not .Values.kubeflowRoles.enabled) }}
-{{- fail "profiles.enabled=true requires kubeflowRoles.enabled=true: the Profiles controller and KFAM bind the kubeflow-admin, kubeflow-edit and kubeflow-view ClusterRoles, which the kubeflow-roles sub-chart creates. Without them, Profile owners and contributors get no permissions. Set kubeflowRoles.enabled=true or disable profiles." }}
+{{- if or $reqErrs $needGw }}
+{{-   $msg := list }}
+{{-   if $reqErrs }}
+{{-     $msg = append $msg (printf "Component requirements not met:\n  - %s" (join "\n  - " $reqErrs)) }}
+{{-   end }}
+{{-   if $needGw }}
+{{-     $msg = append $msg (printf "istioResources.enabled=false is meant for installs without Istio (e.g. trainer-only), but these settings need Istio or the kubeflow-gateway (they render Istio resources, create them at runtime, or route through the gateway/Dex). Disable/unset them, or install Istio and set istioResources.enabled=true:\n  - %s" (join "\n  - " $needGw)) }}
+{{-   end }}
+{{-   fail (join "\n" $msg) }}
+{{- end }}
+{{- /* The dedicated KServe gateway is what KServe, Knative Serving and the external-HTTPS opt-in route through. */}}
+{{- $kirGw := dig "kserveGateway" "enabled" true (index .Values "kubeflow-istio-resources" | default dict) }}
+{{- if and .Values.istioResources.enabled (not $kirGw) (or .Values.kserve.enabled .Values.knativeServing.enabled .Values.global.kserveExternalHttps) }}
+{{- fail "kubeflow-istio-resources.kserveGateway.enabled=false, but KServe, Knative Serving or global.kserveExternalHttps route inference through that gateway. Set kubeflow-istio-resources.kserveGateway.enabled=true (or remove the override)." }}
+{{- end }}
+{{- /* A custom externaldns.env replaces the default one that passes cloudflare.apiToken. */}}
+{{- $dns := .Values.externaldns }}
+{{- if and $dns.enabled (eq $dns.provider.name "cloudflare") $dns.cloudflare.apiToken }}
+{{-   $hasToken := false }}
+{{-   range $dns.env | default list }}{{ if eq (.name | default "") "CF_API_TOKEN" }}{{ $hasToken = true }}{{ end }}{{ end }}
+{{-   if not $hasToken }}
+{{- fail "externaldns.cloudflare.apiToken is set, but externaldns.env (which replaces the chart's default) has no CF_API_TOKEN, so external-dns would run without Cloudflare credentials. Add the CF_API_TOKEN entry from values.yaml (Secret cloudflare-api-token, key token) to your env, or remove apiToken and pass the token from your own Secret." }}
+{{-   end }}
 {{- end }}
 {{- /* externalSecrets renders ClusterSecretStore / ClusterExternalSecret
        (external-secrets.io/v1), so it needs the External Secrets Operator API. It is
@@ -41,45 +63,6 @@ with a human-readable error when required dependencies are misconfigured.
            (not (.Capabilities.APIVersions.Has "external-secrets.io/v1"))
            (lookup "v1" "Namespace" "" "kube-system") }}
 {{- fail "externalSecrets.enabled=true, but the cluster has no External Secrets Operator API (external-secrets.io/v1). Install ESO before this chart, or set externalSecrets.enabled=false. (With externalSecretsOperator.enabled=true, ESO's CRDs are created by this release: install once with externalSecrets.enabled=false, then enable it.)" }}
-{{- end }}
-{{- /* network-policies renders policies into the knative-serving namespace, which
-       only exists when Knative Serving is installed. */}}
-{{- $np := index .Values "network-policies" | default dict }}
-{{- if and .Values.networkPolicies.enabled (not .Values.knativeServing.enabled) (dig "knativeServingPolicies" "enabled" true $np) }}
-{{- fail "networkPolicies.enabled=true with knativeServing.enabled=false: the network-policies sub-chart would render NetworkPolicies into the knative-serving namespace, which does not exist without Knative. Set network-policies.knativeServingPolicies.enabled=false." }}
-{{- end }}
-{{- if not .Values.istioResources.enabled }}
-{{- /* Components that render Istio resources (VirtualService, AuthorizationPolicy,
-       DestinationRule, Gateway, PeerAuthentication) or route through the
-       kubeflow-gateway / Dex. Without istioResources there is usually no Istio at
-       all, so these would fail mid-install with "no matches for kind ...". The
-       notebook and TensorBoard controllers render none at install time but create a
-       VirtualService per Notebook / Tensorboard at runtime; the notebook controller
-       can opt out with notebook-controller.configMapData.USE_ISTIO="false". */}}
-{{-   $needGw := list }}
-{{-   $nbUseIstio := printf "%v" (dig "configMapData" "USE_ISTIO" "true" (index .Values "notebook-controller" | default dict)) }}
-{{-   range $flag := list
-        (list .Values.centralDashboard.enabled "centralDashboard.enabled")
-        (list .Values.dex.enabled "dex.enabled")
-        (list .Values.global.oauth2Proxy.enabled "global.oauth2Proxy.enabled")
-        (list .Values.hub.enabled "hub.enabled")
-        (list .Values.pipelines.enabled "pipelines.enabled")
-        (list .Values.profiles.enabled "profiles.enabled")
-        (list .Values.knativeServing.enabled "knativeServing.enabled")
-        (list .Values.kserve.enabled "kserve.enabled")
-        (list .Values.katib.enabled "katib.enabled")
-        (list .Values.notebooks.webApp.enabled "notebooks.webApp.enabled")
-        (list (and .Values.notebooks.controller.enabled (ne $nbUseIstio "false")) "notebooks.controller.enabled (or set notebook-controller.configMapData.USE_ISTIO=\"false\")")
-        (list .Values.volumesWebApp.enabled "volumesWebApp.enabled")
-        (list .Values.tensorboard.webApp.enabled "tensorboard.webApp.enabled")
-        (list .Values.tensorboard.controller.enabled "tensorboard.controller.enabled")
-        (list .Values.global.kserveExternalHttps "global.kserveExternalHttps")
-        (list (include "kubeflow.tlsSource" $) "kubeflow-istio-resources.tls.source") }}
-{{-     if index $flag 0 }}{{ $needGw = append $needGw (index $flag 1) }}{{ end }}
-{{-   end }}
-{{-   if $needGw }}
-{{-     fail (printf "istioResources.enabled=false is meant for installs without Istio (e.g. trainer-only), but these settings need Istio or the kubeflow-gateway (they render Istio resources, create them at runtime, or route through the gateway/Dex). Disable/unset them, or install Istio and set istioResources.enabled=true:\n  - %s" (join "\n  - " $needGw)) }}
-{{-   end }}
 {{- end }}
 {{- /* Istio CNI must match the cluster, or Pod Security baseline rejects istio-init pods (live lookup;
      the preflight Job runs the same rules from kubeflow.istioCniProbe for helm template / GitOps). */}}
@@ -112,17 +95,9 @@ with a human-readable error when required dependencies are misconfigured.
 {{- $mrMode := include "kubeflow.modelRegistryMode" . }}
 {{- $mrDataPlane := include "kubeflow.modelRegistryDataPlane" . }}
 
-{{- /* Only the SHARED registry server uses KFP's MariaDB + mysql-secret. */}}
-{{- if and .Values.hub.enabled (eq $mrMode "shared") (not .Values.pipelines.enabled) }}
-{{- fail "global.modelRegistry.mode=shared requires pipelines.enabled=true (the shared Kubeflow Hub registry uses KFP's MariaDB and mysql-secret). Use global.modelRegistry.mode=perProfile (each profile gets its own Postgres) or enable pipelines." }}
-{{- end }}
 {{- /* A shared registry AND per-profile registries side by side is ambiguous for the UI and clients. */}}
 {{- if and .Values.hub.enabled (eq $mrMode "shared") $mrDataPlane }}
 {{- fail "user-namespace.modelRegistry.enabled=true conflicts with global.modelRegistry.mode=shared. Remove the explicit user-namespace.modelRegistry.enabled override (the data plane follows the mode)." }}
-{{- end }}
-{{- /* user-namespace cannot see hub.enabled: refuse registries without a UI. */}}
-{{- if and (not .Values.hub.enabled) $mrDataPlane }}
-{{- fail "hub.enabled=false: also set user-namespace.modelRegistry.enabled=false (or userNamespace.enabled=false) — otherwise per-profile Model Registry servers would be deployed with no Model Registry UI/control plane." }}
 {{- end }}
 
 {{- /*
@@ -285,7 +260,7 @@ with a human-readable error when required dependencies are misconfigured.
        that is 16/24/32 bytes; otherwise it uses the raw string (encryption.SecretBytes). Mirror
        that here so a bad value fails at render time instead of crash-looping the pod. Note that
        standard base64 with "+" or "/" is NOT decoded by oauth2-proxy. */}}
-{{- if and .Values.global.oauth2Proxy.enabled (not .Values.auth.oidc.existingSecret) }}
+{{- if and .Values.global.oauth2Proxy.enabled (not .Values.auth.oidc.existingSecret) $cookieSecret }}
 {{-   $trimmed := regexReplaceAll "=+$" $cookieSecret "" }}
 {{-   $decLen := 0 }}
 {{-   if and (regexMatch "^[A-Za-z0-9_-]+$" $trimmed) (ne (mod (len $trimmed) 4) 1) }}
@@ -298,8 +273,65 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   end }}
 {{- end }}
 
+{{- /* Dex reads the initial user's hash from the kubeflow-initial-user Secret through an env var
+       (staticPasswords[].hashFromEnv); without it Dex fails to start ("no password hash provided"),
+       e.g. when dex.envVars is overridden. The staticPasswords email is a copy of auth.initialUser.email. */}}
+{{- if .Values.dex.enabled }}
+{{-   $envNames := list }}
+{{-   range (.Values.dex.envVars | default list) }}{{ $envNames = append $envNames .name }}{{ end }}
+{{-   range (.Values.dex.config.staticPasswords | default list) }}
+{{-     if and .hashFromEnv (not .hash) (not (has .hashFromEnv $envNames)) }}
+{{-       fail (printf "dex.config.staticPasswords[%s] reads its password hash from env var %s, which dex.envVars doesn't define, so Dex would not start. When overriding dex.envVars, keep the KUBEFLOW_INITIAL_USER_HASH entry from values.yaml." .email .hashFromEnv) }}
+{{-     end }}
+{{-     if and (eq (.hashFromEnv | default "") "KUBEFLOW_INITIAL_USER_HASH") (ne (.email | default "") $.Values.auth.initialUser.email) }}
+{{-       $credErrs = append $credErrs (printf "dex.config.staticPasswords[%s].email differs from auth.initialUser.email" .email) }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+
 {{- if $credErrs }}
 {{-   fail (printf "Credential mismatch. Values set with -f/--set do not follow the YAML anchors in values.yaml, so these copies still hold their old values. Set each one to the same value as its source (or use the existing-secret options):\n  - %s" (join "\n  - " $credErrs)) }}
+{{- end }}
+
+{{- /* Empty credentials are generated and kept via lookup (unless global.demoMode fills in the demo
+       values), and lookup sees nothing in a render without cluster access, so every such render would
+       generate new ones. The password counts only while Dex's password login uses it. */}}
+{{- $generated := list }}
+{{- if not .Values.global.demoMode }}
+{{- if and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) }}
+{{-   if not .Values.auth.oidc.clientSecret }}{{ $generated = append $generated "auth.oidc.clientSecret" }}{{ end }}
+{{-   if not .Values.auth.oidc.cookieSecret }}{{ $generated = append $generated "auth.oidc.cookieSecret" }}{{ end }}
+{{- end }}
+{{- if and (include "kubeflow.dexPasswordLogin" .) (not .Values.auth.initialUser.passwordHash) }}{{ $generated = append $generated "auth.initialUser.passwordHash" }}{{ end }}
+{{- if and .Values.pipelines.enabled (not .Values.pipelines.seaweedfs.existingSecret) }}
+{{-   if not .Values.pipelines.seaweedfs.accessKey }}{{ $generated = append $generated "pipelines.seaweedfs.accessKey" }}{{ end }}
+{{-   if not .Values.pipelines.seaweedfs.secretKey }}{{ $generated = append $generated "pipelines.seaweedfs.secretKey" }}{{ end }}
+{{- end }}
+{{- end }}
+{{- /* "Kept on upgrade" must not keep the published demo values: a release installed in demo mode and
+       then moved to generated credentials would silently stay on them. */}}
+{{- if and $generated (include "kubeflow.clusterVisible" .) }}
+{{-   $demo := include "kubeflow.demoCredentials" . | fromYaml }}
+{{-   $kept := list }}
+{{-   $ns := .Release.Namespace }}
+{{-   range $v := list (list "auth.oidc.clientSecret" $ns "kubeflow-oidc-client" "client-secret" $demo.clientSecret)
+                    (list "auth.oidc.cookieSecret" $ns "kubeflow-oidc-client" "cookie-secret" $demo.cookieSecret)
+                    (list "auth.initialUser.passwordHash" $ns "kubeflow-initial-user" "hash" $demo.passwordHash)
+                    (list "pipelines.seaweedfs.accessKey" "kubeflow" "mlpipeline-minio-artifact" "accesskey" $demo.accessKey)
+                    (list "pipelines.seaweedfs.secretKey" "kubeflow" "mlpipeline-minio-artifact" "secretkey" $demo.secretKey) }}
+{{-     if has (index $v 0) $generated }}
+{{-       $data := (lookup "v1" "Secret" (index $v 1) (index $v 2)).data | default dict }}
+{{-       if eq (index $data (index $v 3) | default "" | b64dec) (index $v 4) }}
+{{-         $kept = append $kept (printf "%s (Secret %s/%s, key %s)" (index $v 0) (index $v 1) (index $v 2) (index $v 3)) }}
+{{-       end }}
+{{-     end }}
+{{-   end }}
+{{-   if $kept }}
+{{- fail (printf "These values are empty, so the chart would keep them from their existing Secrets, but those hold the published demo values from an install with global.demoMode=true:\n  - %s\nTo keep the demo credentials (development only), keep demo mode: -f demo-overrides.yaml or --set global.demoMode=true. Otherwise set each value, or delete the listed Secrets so that new values are generated. Pods don't restart when a Secret changes, so then restart the ones that read them: kubectl -n kubeflow rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy (OIDC), and the Pipelines deployments for the SeaweedFS keys (docs/upgrade-notes.md, Credential rotation (SeaweedFS))." (join "\n  - " $kept)) }}
+{{-   end }}
+{{- end }}
+{{- if and $generated (not (include "kubeflow.clusterVisible" .)) }}
+{{- fail (printf "These values are empty, so the chart generates them and keeps them via lookup, but this render cannot see the cluster (helm template, Argo CD, --dry-run=client), so every render would generate new ones. Set them, install with helm install/upgrade against the cluster, or (for development only) set global.demoMode=true to use the published demo values:\n  - %s" (join "\n  - " $generated)) }}
 {{- end }}
 
 {{- /*
@@ -321,6 +353,10 @@ with a human-readable error when required dependencies are misconfigured.
 {{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
+{{- if and (include "kubeflow.dexPasswordLogin" .) (eq (toString .Values.auth.initialUser.passwordHash) (include "kubeflow.demoCredentials" . | fromYaml).passwordHash) }}
+{{- fail "SECURITY: auth.initialUser.passwordHash is the hash of the well-known demo password 12341234.\nSet your own hash (htpasswd -nbBC 12 \"\" <password> | tr -d ':\\n' | sed 's/$2y/$2a/'), or \"\" to generate a password.\nOr for development only: set global.demoMode=true in your values." }}
+{{- end }}
+
 {{- /* SeaweedFS credentials are only used by KFP (and its per-namespace servers in
        user-namespace), so skip them when pipelines are disabled. */}}
 {{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow") }}
@@ -336,7 +372,7 @@ with a human-readable error when required dependencies are misconfigured.
        would generate a new password that no longer matches the initialized database. */}}
 {{- $unDB := dig "modelRegistry" "db" (dict) (index .Values "user-namespace" | default dict) }}
 {{- if and (include "kubeflow.modelRegistryDataPlane" .) (eq (toString ($unDB.mode | default "embedded")) "embedded")
-           (not (dig "embedded" "existingSecret" "" $unDB)) (not (lookup "v1" "Namespace" "" "kube-system")) }}
+           (not (dig "embedded" "existingSecret" "" $unDB)) (not (include "kubeflow.clusterVisible" .)) }}
 {{- fail "user-namespace.modelRegistry.db.embedded.existingSecret is empty and this render cannot see the cluster (helm template, Argo CD, --dry-run=client), so each render would generate a new Model Registry database password that no longer matches the database. Create a Secret with POSTGRES_USER and POSTGRES_PASSWORD in every profile namespace and set existingSecret to its name, or install with helm install/upgrade against the cluster. For development only: set global.demoMode=true." }}
 {{- end }}
 

@@ -1,7 +1,5 @@
 
 {{- $trainerOnly := eq (include "kubeflow.trainerOnly" .) "true" }}
-{{- /* installTrainerOnly.sh recognises a trainer-only release by the banner line
-       "Kubeflow Trainer has been installed!"; keep the two in sync. */}}
 {{- if $trainerOnly }}
 {{- $tr := .Values.trainer | default dict }}
 ===============================================================================
@@ -23,9 +21,17 @@ Namespace: {{ .Release.Namespace }}
 {{- end }}
 
 {{- $unsCreds := .Values.pipelines.seaweedfs | default dict }}
-{{- $usingDemoSeaweedCreds  := and .Values.pipelines.enabled (eq ($unsCreds.accessKey | default "kubeflow") "kubeflow") (eq ($unsCreds.secretKey | default "kubeflow123") "kubeflow123") }}
-{{- $usingDemoDexSecret     := and .Values.dex.enabled (contains "pUBnBOY80Sn" (.Values.dex.config.staticClients | toJson)) }}
-{{- $usingDemoUserCreds     := and .Values.dex.enabled (eq .Values.auth.initialUser.email "user@example.com") }}
+{{- /* A credential is the demo one when set to the demo value, or empty with global.demoMode=true. */}}
+{{- $demo                   := include "kubeflow.demoCredentials" . | fromYaml }}
+{{- $demoMode               := .Values.global.demoMode | default false }}
+{{- $isDemo                 := dict }}
+{{- range $k, $v := dict "accessKey" $unsCreds.accessKey "secretKey" $unsCreds.secretKey "clientSecret" .Values.auth.oidc.clientSecret "passwordHash" .Values.auth.initialUser.passwordHash }}
+{{-   $_ := set $isDemo $k (or (eq (toString $v) (toString (index $demo $k))) (and $demoMode (not $v))) }}
+{{- end }}
+{{- $passwordLogin          := include "kubeflow.dexPasswordLogin" . }}
+{{- $usingDemoSeaweedCreds  := and .Values.pipelines.enabled $isDemo.accessKey $isDemo.secretKey }}
+{{- $usingDemoDexSecret     := and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) $isDemo.clientSecret }}
+{{- $usingDemoUserCreds     := and $passwordLogin $isDemo.passwordHash }}
 {{- if or $usingDemoSeaweedCreds $usingDemoDexSecret $usingDemoUserCreds }}
 ⚠ ⚠ ⚠  SECURITY WARNING  ⚠ ⚠ ⚠
 -------------------------------------------------------------------------------
@@ -33,16 +39,16 @@ The following DEMO DEFAULTS are still in use. Change them before exposing
 this deployment to any network or storing sensitive data.
 
 {{- if $usingDemoUserCreds }}
-  • Default login credentials (user@example.com / 12341234) are active.
-    Update dex.config.staticPasswords in your values override.
+  • The demo login password (12341234) is active for {{ .Values.auth.initialUser.email }}.
+    Set auth.initialUser.passwordHash, or leave it "" without global.demoMode to generate one.
 {{- end }}
 {{- if $usingDemoDexSecret }}
-  • Dex OIDC client secret is the well-known demo value.
-    Update dex.config.staticClients[0].secret in your values override.
+  • The OIDC client secret is the well-known demo value.
+    Set auth.oidc.clientSecret, or leave it "" without global.demoMode to generate one.
 {{- end }}
 {{- if $usingDemoSeaweedCreds }}
   • SeaweedFS credentials are kubeflow / kubeflow123.
-    Update pipelines.seaweedfs.accessKey/secretKey in your values override.
+    Set pipelines.seaweedfs.accessKey/secretKey, or leave them "" without global.demoMode.
 {{- end }}
 -------------------------------------------------------------------------------
 {{- end }}
@@ -104,7 +110,7 @@ GETTING STARTED
    ⚠ DNS not managed automatically. Add one of:
      /etc/hosts:   <node-ip>  {{ $kir.hostname }}
      DNS provider: A record {{ $kir.hostname }} → <node-ip>
-     Auto:         set externalDns.enabled=true with provider credentials
+     Auto:         set externaldns.enabled=true with provider credentials
 {{- end }}
 {{- else }}
    # Port-forward to access locally:
@@ -113,10 +119,27 @@ GETTING STARTED
    Dashboard URL: http://localhost:8080
 {{- end }}
 
-3. Default credentials (CHANGE IMMEDIATELY in production):
+3. Log in:
+{{- if not $passwordLogin }}
+
+   Through your identity provider (Dex connectors in dex.config.connectors).
+{{- else }}
 
    Email: {{ .Values.auth.initialUser.email }}
-   Password: 12341234  (update hash in dex.config.staticPasswords to change)
+{{- if $usingDemoUserCreds }}
+   Password: 12341234  (demo: set auth.initialUser.passwordHash to change it)
+{{- else if not .Values.auth.initialUser.passwordHash }}
+{{- $iu := (lookup "v1" "Secret" .Release.Namespace "kubeflow-initial-user").data | default dict }}
+{{- if and (hasKey $iu "hash") (not (hasKey $iu "password")) }}
+   Password: unchanged; no longer stored (the password key was removed from Secret kubeflow-initial-user)
+{{- else }}
+   Password: kubectl -n {{ .Release.Namespace }} get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
+   (for the first login; then remove the password key: README, "remove-stored-password")
+{{- end }}
+{{- else }}
+   Password: the one whose bcrypt hash is auth.initialUser.passwordHash
+{{- end }}
+{{- end }}
 
 {{- end }}
 
@@ -187,10 +210,16 @@ NEXT STEPS
    - Go to Notebooks in the dashboard
    - Click "New Notebook"
    - Select a container image and resources
+{{- if .Values.pipelines.enabled }}
 
 2. Create a pipeline:
    - Go to Pipelines in the dashboard
    - Upload a pipeline or use the SDK
+{{- else if .Values.trainer.enabled }}
+
+2. Submit a TrainJob from a notebook with the Kubeflow SDK:
+   https://www.kubeflow.org/docs/components/trainer/
+{{- end }}
 
 3. For production:
    - Change ALL default credentials (see SECURITY WARNING above)

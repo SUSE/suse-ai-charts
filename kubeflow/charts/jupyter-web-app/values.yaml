@@ -29,7 +29,9 @@ env:
   UI: default
   USERID_HEADER: kubeflow-userid
   USERID_PREFIX: ""
-  APP_SECURE_COOKIES: "true"
+  # Secure flag on the CSRF cookie. "" = on when the gateway serves HTTPS (kubeflow-istio-resources.tls.source
+  # set), off on plain HTTP, where browsers drop Secure cookies; standalone, the app's default (on).
+  APP_SECURE_COOKIES: ""
 
 resources:
   requests:

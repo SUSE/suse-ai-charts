@@ -1,0 +1,7 @@
+# install-checks:
+# ============================================================================
+# FULL PRESET
+# The chart defaults: every Kubeflow component (runMe.sh installs this).
+# Empty on purpose; it exists so every preset is a file in presets/.
+# ============================================================================
+{}

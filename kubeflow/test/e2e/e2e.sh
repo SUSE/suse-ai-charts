@@ -25,8 +25,9 @@
 #   12. Gateway auth      — unauthenticated request denied, /dex allowlisted
 #
 # Ingress gateway login tests (opt-in, pass --include-gateway-tests). Both log in through Dex with
-# a username and password (E2E_DEX_USER / E2E_DEX_PASSWORD; default: the demo user), so they need
-# a Dex password login (static password), not an external OIDC connector:
+# a username and password (E2E_DEX_USER / E2E_DEX_PASSWORD; default: the initial user with the
+# chart-generated password, else the demo password), so they need a Dex password login (static
+# password), not an external OIDC connector:
 #   12b. KServe via gateway — 403 without per-model policy, 200 with it
 #   12c. Model Registry via gateway — owner 200 on own profile, 403 on another profile (needs a
 #        second profile with a registry, e.g. from user-namespace.additionalUsers; else skipped)
@@ -92,6 +93,14 @@ info()  { printf '      %s\n' "$*"; }
 pass() { green "$1"; ((PASS++)) || true; }
 fail() { red   "$1"; ((FAIL++)) || true; }
 
+# SeaweedFS keys the chart wrote (generated unless set or demo mode); demo values if unreadable.
+S3_AK=$(kubectl -n "$NS" get secret mlpipeline-minio-artifact -o jsonpath='{.data.accesskey}' 2>/dev/null | base64 -d 2>/dev/null)
+S3_SK=$(kubectl -n "$NS" get secret mlpipeline-minio-artifact -o jsonpath='{.data.secretkey}' 2>/dev/null | base64 -d 2>/dev/null)
+if [[ -z "$S3_AK" || -z "$S3_SK" ]]; then
+  info "Could not read Secret ${NS}/mlpipeline-minio-artifact; using the demo SeaweedFS keys (KServe uploads fail with InvalidAccessKeyId if they don't match)."
+  S3_AK=kubeflow S3_SK=kubeflow123
+fi
+
 # Poll a kubectl jsonpath until it equals an expected value (or times out).
 # Usage: wait_for_value <label> <timeout> <namespace> <resource> <jsonpath> <expected>
 wait_for_value() {
@@ -130,6 +139,8 @@ cleanup() {
   kubectl delete pvcviewer        e2e-pvcviewer-test   -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pod              e2e-pvc-binder       -n "$USER_NS" --ignore-not-found &>/dev/null || true
   kubectl delete pvc              e2e-test-pvc         -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete tensorboard      test-subpath-canary  -n "$USER_NS" --ignore-not-found &>/dev/null || true
+  kubectl delete pod              e2e-mr-controller-probe -n "$NS"   --ignore-not-found &>/dev/null || true
   # Test 12: gateway auth deny path
   kubectl delete pod              e2e-gw-auth-helper   -n "$NS"      --ignore-not-found &>/dev/null || true
   kubectl delete authorizationpolicy allow-e2e-sklearn -n "$USER_NS" --ignore-not-found &>/dev/null || true
@@ -356,8 +367,8 @@ with open('/tmp/model.pkl','wb') as f:
     pickle.dump(model, f)
 s3 = boto3.client('s3',
     endpoint_url='http://seaweedfs.kubeflow.svc.cluster.local:9000',
-    aws_access_key_id='kubeflow',
-    aws_secret_access_key='kubeflow123',
+    aws_access_key_id='${S3_AK}',
+    aws_secret_access_key='${S3_SK}',
     region_name='us-east-1')
 try:
     s3.create_bucket(Bucket='e2e-models')
@@ -402,8 +413,8 @@ metadata:
     serving.kserve.io/s3-useanoncredential: "false"
 type: Opaque
 stringData:
-  AWS_ACCESS_KEY_ID: kubeflow
-  AWS_SECRET_ACCESS_KEY: kubeflow123
+  AWS_ACCESS_KEY_ID: "${S3_AK}"
+  AWS_SECRET_ACCESS_KEY: "${S3_SK}"
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -540,8 +551,8 @@ spec:
       import os, boto3
       s3 = boto3.client('s3',
           endpoint_url='http://seaweedfs.kubeflow.svc.cluster.local:9000',
-          aws_access_key_id='kubeflow',
-          aws_secret_access_key='kubeflow123',
+          aws_access_key_id='${S3_AK}',
+          aws_secret_access_key='${S3_SK}',
           region_name='us-east-1')
       try:
           s3.create_bucket(Bucket='e2e-models')
@@ -595,8 +606,8 @@ metadata:
     serving.kserve.io/s3-useanoncredential: "false"
 type: Opaque
 stringData:
-  AWS_ACCESS_KEY_ID: kubeflow
-  AWS_SECRET_ACCESS_KEY: kubeflow123
+  AWS_ACCESS_KEY_ID: "${S3_AK}"
+  AWS_SECRET_ACCESS_KEY: "${S3_SK}"
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -1409,7 +1420,7 @@ import urllib.request, urllib.error, hashlib, hmac, datetime, os
 
 # ── minimal stdlib S3 client (avoids pip install in a no-egress cluster) ─────
 _EP = 'http://seaweedfs.kubeflow.svc.cluster.local:9000'
-_AK, _SK = 'kubeflow', 'kubeflow123'
+_AK, _SK = '${S3_AK}', '${S3_SK}'
 
 def _s3_put(bucket, key='', body=b''):
     host = _EP.split('//', 1)[1]
@@ -1514,8 +1525,8 @@ metadata:
     serving.kserve.io/s3-useanoncredential: "false"
 type: Opaque
 stringData:
-  AWS_ACCESS_KEY_ID: kubeflow
-  AWS_SECRET_ACCESS_KEY: kubeflow123
+  AWS_ACCESS_KEY_ID: "${S3_AK}"
+  AWS_SECRET_ACCESS_KEY: "${S3_SK}"
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -1885,6 +1896,10 @@ fi
 # has its own ALLOW policy, as upstream. Opt-in (--include-gateway-tests); E2E_DEX_USER/PASSWORD.
 if $INCLUDE_GATEWAY; then
 E2E_DEX_USER="${E2E_DEX_USER:-$KFP_USER}"
+# Default: the chart-generated password (only stored when generated) if logging in as that user.
+if [[ -z "${E2E_DEX_PASSWORD:-}" ]] && [[ "$(kubectl get secret kubeflow-initial-user -n "$NS" -o jsonpath='{.data.email}' 2>/dev/null | base64 -d 2>/dev/null)" == "$E2E_DEX_USER" ]]; then
+  E2E_DEX_PASSWORD=$(kubectl get secret kubeflow-initial-user -n "$NS" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null)
+fi
 E2E_DEX_PASSWORD="${E2E_DEX_PASSWORD:-12341234}"
 OIDC_CID=$(kubectl get secret kubeflow-oidc-client -n "$NS" -o jsonpath='{.data.client-id}' 2>/dev/null | base64 -d 2>/dev/null || true)
 OIDC_CSEC=$(kubectl get secret kubeflow-oidc-client -n "$NS" -o jsonpath='{.data.client-secret}' 2>/dev/null | base64 -d 2>/dev/null || true)

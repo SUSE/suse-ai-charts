@@ -66,8 +66,9 @@ See [Non-prod: Self-signed TLS](#non-prod-self-signed-tls) or
 ### Non-prod: NodePort access (zero config)
 
 No values override file is needed. Install with defaults and access via NodePort or port-forward (see
-[Accessing Kubeflow](#accessing-kubeflow)). Log in with the demo credentials from
-[Mode 1](../README.md#mode-1--automated-via-runmesh).
+[Accessing Kubeflow](#accessing-kubeflow)). Log in as `user@example.com` with the generated password
+(the install prints how to read it), or install with `demo-overrides.yaml` for the demo credentials
+from [Mode 1](../README.md#mode-1--automated-via-runmesh).
 
 ### Non-prod: Named hostname over HTTP
 
@@ -151,18 +152,12 @@ externaldns:
   provider:
     name: cloudflare
   cloudflare:
-    apiToken: "<YOUR-CLOUDFLARE-API-TOKEN>"  # chart creates the Secret automatically
+    apiToken: "<YOUR-CLOUDFLARE-API-TOKEN>"  # chart creates the Secret and passes it to external-dns
   domainFilters:
     - "example.com"
   txtOwnerId: "kubeflow"   # unique per cluster — prevents conflicts
   sources:
     - istio-gateway
-  env:
-    - name: CF_API_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: cloudflare-api-key
-          key: apiKey
 
 # ── Credentials — change ALL of these (see Production Hardening) ─────────────────
 auth:
@@ -226,7 +221,7 @@ Or manually (see [Mode 2](../README.md#mode-2--manual-helm-install-oci-recommend
 ```bash
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
-  --version 0.4.0 \
+  --version <chart-version> \
   -n kubeflow \
   --force-conflicts \
   --wait --timeout 15m \
@@ -526,3 +521,76 @@ cloudflare block, or the bundled oauth2-proxy disabled).
   still KServe's `{name}-{namespace}.{domain}` host over HTTP.
 
 </details>
+
+---
+
+## Ingress gateway authentication mode
+
+All browser traffic enters through the shared Istio ingress gateway, which enforces OIDC login via
+oauth2-proxy and Dex. The chart ships **two interchangeable implementations** of that gateway auth,
+selected by `global.oauth2Proxy.gatewayAuthMode`:
+
+| Mode | Value | How it works | When to use |
+|------|-------|--------------|-------------|
+| **Native** (default) | `native` | Upstream-parity Istio-native ext_authz: a `RequestAuthentication` (Dex JWT) plus two `AuthorizationPolicy` resources (a `CUSTOM` ext_authz to oauth2-proxy and a `DENY` require-jwt) on the ingress gateway. Requires istiod's MeshConfig to register the `oauth2-proxy` extension provider. | Default. Matches upstream Kubeflow; least custom Envoy config. |
+| **EnvoyFilter** (legacy) | `envoyfilter` | A single self-contained `EnvoyFilter` (Lua + ext_authz chain) on the gateway. Needs **no** istiod MeshConfig change. | BYO / managed Istio control plane whose MeshConfig you cannot modify. |
+
+The two modes are **mutually exclusive** — the chart renders exactly one set of resources, driven by
+`global.oauth2Proxy.gatewayAuthMode`. The only two-sided prerequisite is on the istio install: native
+mode needs the MeshConfig extension provider there. The `-f values-envoyfilter-authz.yaml` overlay (in the chart) just
+flips `gatewayAuthMode` to `envoyfilter`, which both renders the EnvoyFilter and drops the oauth2-proxy
+`/dex/` skip_auth_routes (the base config emits that skip only in native mode; in envoyfilter mode the
+EnvoyFilter's own Lua handles the /dex,/oauth2 skip, so oauth2-proxy must not also skip it).
+
+> **External IdP integration is independent of this choice.** Both modes authenticate
+> via oauth2-proxy → Dex, so federating to a corporate LDAP/OIDC/SAML provider through
+> `dex.config.connectors` works identically in either mode — the mode only changes how the
+> gateway *enforces* that a request is authenticated, not who issues the identity. See
+> [Production Hardening & Multi-tenancy](production-and-tenancy.md) for external IdP setup.
+
+**Selecting native (default) — nothing extra beyond Step 6's `-f istio-native-authz-values.yaml` in the [manual install](../README.md#mode-2--manual-helm-install-oci-recommended-for-production):**
+
+```bash
+# runMe.sh does this automatically. Manual install: pass the istiod extension-provider
+# values to the ISTIO install (Step 6), then install Kubeflow normally (Step 8).
+```
+
+**Selecting the legacy EnvoyFilter mode:**
+
+```bash
+# runMe.sh:
+./runMe.sh <appco-user> <appco-token> regcode <suse-ai-token> --legacy-authz
+
+# Manual install (README, Mode 2): skip -f istio-native-authz-values.yaml in Step 6, and add
+# the overlay to the Kubeflow install in Step 8:
+helm upgrade --install kubeflow oci://registry.suse.com/ai/charts/kubeflow ... \
+  -f kubeflow/values-envoyfilter-authz.yaml   # from the chart pulled in Step 1
+```
+
+> **Fail-closed guard:** in native mode the chart includes a `native-authz-guard` template that fails
+> the install fast (with remediation steps) if istiod's MeshConfig is missing the `oauth2-proxy`
+> extension provider — preventing a silent lockout of all ingress. The guard uses `lookup`, so it is
+> inert during `helm template` / `--dry-run` and only enforces on a live cluster.
+
+> **⚠ Limitation — cookie-less external KServe inference on the shared gateway is denied in native
+> mode.** The native `require-jwt` `DENY` policy selects the **shared** ingress gateway and denies any
+> request without a verified JWT request-principal on all paths except `/dex/*` and `/oauth2/*`. A
+> cookie-less external inference `POST` to a KServe `InferenceService` served on that same gateway
+> therefore gets a `403`. This is a **behavior change** versus the legacy EnvoyFilter mode, and native
+> is now the default. **KServe in-cluster traffic is unaffected** — it uses the dedicated cluster-local
+> gateway (`kserve-ingress-gateway`), not the shared ingress gateway. If you rely on external,
+> unauthenticated inference over the shared gateway, either use the dedicated KServe gateway / wildcard-
+> TLS path (see [External HTTPS for KServe inference](#external-https-for-kserve-inference-opt-in))
+> or select the legacy EnvoyFilter mode. Combining native authz with the KServe wildcard-TLS opt-in
+> must be scoped and verified first. See [Upgrade Notes](upgrade-notes.md).
+
+> **Path-normalization dependency.** The `/dex/*` and `/oauth2/*` exemptions on the native policies
+> rely on Istio's HTTP path normalization (`MeshConfig.pathNormalization`) to prevent evasion of the
+> `DENY` via encoded/duplicated slashes (e.g. `//dex/..%2f`). This posture is inherited from upstream
+> Kubeflow community-distribution; if your mesh disables slash normalization/merging, treat the
+> exemptions as a theoretical bypass surface and confirm your `pathNormalization` setting.
+
+The single source of truth for the gateway **identity** consumed by these resources is
+`global.istio.ingressGateway.{principal,selector}` (Rancher/AppCo Istio by default; override
+`selector.istio` to `ingressgateway` and `principal` to the upstream service account for upstream
+Istio).

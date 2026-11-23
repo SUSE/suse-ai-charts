@@ -2,6 +2,9 @@
 # runMe.sh uses it unless --no-istio-cni; on K3s also pass --set global.platform=k3s.
 cni:
   enabled: true
+  # Set the AppArmor profile through securityContext (Kubernetes >= 1.30) instead of the
+  # deprecated container.apparmor.security.beta.kubernetes.io annotation.
+  useAppArmorAnnotation: false
 istiod:
   pilot:
     cni:

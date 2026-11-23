@@ -170,7 +170,7 @@
             },
             "passwordHash": {
               "type": "string",
-              "description": "bcrypt hash of the default user password"
+              "description": "bcrypt hash of the initial Dex user's password; \"\" generates a password on first install"
             }
           }
         }
@@ -567,7 +567,12 @@
       "type": "object",
       "description": "kubeflow-istio-resources sub-chart (Gateways, VirtualServices, AuthorizationPolicies). Requires Istio CRDs.",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "externalAuth": {
+          "type": "boolean",
+          "default": false,
+          "description": "true: an auth layer this chart doesn't manage protects the gateway and sets kubeflow-userid, so global.oauth2Proxy.enabled=false is allowed."
+        }
       }
     },
     "kubeflowRoles": {
@@ -686,13 +691,13 @@
         }
       }
     },
-    "externalDns": {
+    "externaldns": {
       "type": "object",
-      "description": "Optional external-dns deployment for automatic DNS record management",
+      "description": "The bundled external-dns sub-chart (alias externaldns). Other external-dns chart settings pass through unchecked.",
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Deploy external-dns to manage DNS records for kubeflow-istio-resources.hostname"
+          "description": "Deploy the bundled external-dns. For the gateway's hostname record also set kubeflow-istio-resources.externalDNSEnabled."
         },
         "provider": {
           "type": "object",
@@ -720,14 +725,72 @@
           "properties": {
             "apiToken": {
               "type": "string",
-              "description": "Cloudflare API token. Chart creates a lookup-idempotent cloudflare-api-token Secret and auto-wires CF_API_TOKEN into external-dns."
+              "description": "Cloudflare API token. The chart stores it in the cloudflare-api-token Secret, which the default env passes to external-dns as CF_API_TOKEN."
             }
           }
         },
         "env": {
           "type": "array",
-          "description": "Advanced: extra provider env vars appended after auto-wired vars"
+          "description": "Provider credentials as env vars. Replaces the default (CF_API_TOKEN from cloudflare-api-token); keep a CF_API_TOKEN entry when cloudflare.apiToken is set.",
+          "items": { "type": "object", "required": ["name"] }
         }
+      }
+    },
+    "externalSecrets": {
+      "type": "object",
+      "description": "Copy registry pull secrets into Profile namespaces (and extraNamespaces) with the External Secrets Operator. Unknown keys are rejected, so typos fail the install.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Render the ClusterSecretStore and ClusterExternalSecrets (needs the External Secrets Operator API)." },
+        "imagePullSecrets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sourceNamespace": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63, "description": "Namespace holding the source pull secrets." },
+            "secrets": {
+              "type": "array",
+              "description": "Pull secrets to copy, by name.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": { "name": { "type": "string", "minLength": 1 } }
+              }
+            }
+          }
+        },
+        "namespaceSelector": {
+          "type": ["object", "null"],
+          "description": "Label selector for target namespaces; empty or null = only extraNamespaces.",
+          "additionalProperties": false,
+          "properties": {
+            "matchLabels": {
+              "type": ["object", "null"],
+              "description": "Set a label to null to drop it from the chart default.",
+              "additionalProperties": { "type": ["string", "null"] }
+            },
+            "matchExpressions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["key", "operator"],
+                "properties": {
+                  "key":      { "type": "string" },
+                  "operator": { "enum": ["In", "NotIn", "Exists", "DoesNotExist"] },
+                  "values":   { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "extraNamespaces": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Also copy the pull secrets into these namespaces, by name.",
+          "items": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63 }
+        },
+        "refreshInterval": { "type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$", "description": "How often ESO re-syncs the copies (Go duration, e.g. 1h)." }
       }
     }
   }

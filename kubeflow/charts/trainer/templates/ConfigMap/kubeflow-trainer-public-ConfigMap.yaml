@@ -1,0 +1,12 @@
+{{- /* From upstream Trainer: the Kubeflow SDK's TrainerClient reads it to check the control plane is
+       installed. Readable by every authenticated user (Role/RoleBinding kubeflow-trainer-public). The SDK
+       looks in kubeflow-system by default; set KUBEFLOW_SYSTEM_NAMESPACE=kubeflow. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeflow-trainer-public
+  namespace: kubeflow
+  labels:
+    {{- include "trainer.labels" . | nindent 4 }}
+data:
+  kubeflow_trainer_version: {{ .Chart.AppVersion | quote }}

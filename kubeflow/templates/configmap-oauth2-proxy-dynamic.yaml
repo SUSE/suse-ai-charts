@@ -1,5 +1,8 @@
 {{- if .Values.global.oauth2Proxy.enabled }}
 {{- $tlsSource := include "kubeflow.tlsSource" . }}
+{{- /* The session cookie (oauth2-proxy) and the web apps' CSRF cookie are Secure exactly when the
+       gateway serves HTTPS: browsers drop Secure cookies on plain HTTP. */}}
+{{- $secure := ternary "true" "false" (or .Values.global.kserveExternalHttps (ne $tlsSource "")) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,5 +12,7 @@ metadata:
     app.kubernetes.io/name: oauth2-proxy
     app.kubernetes.io/component: oauth2-proxy
 data:
-  cookie-secure: {{ if or .Values.global.kserveExternalHttps (ne $tlsSource "") }}"true"{{ else }}"false"{{ end }}
+  cookie-secure: {{ $secure | quote }}
+  # Read by the Jupyter, Volumes and TensorBoards web apps (APP_SECURE_COOKIES).
+  app-secure-cookies: {{ $secure | quote }}
 {{- end }}

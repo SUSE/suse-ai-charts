@@ -1,0 +1,122 @@
+# Component registry: what each Kubeflow component needs. One entry per dependency condition in
+# Chart.yaml. Read by templates/_helpers.tpl (kubeflow.components); the dependency checks
+# (validations.yaml), the preflight cert-manager and Istio CNI checks, NOTES and install.sh derive
+# from it. CI (test/ci/check_component_registry.py) checks every Chart.yaml condition has an entry
+# and that what each component renders matches what it declares.
+#
+#   toggle            values path of the switch (enabledBy: helper that decides instead, with a label)
+#   addon             adds no Kubeflow component (monitoring, ESO, ...); presets leave it at its default
+#   istio             renders Istio resources, creates them at runtime or routes through the gateway
+#   istioOptional     condition under which it doesn't need Istio (istioHint: how to say so)
+#   certManager       renders cert-manager Issuers/Certificates
+#   profileNamespaces creates profile namespaces (Pod Security baseline when global.istio.cni=true)
+#   requires          other components (component) or capabilities (capability: login) it needs,
+#                     optionally only when a value matches (when: {path, default, equals}) or a
+#                     helper returns "true" (when: {helper, label}), with the reason (why)
+#
+# Helpers named here (enabledBy, when.helper) may read only .Values: install.sh and CI evaluate the
+# registry in a probe chart made of this file, templates/_helpers.tpl and values.yaml (no sub-charts).
+# Quote a value that contains ": ".
+admissionWebhook: {toggle: admissionWebhook.enabled, certManager: true}
+centralDashboard:
+  toggle: centralDashboard.enabled
+  istio: true
+  requires:
+    - component: profiles
+      why: the dashboard lists a user's namespaces through KFAM and the Profiles controller.
+certManagerInstall: {toggle: certManager.install, addon: true}
+dex: {toggle: dex.enabled, istio: true}
+externalDns: {toggle: externaldns.enabled, addon: true}
+externalSecretsOperator: {toggle: externalSecretsOperator.enabled, addon: true}
+hub:
+  toggle: hub.enabled
+  istio: true
+  requires:
+    - component: pipelines
+      when: {path: global.modelRegistry.mode, equals: shared}
+      why: the shared Kubeflow Hub registry uses KFP's MariaDB and mysql-secret. Use global.modelRegistry.mode=perProfile (each profile gets its own Postgres) or enable pipelines.
+istioResources:
+  toggle: istioResources.enabled
+  requires:
+    - capability: login
+      why: the kubeflow-gateway would serve the Central Dashboard and every app without login, and any client could set the kubeflow-userid header to act as any user. Enable global.oauth2Proxy (and Dex), or, if an auth layer this chart does not manage protects the gateway and sets kubeflow-userid, set istioResources.externalAuth=true.
+katib: {toggle: katib.enabled, istio: true, certManager: true}
+knativeEventing: {toggle: knativeEventing.enabled}
+knativeServing: {toggle: knativeServing.enabled, istio: true}
+kserve:
+  toggle: kserve.enabled
+  istio: true
+  certManager: true
+  requires:
+    - component: knativeServing
+      when: {helper: kubeflow.kserveKnativeMode, label: "KServe's default deployment mode is Knative (Serverless)"}
+      why: 'InferenceServices then run as Knative Services. Enable knativeServing, or set kserve.inferenceServiceConfig.deploy to {"defaultDeploymentMode": "Standard"} for plain Deployments.'
+kubeflowRoles: {toggle: kubeflowRoles.enabled}
+modelRegistryData:
+  enabledBy: kubeflow.modelRegistryDataPlane
+  label: the per-profile Model Registry (global.modelRegistry.mode=perProfile with userNamespace.enabled=true)
+  requires:
+    - component: hub
+      why: user-namespace cannot see hub.enabled, so also set user-namespace.modelRegistry.enabled=false (or userNamespace.enabled=false) — otherwise per-profile Model Registry servers would be deployed with no Model Registry UI/control plane.
+monitoring: {toggle: monitoring.enabled, addon: true}
+networkPolicies:
+  toggle: networkPolicies.enabled
+  addon: true
+  requires:
+    - component: knativeServing
+      when: {path: network-policies.knativeServingPolicies.enabled, default: "true", equals: "true"}
+      why: the network-policies sub-chart would render NetworkPolicies into the knative-serving namespace, which does not exist without Knative. Set network-policies.knativeServingPolicies.enabled=false.
+notebookController:
+  toggle: notebooks.controller.enabled
+  istio: true
+  istioOptional: {path: notebook-controller.configMapData.USE_ISTIO, default: "true", equals: "false"}
+  istioHint: notebooks.controller.enabled (or set notebook-controller.configMapData.USE_ISTIO="false")
+notebookWebApp:
+  toggle: notebooks.webApp.enabled
+  istio: true
+  requires:
+    - component: profiles
+      why: the notebook UI creates notebooks in profile namespaces and authorizes each request against the user's RBAC there, which the Profiles controller sets up.
+oauth2Proxy:
+  toggle: global.oauth2Proxy.enabled
+  istio: true
+  requires:
+    - component: dex
+      when: {path: auth.oidc.existingSecret, default: "false", equals: "false"}
+      why: oauth2-proxy's OIDC client (kubeflow-oidc-authservice) is registered with Dex. To log in with an external OIDC issuer instead, keep Dex and add it as a connector (dex.config.connectors), or set auth.oidc.existingSecret=true with that issuer's client credentials and point oauth2-proxy's oidc_issuer_url at it.
+pipelines:
+  toggle: pipelines.enabled
+  istio: true
+  certManager: true
+  requires:
+    - component: profiles
+      why: multi-user Pipelines runs in profile namespaces; the KFP profile controller sets them up when the Profiles controller creates them.
+profiles:
+  toggle: profiles.enabled
+  istio: true
+  profileNamespaces: true
+  requires:
+    - component: kubeflowRoles
+      why: the Profiles controller and KFAM bind the kubeflow-admin, kubeflow-edit and kubeflow-view ClusterRoles, which the kubeflow-roles sub-chart creates. Without them, Profile owners and contributors get no permissions. Set kubeflowRoles.enabled=true or disable profiles.
+tensorboardController: {toggle: tensorboard.controller.enabled, istio: true}
+tensorboardWebApp:
+  toggle: tensorboard.webApp.enabled
+  istio: true
+  requires:
+    - component: profiles
+      why: the TensorBoard UI creates TensorBoards in profile namespaces and authorizes each request against the user's RBAC there, which the Profiles controller sets up.
+trainer: {toggle: trainer.enabled}
+trainingOperator: {toggle: trainingOperator.enabled}
+userNamespace:
+  toggle: userNamespace.enabled
+  profileNamespaces: true
+  requires:
+    - component: profiles
+      why: the user-namespace sub-chart creates Profile CRs, and the Profile CRD ships with profiles-and-kfam. Set userNamespace.enabled=false or enable profiles.
+volumesWebApp:
+  toggle: volumesWebApp.enabled
+  istio: true
+  certManager: true
+  requires:
+    - component: profiles
+      why: the Volumes UI manages PVCs in profile namespaces and authorizes each request against the user's RBAC there, which the Profiles controller sets up.

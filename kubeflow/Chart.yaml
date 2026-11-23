@@ -2,7 +2,7 @@ apiVersion: v2
 name: kubeflow
 description: Kubeflow ML Platform - End-to-end Machine Learning on Kubernetes
 type: application
-version: "0.6.0"
+version: "0.7.0"
 appVersion: "26.03.1"
 kubeVersion: ">=1.35.0-0"
 
@@ -87,7 +87,7 @@ dependencies:
     condition: global.oauth2Proxy.enabled
 
   - name: kubeflow-istio-resources
-    version: "0.2.3"
+    version: "0.2.4"
     repository: "file://./charts/kubeflow-istio-resources"
     condition: istioResources.enabled
 
@@ -102,7 +102,7 @@ dependencies:
     condition: centralDashboard.enabled
 
   - name: kubeflow-pipelines
-    version: "0.2.8"
+    version: "0.2.9"
     repository: "file://./charts/kubeflow-pipelines"
     alias: pipelines
     condition: pipelines.enabled
@@ -113,7 +113,7 @@ dependencies:
     condition: notebooks.controller.enabled
 
   - name: jupyter-web-app
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/jupyter-web-app"
     condition: notebooks.webApp.enabled
 
@@ -133,7 +133,7 @@ dependencies:
     condition: trainingOperator.enabled
 
   - name: trainer
-    version: "0.2.2"
+    version: "0.2.4"
     repository: "file://./charts/trainer"
     condition: trainer.enabled
 
@@ -143,7 +143,7 @@ dependencies:
     condition: profiles.enabled
 
   - name: volumes-web-app
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/volumes-web-app"
     condition: volumesWebApp.enabled
 
@@ -158,7 +158,7 @@ dependencies:
     condition: tensorboard.controller.enabled
 
   - name: tensorboards-web-app
-    version: "0.2.1"
+    version: "0.2.2"
     repository: "file://./charts/tensorboards-web-app"
     condition: tensorboard.webApp.enabled
 
@@ -181,7 +181,7 @@ dependencies:
     condition: hub.enabled
 
   - name: user-namespace
-    version: "0.2.3"
+    version: "0.2.4"
     repository: "file://./charts/user-namespace"
     condition: userNamespace.enabled
 

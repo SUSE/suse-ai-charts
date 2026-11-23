@@ -1,0 +1,121 @@
+{{- /* The release's Profiles (example profile, additionalUsers) exist only with userNamespace and profiles. */}}
+{{- if and .Values.profiles.enabled .Values.userNamespace.enabled }}
+# Pre-delete hook: delete this release's Profiles while the Profiles controller still runs. Uninstall
+# otherwise deletes the controller and the Profiles together, and the Profiles stay Terminating on
+# the controller's profile-finalizer. Slow Profiles don't fail the uninstall: after 2.5 minutes it
+# warns and lets Helm continue. The wait and the 240s deadline stay inside helm's default --timeout
+# (5m), which applies to each hook; if the Job can't run at all, see the README's Uninstall section.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: profiles-cleanup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-profiles-cleanup
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: [kubeflow.org]
+  resources: [profiles]
+  verbs: [get, list, watch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-profiles-cleanup
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-profiles-cleanup
+subjects:
+- kind: ServiceAccount
+  name: profiles-cleanup
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: profiles-cleanup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 240
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+    spec:
+      serviceAccountName: profiles-cleanup
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "kubeflow.imagePullSecrets" . | nindent 6 }}
+      containers:
+      - name: cleanup
+        image: "{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.preflightChecks.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.preflightChecks.image.repository }}{{- if .Values.preflightChecks.image.digest }}@{{ .Values.preflightChecks.image.digest }}{{- else }}:{{ .Values.preflightChecks.image.tag }}{{- end }}"
+        imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
+        {{- with .Values.preflightChecks.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
+        env:
+        - name: RELEASE
+          value: {{ .Release.Name | quote }}
+        - name: SERVICE
+          value: {{ .Release.Service | quote }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # user-namespace labels the release's Profiles with these.
+          SELECTOR="app.kubernetes.io/managed-by=$SERVICE,app.kubernetes.io/instance=$RELEASE"
+          NAMES=$(kubectl get profiles.kubeflow.org -l "$SELECTOR" -o name) || {
+            echo "Could not list Profiles; skipping."; exit 0; }
+          if [ -z "$NAMES" ]; then echo "No Profiles of release $RELEASE."; exit 0; fi
+          echo "Deleting Profiles of release $RELEASE:" $NAMES
+          kubectl delete profiles.kubeflow.org -l "$SELECTOR" --wait=false || true
+          if kubectl wait --for=delete profiles.kubeflow.org -l "$SELECTOR" --timeout=150s; then
+            echo "Profiles deleted."
+          else
+            echo "WARNING: Profiles still exist after 2.5 minutes; uninstall continues. If they stay"
+            echo "Terminating, see the README's Uninstall section."
+          fi
+{{- end }}

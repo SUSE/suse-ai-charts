@@ -3,6 +3,10 @@ apiVersion: kubeflow.org/v1beta1
 kind: Profile
 metadata:
   name: {{ .Values.profile.name }}
+  labels:
+    # The umbrella's pre-delete hook selects the release's Profiles by these.
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   owner:
     kind: {{ .Values.profile.owner.kind }}

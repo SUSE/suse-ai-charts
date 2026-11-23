@@ -86,8 +86,10 @@ seaweedfs:
   # S3 credentials — must match the IAM user SeaweedFS registers at startup.
   # These values are written into the 'mlpipeline-minio-artifact' Secret and
   # consumed by all KFP components and the SeaweedFS postStart hook.
-  accessKey: kubeflow      # DEMO DEFAULT
-  secretKey: kubeflow123   # DEMO DEFAULT
+  # "" generates a random value on first install and keeps it on upgrade; with global.demoMode=true
+  # it means kubeflow / kubeflow123.
+  accessKey: ""
+  secretKey: ""
   # existingSecret: if set, the chart will NOT create the mlpipeline-minio-artifact
   # Secret from accessKey/secretKey above. You must pre-create a Secret named
   # 'mlpipeline-minio-artifact' (name is hardcoded by KFP upstream) with keys:
