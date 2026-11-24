@@ -31,9 +31,10 @@ user-namespace:
     enabled: false   # per-profile registries need hub; with hub.enabled=true set this to null
 
 # No KServe or Knative Serving, so no KServe inference gateway either.
-kubeflow-istio-resources:
-  kserveGateway:
-    enabled: false
+global:
+  kserve:
+    gateway:
+      enabled: false
 
 # Dashboard menu: only what this preset installs.
 central-dashboard:

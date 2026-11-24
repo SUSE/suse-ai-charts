@@ -1,5 +1,5 @@
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- $tls := $kir.tls | default dict }}
+{{- $g := .Values.global | default dict }}
+{{- $tls := $g.tls | default dict }}
 {{- $tlsSource := include "kubeflow.tlsSource" . }}
 {{- if eq $tlsSource "selfSigned" }}
 apiVersion: cert-manager.io/v1

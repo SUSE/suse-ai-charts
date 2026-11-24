@@ -7,7 +7,7 @@ dependencies:
   version: 0.1.0
 - name: knative-serving
   repository: file://./charts/knative-serving
-  version: 0.2.4
+  version: 0.2.5
 - name: knative-eventing
   repository: file://./charts/knative-eventing
   version: 0.2.2
@@ -40,7 +40,7 @@ dependencies:
   version: 0.2.1
 - name: kserve
   repository: file://./charts/kserve
-  version: 0.2.5
+  version: 0.2.6
 - name: training-operator
   repository: file://./charts/training-operator
   version: 0.3.0
@@ -86,5 +86,5 @@ dependencies:
 - name: external-dns
   repository: oci://dp.apps.rancher.io/charts
   version: 1.21.1
-digest: sha256:05b22320cd992c39c66e44a9bd7de51a442b9b427fdb33868ee715d2b9e28c28
-generated: "2026-11-23T21:10:00.000000000Z"
+digest: sha256:315041a326416bfe503458a102954af3f025b453845b6a471299cb8bef069334
+generated: "2026-11-23T23:00:00.000000000Z"

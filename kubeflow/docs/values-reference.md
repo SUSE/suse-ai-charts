@@ -19,10 +19,9 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `global.suseApplicationCollectionRegistry` | `"dp.apps.rancher.io"` | Override for SUSE Application Collection images only (`dp.apps.rancher.io/*`); use for mirror registries |
 | `global.labels` | `{}` | Common labels applied to all managed resources |
 | `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
-| `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer. Disabling it removes the gateway's ext_authz auth chain, so the install fails unless `istioResources.externalAuth: true`, and it is **incompatible with `global.kserveExternalHttps: true`** (the chart fails fast on that combination — see [External HTTPS for KServe inference](access-and-tls.md#external-https-for-kserve-inference-opt-in)) |
+| `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer. Disabling it removes the gateway's ext_authz auth chain, so the install fails unless `istioResources.externalAuth: true`, and it is **incompatible with `global.kserve.externalHttps: true`** (the chart fails fast on that combination — see [External HTTPS for KServe inference](access-and-tls.md#external-https-for-kserve-inference-opt-in)) |
 | `global.istio.cni` | `true` | Set to match how Istio is installed: `true` with istio-cni (profile namespaces enforce Pod Security `baseline`), `false` for classic `istio-init`. See [Pod Security Standards on profile namespaces](production-and-tenancy.md#9-pod-security-standards-on-profile-namespaces) |
-| `global.gateway.name` | `kubeflow/kubeflow-gateway` | Istio Gateway (`<namespace>/<name>`) for the dashboard and app VirtualServices. KServe inference does **not** use this — it uses `global.kserveGateway.name` |
-| `global.kserveGateway.name` | `kubeflow/kserve-ingress-gateway` | Single source of truth for the **dedicated** KServe inference gateway (`<namespace>/<name>`). Threads through the Gateway CR that `kubeflow-istio-resources` renders, the `config-istio` `gateway.<ns>.<name>` key net-istio binds inference to, and kserve's `inferenceservice-config` `ingressGateway`. Keeps inference readiness independent of the dashboard's `:443` TLS |
+| `global.gateway.name` | `kubeflow/kubeflow-gateway` | Istio Gateway (`<namespace>/<name>`) for the dashboard and app VirtualServices. KServe inference uses `global.kserve.gateway.name` |
 
 ## Credentials
 
@@ -145,14 +144,21 @@ kill $PF
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `kubeflow-istio-resources.hostname` | `""` | Kubeflow FQDN; empty = wildcard (all hosts) |
-| `kubeflow-istio-resources.externalDNSEnabled` | `false` | Annotate Istio Gateway for external-dns |
-| `kubeflow-istio-resources.kserveGateway.enabled` | `true` | The KServe inference gateway (`kserve-ingress-gateway`); `false` only without KServe and Knative Serving (the notebooks-trainer preset sets it) |
-| `kubeflow-istio-resources.tls.source` | `""` | Dashboard TLS source (`""` \| `selfSigned` \| `letsEncrypt` \| `secret` \| `issuerRef`). |
-| `kubeflow-istio-resources.tls.letsEncrypt.email` | `""` | ACME account email — optional (recommended) for letsEncrypt; Let's Encrypt issues without it, omitted from the ClusterIssuer when empty |
-| `kubeflow-istio-resources.tls.letsEncrypt.server` | `prod` | `prod` \| `staging` |
-| `kubeflow-istio-resources.tls.letsEncrypt.solver` | `cloudflare` | `cloudflare` (DNS-01) \| `http01` |
-| `global.kserveExternalHttps` | `false` | Opt in to external HTTPS for KServe inference: adds a `*.<global.kserveDomain>` `:443` server (plus a `:80`→`:443` redirect) to the **dedicated** `kserve-ingress-gateway` (`global.kserveGateway.name`) using a dedicated `kserve-wildcard-tls` cert, and flattens the Knative route host to the single label `{name}-{namespace}.{domain}`. Requires a DNS-01 solver, `global.kserveDomain`, and `global.oauth2Proxy.enabled: true` (without gateway auth the wildcard would expose every tenant's inference endpoint unauthenticated — the chart fails fast). Default (`false`) keeps inference on plain `:80` on the dedicated gateway |
+| `global.gateway.hostname` | `""` | Dashboard FQDN; `""` = wildcard listener (IP / NodePort access). No `*`, no bare top-level domain |
+| `global.gateway.externalDNS` | `false` | Annotate `kubeflow-gateway` so an external-dns (bundled or existing) publishes a record for the hostname |
+| `global.tls.source` | `""` | Gateway TLS: `""` (plain HTTP) \| `selfSigned` \| `letsEncrypt` \| `issuerRef` \| `secret` \| `edge` (TLS terminated in front of the gateway: plain HTTP, no redirect, `Secure` cookies). See [Accessing & TLS](access-and-tls.md) |
+| `global.tls.secretName` | `kubeflow-gateway-tls` | TLS Secret in `istio-system`: written by the chart's Certificate (selfSigned, letsEncrypt, issuerRef) or yours (secret) |
+| `global.tls.issuerRef` | `{}` | Your cert-manager issuer for `source: issuerRef`: `{name, kind}` (`kind` defaults to `ClusterIssuer`) |
+| `global.tls.httpsRedirect` | `true` | Redirect the dashboard host's `:80` to `:443` (gateway TLS sources; never with `edge`) |
+| `global.tls.letsEncrypt.email` | `""` | ACME account email — optional (recommended); omitted from the ClusterIssuer when empty |
+| `global.tls.letsEncrypt.server` | `prod` | `prod` \| `staging` |
+| `global.tls.letsEncrypt.solver` | `cloudflare` | `cloudflare` (DNS-01) \| `http01` (no wildcards) |
+| `global.tls.letsEncrypt.cloudflare` | `{}` | Cloudflare DNS-01 solver: `{email, apiTokenSecretRef: {name, key}}`; the token Secret must be in cert-manager's namespace |
+| `global.kserve.domain` | `""` | Root domain for KServe InferenceService ingress — the **enforced single source of truth** and the recommended single place to set the inference domain. When set, it overrides and auto-wires the legacy `knativeServing.domain` / `kserve.ingressDomain`. Setting those subchart keys alone (without `global.kserve.domain`) **fails fast** — they feed the Knative/KServe configs but not the dedicated `kserve-ingress-gateway`'s hosts, so the chart rejects the divergence rather than silently stranding inference at `READY=Unknown`. Empty = the whole stack stays on `example.com` (the subchart-local defaults). With `global.kserve.externalHttps: true` it is also the wildcard cert/gateway base and is **required** |
+| `global.kserve.externalHttps` | `false` | Opt in to external HTTPS for KServe inference: adds a `*.<global.kserve.domain>` `:443` server (plus a `:80`→`:443` redirect) to the **dedicated** inference gateway using a dedicated wildcard cert, and flattens the Knative route host to the single label `{name}-{namespace}.{domain}`. Requires `global.kserve.domain`, `global.gateway.hostname`, a gateway TLS source (not `edge`; DNS-01 with Let's Encrypt) and `global.oauth2Proxy.enabled: true` (without gateway auth the wildcard would expose every tenant's inference endpoint unauthenticated; the chart fails fast). Default (`false`) keeps inference on plain `:80` |
+| `global.kserve.gateway.name` | `kubeflow/kserve-ingress-gateway` | The **dedicated** inference gateway (`<namespace>/<name>`), shared by the Gateway CR, `config-istio` and kserve's `inferenceservice-config`; keeps inference readiness independent of the dashboard's TLS |
+| `global.kserve.gateway.enabled` | `true` | Render the inference gateway; `false` only without KServe and Knative Serving (the notebooks-trainer preset sets it) |
+| `global.kserve.tls.secretName` | `""` | Wildcard TLS Secret in `istio-system`; `""` = `kserve-wildcard-tls` from cert-manager. **Required** with `global.tls.source: secret` (a Secret whose SAN covers `*.<global.kserve.domain>`) |
 | `externaldns.enabled` | `false` | Deploy external-dns |
 | `externaldns.cloudflare.apiToken` | `""` | Cloudflare API token; the chart stores it in the `cloudflare-api-token` Secret, read by the default `externaldns.env` |
 | `externaldns.domainFilters` | `[]` | Restrict DNS management to these domains |
@@ -162,7 +168,6 @@ kill $PF
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `global.kserveDomain` | `""` | Root domain for KServe InferenceService ingress — the **enforced single source of truth** and the recommended single place to set the inference domain. When set, it overrides and auto-wires the legacy `knativeServing.domain` / `kserve.ingressDomain`. Setting those subchart keys alone (without `global.kserveDomain`) **fails fast** — they feed the Knative/KServe configs but not the dedicated `kserve-ingress-gateway`'s hosts, so the chart rejects the divergence rather than silently stranding inference at `READY=Unknown`. Empty = the whole stack stays on `example.com` (the subchart-local defaults). With `global.kserveExternalHttps: true` it is also the wildcard cert/gateway base and is **required** |
 | `dex.existingOidcClientSecret` | `""` | Not read by this chart. To supply the OIDC credentials yourself, set `auth.oidc.existingSecret: true` |
 | `dex.resources` | `{requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}` | CPU/memory for the Dex container |
 

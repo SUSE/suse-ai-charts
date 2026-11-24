@@ -158,8 +158,48 @@ global:
     #                 (or runMe.sh --legacy-authz).
     gatewayAuthMode: native
 
+  # Dashboard gateway (kubeflow-gateway).
   gateway:
     name: "kubeflow/kubeflow-gateway"
+    # Dashboard FQDN (e.g. kubeflow.example.com). "" = wildcard listener for IP / NodePort access.
+    # Independent of TLS: a named hostname works over plain HTTP.
+    hostname: ""
+    # Annotate kubeflow-gateway so an external-dns (the bundled one, externaldns.enabled, or one already
+    # in the cluster) publishes a record for hostname. No effect without hostname.
+    externalDNS: false
+
+  # Gateway TLS. source:
+  #   ""          plain HTTP (default)
+  #   selfSigned  cert-manager self-signed Issuer (created by the chart)
+  #   letsEncrypt cert-manager Let's Encrypt ClusterIssuer (created by the chart; see letsEncrypt below)
+  #   issuerRef   your existing cert-manager issuer (issuerRef below)
+  #   secret      your TLS Secret in istio-system (secretName)
+  #   edge        TLS terminated in front of the gateway (load balancer, proxy): the gateway serves plain
+  #               HTTP and never redirects; cookies are marked Secure and URLs use https.
+  tls:
+    source: ""
+    # TLS Secret in istio-system: written by the chart's Certificate (selfSigned, letsEncrypt, issuerRef),
+    # or yours (secret).
+    secretName: kubeflow-gateway-tls
+    # source issuerRef: {name: <issuer>, kind: ClusterIssuer | Issuer (default ClusterIssuer)}
+    issuerRef: {}
+    # Redirect the dashboard host's :80 to :443 (gateway TLS sources; never with edge).
+    httpsRedirect: true
+    letsEncrypt:
+      email: ""             # optional (recommended): ACME account email for expiry notices
+      server: prod          # prod | staging
+      solver: cloudflare    # cloudflare (DNS-01, needs cloudflare below) | http01 (no wildcards)
+      # Cloudflare DNS-01 solver. The apiTokenSecretRef Secret must exist in cert-manager's own namespace
+      # (typically cert-manager): a ClusterIssuer resolves solver secretRefs there, so the chart's
+      # cloudflare-api-token Secret (externaldns.cloudflare.apiToken) can't be used. Token scope:
+      # Zone > DNS > Edit (plus Zone > Zone > Read) on the zones of the dashboard host and kserve.domain
+      # only, not "All zones". Required with kserve.externalHttps and solver cloudflare.
+      cloudflare: {}
+      # cloudflare:
+      #   email: your-email@example.com
+      #   apiTokenSecretRef:
+      #     name: cloudflare-api-token-secret
+      #     key: api-token
 
 
   # Model Registry layout: perProfile (one registry per profile namespace, as upstream) or shared
@@ -198,43 +238,30 @@ global:
       selector:
         istio: istio
 
-  # Dedicated Istio Gateway ("<namespace>/<name>") for KServe/Knative inference.
-  # Single source of truth consumed by three subcharts:
-  #   - kubeflow-istio-resources renders the Gateway of this name/namespace
-  #   - knative-serving  config-istio       key "gateway.<namespace>.<name>"
-  #   - kserve           inferenceservice-config "ingressGateway"
-  # Kept separate from global.gateway.name (the dashboard gateway) so the Knative
-  # net-istio readiness prober only ever probes this gateway's ports, independent
-  # of the dashboard's :443 TLS. Use the "<namespace>/<name>" slash form.
-  kserveGateway:
-    name: "kubeflow/kserve-ingress-gateway"
-
-  # Base domain for KServe InferenceServices. Prefer a scoped subdomain
-  # (e.g. "models.example.com") over a bare org-wide domain ("example.com"):
-  # with kserveExternalHttps the cert is a "*.<kserveDomain>" wildcard, so a bare
-  # domain widens its blast radius to your whole DNS zone.
-  # Pushed automatically to knative-serving and kserve subcharts.
-  # Empty (default) = the whole stack uses "example.com" (knativeServing.domain and
-  # kserve.ingressDomain also default to "example.com"), which the dedicated
-  # kserve-ingress-gateway serves as "*.example.com".
-  # This is the SINGLE source of truth for the inference domain. To override the
-  # domain you MUST set it here — the legacy subchart-local knobs
-  # (knativeServing.domain / kserve.ingressDomain) alone are no longer sufficient:
-  # they feed the Knative/KServe configs but NOT the dedicated gateway's hosts, so
-  # setting them without global.kserveDomain diverges the gateway from the routes and
-  # breaks inference readiness. The umbrella validations.yaml fails fast on that
-  # combination. REQUIRED when global.kserveExternalHttps is true.
-  kserveDomain: ""
-
-  # Enable external HTTPS to KServe inference on the dedicated kserve-ingress-gateway
-  # (global.kserveGateway.name), separate from the dashboard's kubeflow-gateway.
-  # When true, creates a wildcard cert (*.kserveDomain) and exposes it on :443.
-  # Requires a DNS-01 solver. Flattens the route host to the single label
-  # "{name}-{namespace}.{domain}" so the wildcard covers it. Knative/KServe render
-  # this with Go's stdlib text/template (no Sprig), so the namespace cannot be
-  # hashed — see docs/access-and-tls.md (External HTTPS for KServe inference) for the
-  # cross-tenant naming caveat this implies.
-  kserveExternalHttps: false
+  # KServe inference exposure.
+  kserve:
+    # Base domain for InferenceServices; pushed to knative-serving and kserve. Prefer a scoped subdomain
+    # (e.g. models.example.com): with externalHttps the cert is a "*.<domain>" wildcard, so a bare domain
+    # widens its blast radius to your whole DNS zone. "" = example.com across the stack. The single source
+    # of truth: knativeServing.domain / kserve.ingressDomain alone don't reach the inference gateway, and
+    # the chart refuses setting them without this. Required with externalHttps.
+    domain: ""
+    # Inference over HTTPS on the dedicated inference gateway: a "*.<domain>" wildcard cert on :443, and
+    # route hosts flattened to the single label "{name}-{namespace}.<domain>" so the wildcard covers them
+    # (no hashing: Knative/KServe render with Go's text/template; see docs/access-and-tls.md for the
+    # cross-tenant naming caveat). Needs a gateway TLS source (not edge) and, with Let's Encrypt, DNS-01.
+    externalHttps: false
+    # Dedicated inference gateway ("<namespace>/<name>"), kept apart from the dashboard gateway so the
+    # Knative readiness prober only probes its ports. Consumed by kubeflow-istio-resources (the Gateway),
+    # knative-serving (config-istio) and kserve (inferenceservice-config). enabled: false only when
+    # neither KServe nor Knative Serving is installed (the chart refuses it otherwise).
+    gateway:
+      name: "kubeflow/kserve-ingress-gateway"
+      enabled: true
+    tls:
+      # Wildcard TLS Secret in istio-system. "" = kserve-wildcard-tls, issued by cert-manager. Required with
+      # tls.source secret: a Secret whose SAN covers "*.<domain>" (the dashboard's Secret only if it does).
+      secretName: ""
 
 # ============================================================================
 # Secrets / Credentials
@@ -295,7 +322,7 @@ istio:
 
 # Kubeflow Istio resources (kubeflow-istio-resources sub-chart): the kubeflow-gateway
 # and kserve-ingress-gateway Gateways (the latter switchable with
-# kubeflow-istio-resources.kserveGateway.enabled), the Dex/oauth2-proxy VirtualServices, the
+# global.kserve.gateway.enabled), the Dex/oauth2-proxy VirtualServices, the
 # gateway AuthorizationPolicies/EnvoyFilters and the kubeflow-istio-* ClusterRoles.
 # Requires Istio CRDs. Disable only for installs without Istio (e.g. trainer-only,
 # see docs/use-cases/trainer-only-install.md). Every component that needs Istio must then be
@@ -308,14 +335,14 @@ istioResources:
   externalAuth: false
 
 # KServe / Knative external access — single source of truth.
-# See global.kserveDomain and global.kserveExternalHttps above.
+# See global.kserve.domain and global.kserve.externalHttps above.
 
 # Knative Serving (required for KServe, unless KServe's deployment mode is Standard)
 knativeServing:
   enabled: true
-  # domain is driven by global.kserveDomain via the knative-serving.domain helper
+  # domain is driven by global.kserve.domain via the knative-serving.domain helper
   # (single source of truth); no need to set it here. domainTemplate is likewise
-  # auto-derived from global.kserveExternalHttps.
+  # auto-derived from global.kserve.externalHttps.
 
 # Knative Eventing
 knativeEventing:
@@ -586,8 +613,8 @@ katib:
 # KServe - Model Serving
 kserve:
   enabled: true
-  # ingressDomain and urlScheme are driven by global.kserveDomain and
-  # global.kserveExternalHttps (via the kserve.kserveDomain / kserve.kserveUrlScheme
+  # ingressDomain and urlScheme are driven by global.kserve.domain and
+  # global.kserve.externalHttps (via the kserve.kserveDomain / kserve.kserveUrlScheme
   # helpers, single source of truth); no need to set them here.
 
 # Kubeflow Hub: Model Registry UI/BFF, (optional) catalog, controller and CSI. Where the registry
@@ -742,8 +769,8 @@ externalSecrets:
 #   replicaCount: 1
 #   resources: {}
 #   env:
-#     # Secure flag on the CSRF cookie (also volumes-web-app, tensorboards-web-app). "" = on with
-#     # kubeflow-istio-resources.tls.source, off on plain HTTP. "true" if TLS ends in front of the gateway.
+#     # Secure flag on the CSRF cookie (also volumes-web-app, tensorboards-web-app). "" = follow
+#     # global.tls.source: on for any HTTPS source (including edge), off on plain HTTP.
 #     APP_SECURE_COOKIES: ""
 
 # --- Notebook Controller ---
@@ -900,71 +927,13 @@ externalSecrets:
 #         memory: 100Mi
 
 # --- Kubeflow Istio Resources ---
-kubeflow-istio-resources:
-  # Hostname for the Kubeflow web UI (e.g. kubeflow.example.com).
-  # Leave empty for wildcard / IP+NodePort access.
-  # Independent of TLS — a named hostname works over plain HTTP.
-  hostname: ""                        # CHANGE: set to your FQDN
-
-  # Indicate whether external-dns is enabled and that a DNS records shall be
-  # created for the given hostname. If hostname is not specified or have an
-  # empty value. Enabling external-dns has no effect.
-  externalDNSEnabled: false
-
-  tls:
-    source: ""          # "" | "selfSigned" | "letsEncrypt" | "secret" | "issuerRef"
-    issuer: ""          # Override ClusterIssuer name; auto-set to kubeflow-letsencrypt when source=letsEncrypt
-    existingSecret: ""  # Pre-existing Secret in istio-system (source: secret)
-    # Pre-existing Secret for the KServe wildcard server (source: secret +
-    # global.kserveExternalHttps). SAN MUST cover "*.<global.kserveDomain>".
-    # Reuse existingSecret here only if it is a multi-SAN/wildcard cert covering
-    # both the dashboard host and the wildcard; otherwise inference-host TLS
-    # handshakes fail. Required by chart validation in that mode.
-    kserveExistingSecret: ""
-    credentialName: kubeflow-gateway-tls
-    httpsRedirect: true
-    # Let's Encrypt ACME configuration (used when source: letsEncrypt).
-    # The chart creates a `kubeflow-letsencrypt` ClusterIssuer automatically —
-    # no manual kubectl steps required.
-    letsEncrypt:
-      email: ""               # Optional (recommended): ACME account email for expiry
-                              # notices (e.g. admin@example.com). Let's Encrypt issues
-                              # without it; when empty the ClusterIssuer omits the field.
-      server: prod            # prod | staging
-      solver: cloudflare      # cloudflare (dns01, requires the cloudflare block below) | http01
-
-    # If solver is cloudflare, you MUST configure the cloudflare block below
-    # (chart validation fails fast if it is missing when global.kserveExternalHttps
-    # is set with source: letsEncrypt + solver: cloudflare). Make sure the
-    # apiTokenSecretRef is correctly configured with the name and key values. The
-    # email field must contain the valid email you registered with Cloudflare.
-    #
-    # NOTE: the Secret referenced by apiTokenSecretRef must exist in cert-manager's
-    # own namespace (typically `cert-manager`) — a ClusterIssuer resolves DNS-01
-    # solver secretRefs there, NOT in the release namespace, so the chart's
-    # `cloudflare-api-token` Secret (externaldns.cloudflare.apiToken) can't be used here;
-    # create the token Secret in cert-manager's namespace.
-    #
-    # TOKEN SCOPE: the Cloudflare API token needs Zone > DNS > Edit on the zone(s)
-    # containing kserveDomain / the dashboard host (plus Zone > Zone > Read, which
-    # cert-manager uses to discover the zone). Scope it to those specific zones, not
-    # "All zones", to bound the blast radius if the Secret leaks.
-    #
-    # cloudflare:
-    #   email: your-email@example.com
-    #   apiTokenSecretRef:
-    #     name: cloudflare-api-token-secret
-    #     key: api-token
-
-    # If you are using an existing cluster issuer (i.e. by setting source to
-    # "issuerRef" above), you must fill in the issuerRef section.
-    # NOTE: the existing issuer must be a "clusterissuer".
-    #
-    # issuerRef:
-    #   name: <name of the existing cluster issuer>
+# Hostname, TLS and KServe exposure are set under global.gateway, global.tls and global.kserve.
+# kubeflow-istio-resources:
+#   gateway:
+#     annotations: {}   # extra annotations on kubeflow-gateway
 
 # --- External DNS (optional) ---
-# Automatically creates/updates DNS records for kubeflow-istio-resources.hostname.
+# Automatically creates/updates DNS records for global.gateway.hostname.
 # Watches the kubeflow-gateway Istio Gateway resource for the hostname.
 externaldns:
   enabled: false

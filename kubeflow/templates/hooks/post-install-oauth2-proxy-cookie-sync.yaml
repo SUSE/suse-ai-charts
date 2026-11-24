@@ -1,0 +1,127 @@
+{{- if .Values.global.oauth2Proxy.enabled }}
+{{- /* The sub-chart's own name helper, so fullnameOverride, nameOverride and its release-name rule all apply. */}}
+{{- $dep := include "oauth2-proxy.fullname" (dict "Values" (index .Values "oauth2-proxy" | default dict) "Release" .Release "Chart" (dict "Name" "oauth2-proxy")) }}
+# Post-install/upgrade hook: oauth2-proxy reads cookie-secure (oauth2-proxy-dynamic-config) through an env
+# var at start-up, so a global.tls.source change only takes effect after a restart. On upgrade, the Job
+# restarts it when the value differs from the one recorded on the Deployment (or none is recorded yet);
+# on install it only records it. Never fails the install; stays inside helm's default --timeout (5m).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oauth2-proxy-cookie-sync
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-oauth2-proxy-cookie-sync
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: [apps]
+  resources: [deployments]
+  resourceNames: [{{ $dep }}]
+  verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-oauth2-proxy-cookie-sync
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-oauth2-proxy-cookie-sync
+subjects:
+- kind: ServiceAccount
+  name: oauth2-proxy-cookie-sync
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oauth2-proxy-cookie-sync
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    # Kept until the next install/upgrade so its log can be read.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+    spec:
+      serviceAccountName: oauth2-proxy-cookie-sync
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- include "kubeflow.imagePullSecrets" . | nindent 6 }}
+      containers:
+      - name: sync
+        image: "{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.preflightChecks.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.preflightChecks.image.repository }}{{- if .Values.preflightChecks.image.digest }}@{{ .Values.preflightChecks.image.digest }}{{- else }}:{{ .Values.preflightChecks.image.tag }}{{- end }}"
+        imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
+        {{- with .Values.preflightChecks.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
+        env:
+        - name: DEPLOYMENT
+          value: {{ $dep | quote }}
+        - name: COOKIE_SECURE
+          value: {{ ternary "true" "false" (eq (include "kubeflow.publicHttps" .) "true") | quote }}
+        - name: IS_INSTALL
+          value: {{ .Release.IsInstall | quote }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          key=kubeflow-chart/cookie-secure
+          last=$(kubectl -n {{ .Release.Namespace }} get deploy "$DEPLOYMENT" -o jsonpath="{.metadata.annotations.kubeflow-chart/cookie-secure}") || {
+            echo "WARNING: could not read deploy/$DEPLOYMENT; after changing global.tls.source restart it: kubectl -n {{ .Release.Namespace }} rollout restart deploy/$DEPLOYMENT"; exit 0; }
+          if [ "$IS_INSTALL" != "true" ] && [ "$last" != "$COOKIE_SECURE" ]; then
+            echo "cookie-secure ${last:-unrecorded} -> $COOKIE_SECURE: restarting $DEPLOYMENT"
+            kubectl -n {{ .Release.Namespace }} rollout restart deploy "$DEPLOYMENT" \
+              || echo "WARNING: could not restart deploy/$DEPLOYMENT; restart it yourself."
+          else
+            echo "cookie-secure $COOKIE_SECURE: no restart needed"
+          fi
+          kubectl -n {{ .Release.Namespace }} annotate deploy "$DEPLOYMENT" "$key=$COOKIE_SECURE" --overwrite >/dev/null \
+            || echo "WARNING: could not record cookie-secure on deploy/$DEPLOYMENT."
+          exit 0
+{{- end }}

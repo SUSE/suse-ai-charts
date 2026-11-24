@@ -158,22 +158,37 @@ when the file is missing or isn't valid YAML.
 
 
 {{/*
-Gateway TLS source (kubeflow-istio-resources.tls.source), "" when unset. One lookup
-for every umbrella template that branches on it.
+Gateway TLS source (global.tls.source), "" when unset. One lookup for every umbrella template that
+branches on it.
 */}}
 {{- define "kubeflow.tlsSource" -}}
-{{- ((index .Values "kubeflow-istio-resources" | default dict).tls | default dict).source | default "" -}}
+{{- dig "tls" "source" "" (.Values.global | default dict) -}}
+{{- end -}}
+
+{{/*
+"true" when cert-manager issues the gateway TLS certificate: selfSigned, letsEncrypt or issuerRef (not
+"", secret or edge).
+*/}}
+{{- define "kubeflow.certManagerTls" -}}
+{{- if has (include "kubeflow.tlsSource" .) (list "selfSigned" "letsEncrypt" "issuerRef") }}true{{ end -}}
+{{- end -}}
+
+{{/*
+"true" when users browse over HTTPS: any tls.source, including edge (KServe external HTTPS requires one).
+Drives the Secure flag on oauth2-proxy's session cookie.
+*/}}
+{{- define "kubeflow.publicHttps" -}}
+{{- if include "kubeflow.tlsSource" . }}true{{ end -}}
 {{- end -}}
 
 {{/*
 "true" when cert-manager is required: an enabled component declares certManager in the
-registry, or cert-manager issues the gateway TLS cert (any tls.source except "" and
-"secret"). Used by the preflight hook.
+registry, or cert-manager issues the gateway TLS cert (kubeflow.certManagerTls). Used by the
+preflight hook.
 */}}
 {{- define "kubeflow.needsCertManager" -}}
-{{- $src := include "kubeflow.tlsSource" . -}}
 {{- $reg := include "kubeflow.components" . | fromYaml -}}
-{{- $need := and $src (ne $src "secret") -}}
+{{- $need := include "kubeflow.certManagerTls" . -}}
 {{- range $n := include "kubeflow.enabledComponents" . | fromJsonArray }}{{ if (index $reg $n).certManager }}{{ $need = true }}{{ end }}{{ end -}}
 {{- if $need }}true{{ end -}}
 {{- end -}}

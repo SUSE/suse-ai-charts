@@ -175,7 +175,7 @@ jobs:
         # Runs unconditionally (even on fork PRs): this sub-chart has no OCI
         # dependencies, so no registry login is needed. It is independently
         # installable and carries its own validations.yaml/values.schema.json guards
-        # (hostname FQDN, kserveExternalHttps prerequisites, gateway selector), so
+        # (hostname FQDN, kserve.externalHttps prerequisites, gateway selector), so
         # render it on its own to prove those guards hold outside the umbrella.
         run: helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" --set global.demoMode=true >/dev/null
 
@@ -211,7 +211,7 @@ jobs:
           set -euo pipefail
           # A plain `>/dev/null` only proves helm exits 0. It would stay green if the
           # wildcard-TLS flattening became UNCONDITIONAL — i.e. the
-          # `if global.kserveExternalHttps` guard on the knative-serving
+          # `if global.kserve.externalHttps` guard on the knative-serving
           # domainTemplate helper were dropped. That single-label
           # ({name}-{namespace}.{domain}) route host is only correct under the opt-in;
           # on the default path it changes every Knative route's host and breaks
@@ -220,7 +220,7 @@ jobs:
           # ABSENT — the guard must keep it opt-in only.
           out="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true)"
           if grep -Fq '{{ .Name }}-{{ .Namespace }}.{{ .Domain }}' <<<"$out"; then
-            echo "FAIL: default (non-opt-in) render contains the flattened Knative domainTemplate — the wildcard-TLS flattening is applied unconditionally instead of being gated on global.kserveExternalHttps." >&2
+            echo "FAIL: default (non-opt-in) render contains the flattened Knative domainTemplate — the wildcard-TLS flattening is applied unconditionally instead of being gated on global.kserve.externalHttps." >&2
             exit 1
           fi
           # config-network should omit domain-template entirely on the default path
@@ -257,23 +257,111 @@ jobs:
           fi
           echo "OK: the dex-jwt refresh hook renders only in native mode, with a Role limited to dex-jwt."
 
-          # Web apps' CSRF cookie: Secure exactly when the gateway serves HTTPS (browsers drop Secure
-          # cookies on plain HTTP), the same flag as oauth2-proxy's session cookie.
+          # Cookies: oauth2-proxy's session cookie and the web apps' CSRF cookie are Secure exactly when users
+          # browse over HTTPS (any global.tls.source, including edge); browsers drop Secure cookies on HTTP.
           cookies() { python3 -c '
           import sys, yaml
           docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
           cm = [d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "oauth2-proxy-dynamic-config"][0]
-          assert cm["data"]["app-secure-cookies"] == cm["data"]["cookie-secure"] == sys.argv[1], cm["data"]
-          for d in docs:
-              if d["kind"] == "Deployment" and d["metadata"]["name"] in ("jupyter-web-app-deployment", "volumes-web-app-deployment", "tensorboards-web-app-deployment"):
-                  e = [x for x in d["spec"]["template"]["spec"]["containers"][0]["env"] if x["name"] == "APP_SECURE_COOKIES"][0]
-                  assert e["valueFrom"]["configMapKeyRef"]["key"] == "app-secure-cookies", (d["metadata"]["name"], e)
+          assert cm["data"] == {"cookie-secure": sys.argv[1]}, cm["data"]
+          apps = [d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] in ("jupyter-web-app-deployment", "volumes-web-app-deployment", "tensorboards-web-app-deployment")]
+          assert len(apps) == 3, [d["metadata"]["name"] for d in apps]
+          for d in apps:
+              e = [x for x in d["spec"]["template"]["spec"]["containers"][0]["env"] if x["name"] == "APP_SECURE_COOKIES"]
+              assert e == [{"name": "APP_SECURE_COOKIES", "value": sys.argv[1]}], (d["metadata"]["name"], e)
           ' "$1"; }
-          cookies false <<<"$out" || { echo "FAIL: plain-HTTP render must turn the CSRF cookie's Secure flag off (from the shared ConfigMap)." >&2; exit 1; }
+          cookies false <<<"$out" || { echo "FAIL: a plain-HTTP render must leave both cookies without Secure." >&2; exit 1; }
+          for src in selfSigned edge; do
+            helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
+                --set global.tls.source=$src --set global.gateway.hostname=kf.example.com \
+              | cookies true || { echo "FAIL: tls.source=$src must mark both cookies Secure." >&2; exit 1; }
+          done
+          # Standalone, the web apps can't know TLS: they must leave APP_SECURE_COOKIES unset (the app's
+          # own default is secure) rather than default it off.
+          for c in jupyter-web-app volumes-web-app tensorboards-web-app; do
+            if helm template x ./kubeflow/charts/$c --set global.gateway.name=kubeflow/kubeflow-gateway | grep -q 'name: APP_SECURE_COOKIES'; then
+              echo "FAIL: $c rendered standalone sets APP_SECURE_COOKIES; it must stay unset." >&2; exit 1
+            fi
+          done
+          echo "OK: both cookies are Secure exactly with HTTPS (incl. edge); standalone web apps keep their secure default."
+          # oauth2-proxy reads cookie-secure at start-up: the oauth2-proxy-cookie-sync hook restarts it when the
+          # value changes. Its Role may only touch the release's oauth2-proxy Deployment.
+          for src_val in ":false" "edge:true"; do
+            src="${src_val%%:*}"; want="${src_val##*:}"
+            helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
+                ${src:+--set global.tls.source=$src --set global.gateway.hostname=kf.example.com} | python3 -c '
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+          job = [d for d in docs if d["kind"] == "Job" and d["metadata"]["name"] == "oauth2-proxy-cookie-sync"][0]
+          env = {e["name"]: e["value"] for e in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+          assert env["COOKIE_SECURE"] == sys.argv[1] and env["DEPLOYMENT"] == "ci-oauth2-proxy", env
+          role = [d for d in docs if d["kind"] == "Role" and d["metadata"]["name"] == "ci-oauth2-proxy-cookie-sync"][0]
+          assert role["rules"] == [{"apiGroups": ["apps"], "resources": ["deployments"],
+                                    "resourceNames": ["ci-oauth2-proxy"], "verbs": ["get", "patch"]}], role["rules"]
+          ' "$want" || { echo "FAIL: the oauth2-proxy-cookie-sync hook is missing, follows TLS wrongly, or its Role is too broad." >&2; exit 1; }
+          done
+          # The hook must target the Deployment the sub-chart actually renders (its own name helper).
+          for rel_args in "my-oauth2-proxy:" "ci:--set oauth2-proxy.fullnameOverride=sso" "ci:--set oauth2-proxy.nameOverride=auth"; do
+            rel="${rel_args%%:*}"; args="${rel_args#*:}"
+            helm template "$rel" ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true $args | python3 -c '
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+          job = [d for d in docs if d["kind"] == "Job" and d["metadata"]["name"] == "oauth2-proxy-cookie-sync"][0]
+          target = [e["value"] for e in job["spec"]["template"]["spec"]["containers"][0]["env"] if e["name"] == "DEPLOYMENT"][0]
+          deps = [d["metadata"]["name"] for d in docs if d["kind"] == "Deployment"]
+          assert target in deps, (target, [x for x in deps if "oauth" in x or "auth" in x or x == "sso"])
+          ' || { echo "FAIL: oauth2-proxy-cookie-sync targets a Deployment that is not rendered ($rel $args)." >&2; exit 1; }
+          done
+          echo "OK: oauth2-proxy restarts when its cookie setting changes, with a Role limited to its Deployment."
+
+          # tls.source edge: TLS ends in front of the gateway, which serves plain HTTP and never redirects;
+          # no gateway Certificate or issuer.
           helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
-              --set kubeflow-istio-resources.tls.source=selfSigned --set kubeflow-istio-resources.hostname=kf.example.com \
-            | cookies true || { echo "FAIL: a TLS render must turn the CSRF cookie's Secure flag on." >&2; exit 1; }
-          echo "OK: the web apps' CSRF cookie is Secure only with TLS, like the session cookie."
+              --set global.tls.source=edge --set global.gateway.hostname=kf.example.com | python3 -c '
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+          gw = [d for d in docs if d["kind"] == "Gateway" and d["metadata"]["name"] == "kubeflow-gateway"][0]
+          servers = [(s["port"]["number"], s["port"]["protocol"], s.get("tls")) for s in gw["spec"]["servers"]]
+          assert servers == [(80, "HTTP", None)], servers
+          own = [d["kind"] + "/" + d["metadata"]["name"] for d in docs if d["kind"] in ("Certificate", "Issuer", "ClusterIssuer")
+                 and d["metadata"]["name"] in ("kubeflow-gateway-tls", "kserve-wildcard-tls", "kubeflow-selfsigned", "kubeflow-letsencrypt")]
+          assert not own, own
+          ' || { echo "FAIL: tls.source=edge must render a plain-HTTP gateway with no redirect and no gateway certificate." >&2; exit 1; }
+          if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true --set global.tls.source=edge \
+              --set global.gateway.hostname=kf.example.com --set global.kserve.externalHttps=true --set global.kserve.domain=models.example.com 2>&1)"; then
+            echo "FAIL: tls.source=edge with kserve.externalHttps rendered; it is not supported yet." >&2; exit 1
+          fi
+          grep -qF 'is not supported with global.tls.source "edge"' <<<"$err" \
+            || { echo "FAIL: edge + kserve.externalHttps failed, but not with the unsupported-combination error. Got:" >&2; echo "$err" >&2; exit 1; }
+          echo "OK: tls.source=edge serves plain HTTP without redirect or certificate, and refuses kserve.externalHttps."
+
+          # Moved values: every old key fails and names its new location (Helm accepts any key under global,
+          # so without the guard an old values file would silently fall back to defaults).
+          for kv in kubeflow-istio-resources.hostname=kf.example.com:global.gateway.hostname \
+                    kubeflow-istio-resources.externalDNSEnabled=true:global.gateway.externalDNS \
+                    kubeflow-istio-resources.tls.source=selfSigned:global.tls \
+                    kubeflow-istio-resources.kserveGateway.enabled=false:global.kserve.gateway.enabled \
+                    kubeflow-istio-resources.gateway.hosts[0]=x:removed \
+                    global.kserveDomain=models.example.com:global.kserve.domain \
+                    global.kserveExternalHttps=true:global.kserve.externalHttps \
+                    global.kserveGateway.name=a/b:global.kserve.gateway.name; do
+            old="${kv%%:*}"; new="${kv##*:}"
+            if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true --set "$old" 2>&1)"; then
+              echo "FAIL: the removed key $old was accepted." >&2; exit 1
+            fi
+            grep -qF -- "-> $new" <<<"$err" || { echo "FAIL: $old failed without naming $new. Got:" >&2; echo "$err" >&2; exit 1; }
+          done
+          echo "OK: every moved key fails with its new location."
+
+          # No user-facing text may still point at a moved key (an error hint or doc telling users to set
+          # one would make their next upgrade fail). Allowed: the removed-key guard and the upgrade notes.
+          old='global\.kserveDomain|global\.kserveExternalHttps|global\.kserveGateway|kubeflow-istio-resources\.(hostname|externalDNSEnabled|tls\.|kserveGateway\.)|tls\.kserveExistingSecret|app-secure-cookies'
+          if hits="$(grep -rnE "$old" kubeflow/templates kubeflow/charts/*/templates kubeflow/values.yaml kubeflow/charts/*/values.yaml \
+                kubeflow/values.schema.json kubeflow/charts/*/values.schema.json kubeflow/README.md.gotmpl kubeflow/docs kubeflow/tutorial.md \
+              | grep -v -e 'kubeflow/docs/upgrade-notes.md' -e '\$moved = append \$moved')"; then
+            echo "FAIL: moved keys are still referenced (use the global.gateway / global.tls / global.kserve names):" >&2; echo "$hits" >&2; exit 1
+          fi
+          echo "OK: no template, value or doc refers to a moved key."
 
           # Bundled Trainer runtimes: every pod template lists global.imagePullSecrets, the Secrets ESO
           # copies into profile namespaces (no ServiceAccount patching needed).
@@ -304,7 +392,7 @@ jobs:
           python3 -c '
           import sys, yaml
           jobs = {d["metadata"]["name"]: d for d in yaml.safe_load_all(sys.stdin) if d and d.get("kind") == "Job"}
-          for name in ("profiles-cleanup", "dex-jwt-refresh"):
+          for name in ("profiles-cleanup", "dex-jwt-refresh", "oauth2-proxy-cookie-sync"):
               assert name in jobs, name + " not rendered"
               t = jobs[name]["spec"].get("activeDeadlineSeconds")
               assert t and t < 300, f"{name} activeDeadlineSeconds={t}"
@@ -332,7 +420,7 @@ jobs:
           # kubeflow/presets/trainer-only.yaml (used by the trainer-only guide and
           # installTrainerOnly.sh) must install on a cluster with no Istio, no
           # cert-manager and no Profiles. Render WITHOUT global.demoMode or
-          # global.kserveDomain: the demo-credential and inference-domain guards must
+          # global.kserve.domain: the demo-credential and inference-domain guards must
           # stay scoped to their (disabled) components. Then assert only the kubeflow
           # Namespace, the trainer sub-chart and the trainer test render.
           vals=kubeflow/presets/trainer-only.yaml
@@ -460,7 +548,7 @@ jobs:
           fi
           if helm template ci ./kubeflow --kube-version "$KUBE_VERSION" -n kubeflow --set global.demoMode=true \
               -f kubeflow/presets/notebooks-trainer.yaml --set kserve.enabled=true --set knativeServing.enabled=true >/dev/null 2>&1; then
-            echo "FAIL: KServe on with kubeflow-istio-resources.kserveGateway.enabled=false rendered." >&2; exit 1
+            echo "FAIL: KServe on with global.kserve.gateway.enabled=false rendered." >&2; exit 1
           fi
           echo "OK: notebooks + Trainer preset renders only its components and dashboard links."
 
@@ -474,12 +562,12 @@ jobs:
           out="$(helm template ci ./kubeflow \
             --kube-version "$KUBE_VERSION" \
             --set global.demoMode=true \
-            --set global.kserveExternalHttps=true \
-            --set global.kserveDomain=kubeflow.example.com \
-            --set kubeflow-istio-resources.hostname=kf.example.com \
-            --set kubeflow-istio-resources.tls.source=letsEncrypt \
-            --set kubeflow-istio-resources.tls.letsEncrypt.solver=cloudflare \
-            --set kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name=cf-token)"
+            --set global.kserve.externalHttps=true \
+            --set global.kserve.domain=kubeflow.example.com \
+            --set global.gateway.hostname=kf.example.com \
+            --set global.tls.source=letsEncrypt \
+            --set global.tls.letsEncrypt.solver=cloudflare \
+            --set global.tls.letsEncrypt.cloudflare.apiTokenSecretRef.name=cf-token)"
 
           # Isolate the kserve-ingress-gateway document for scoped assertions.
           kserve_gw="$(awk 'BEGIN{RS="---\n"} /kind: Gateway/ && /name: kserve-ingress-gateway/{print}' <<<"$out")"
@@ -606,7 +694,7 @@ jobs:
           probe=e2e-selector-probe
           common=(--kube-version "$KUBE_VERSION"
                   --set global.demoMode=true
-                  --set global.kserveDomain=kubeflow.example.com
+                  --set global.kserve.domain=kubeflow.example.com
                   --set global.oauth2Proxy.gatewayAuthMode=envoyfilter
                   --set global.istio.ingressGateway.selector.istio="$probe")
           gw="$(helm template ci ./kubeflow "${common[@]}" \
@@ -638,15 +726,15 @@ jobs:
           # mesh) while the Gateway still falls back to a concrete label. Assert the
           # EnvoyFilter fallback is non-empty AND equals both Gateways'.
           gwn="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
-            --set global.kserveDomain=kubeflow.example.com \
+            --set global.kserve.domain=kubeflow.example.com \
             --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kubeflow-gateway-kubeflow-Gateway.yaml)"
           kgwn="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
-            --set global.kserveDomain=kubeflow.example.com \
+            --set global.kserve.domain=kubeflow.example.com \
             --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/Gateway/kserve-ingress-gateway-kubeflow-Gateway.yaml)"
           efn="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
-            --set global.kserveDomain=kubeflow.example.com \
+            --set global.kserve.domain=kubeflow.example.com \
             --set global.oauth2Proxy.gatewayAuthMode=envoyfilter \
             --set-json 'global.istio.ingressGateway.selector=null' \
             --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
@@ -681,7 +769,7 @@ jobs:
           # assert it was NOT hard-forced to true.
           ef="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
             --set global.oauth2Proxy.gatewayAuthMode=envoyfilter \
-            --set kubeflow-istio-resources.hostname=kf.example.com \
+            --set global.gateway.hostname=kf.example.com \
             --show-only charts/kubeflow-istio-resources/templates/EnvoyFilter/authn-filter-EnvoyFilter.yaml)"
 
           # 1. Patch 1 must strip EVERY client-supplied identity header. Deleting any
@@ -771,19 +859,19 @@ jobs:
           fi
           echo "OK: authn chain strips all identity headers, fails closed (failure_mode_allow + status_on_error), inverts the gate, applies at GATEWAY, and scopes the bypass to trusted-host /dex,/oauth2."
 
-      - name: helm template (assert kserveGateway.name consumers stay in sync)
+      - name: helm template (assert global.kserve.gateway.name consumers stay in sync)
         if: ${{ env.APPCO_TOKEN != '' }}
         run: |
           set -euo pipefail
-          # Assert that when global.kserveGateway.name is overridden, all three consumers
+          # Assert that when global.kserve.gateway.name is overridden, all three consumers
           # (kubeflow-istio-resources, knative-serving, and kserve) receive the same overridden values.
           custom_ns="custom-namespace"
           custom_name="custom-gateway-name"
           out="$(helm template ci ./kubeflow \
             --kube-version "$KUBE_VERSION" \
             --set global.demoMode=true \
-            --set global.kserveDomain=kubeflow.example.com \
-            --set global.kserveGateway.name="${custom_ns}/${custom_name}")"
+            --set global.kserve.domain=kubeflow.example.com \
+            --set global.kserve.gateway.name="${custom_ns}/${custom_name}")"
 
           # 1. kubeflow-istio-resources Gateway CRD metadata
           # Extract metadata from the Gateway document named custom-name in custom-namespace
@@ -801,7 +889,7 @@ jobs:
           grep -Fq "\"ingressGateway\":\"${custom_ns}/${custom_name}\"" <<<"$out" \
             || { echo "FAIL: kserve inferenceservice-config ingressGateway is not '${custom_ns}/${custom_name}'." >&2; exit 1; }
 
-          echo "OK: all three consumers of kserveGateway.name are in sync under override ($custom_ns/$custom_name)."
+          echo "OK: all three consumers of global.kserve.gateway.name are in sync under override ($custom_ns/$custom_name)."
 
       - name: kubectl image tags stay consistent
         run: |
@@ -835,16 +923,16 @@ jobs:
           if err="$(helm template ci ./kubeflow \
               --kube-version "$KUBE_VERSION" \
               --set global.demoMode=true \
-              --set global.kserveExternalHttps=true \
-              --set global.kserveDomain=kubeflow.example.com \
+              --set global.kserve.externalHttps=true \
+              --set global.kserve.domain=kubeflow.example.com \
               --set global.oauth2Proxy.enabled=false \
               --set istioResources.externalAuth=true \
-              --set kubeflow-istio-resources.hostname=kf.example.com \
-              --set kubeflow-istio-resources.tls.source=letsEncrypt \
-              --set kubeflow-istio-resources.tls.letsEncrypt.solver=cloudflare \
-              --set kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name=cf-token \
+              --set global.gateway.hostname=kf.example.com \
+              --set global.tls.source=letsEncrypt \
+              --set global.tls.letsEncrypt.solver=cloudflare \
+              --set global.tls.letsEncrypt.cloudflare.apiTokenSecretRef.name=cf-token \
               2>&1)"; then
-            echo "FAIL: kserveExternalHttps with oauth2Proxy.enabled=false rendered" \
+            echo "FAIL: kserve.externalHttps with oauth2Proxy.enabled=false rendered" \
                  "instead of failing closed." >&2
             exit 1
           fi
@@ -1197,7 +1285,7 @@ jobs:
           # masks a regression in the other).
           for bad in com COM io '*'; do
             if err="$(helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
-                --set kubeflow-istio-resources.hostname="$bad" 2>&1)"; then
+                --set global.gateway.hostname="$bad" 2>&1)"; then
               echo "FAIL: umbrella accepted hostname='$bad' — a bare public suffix / wildcard must be rejected (it would widen the ACME solver scope / re-enable the auth bypass)." >&2
               exit 1
             fi
@@ -1205,7 +1293,7 @@ jobs:
               || { echo "FAIL: umbrella rejected hostname='$bad', but not on the hostname schema — a different error is masking the guard. Got:" >&2
                    echo "$err" >&2; exit 1; }
             if err="$(helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" \
-                --set global.demoMode=true --set hostname="$bad" 2>&1)"; then
+                --set global.demoMode=true --set global.gateway.hostname="$bad" 2>&1)"; then
               echo "FAIL: sub-chart accepted hostname='$bad' standalone — the sub-chart schema guard has regressed." >&2
               exit 1
             fi
@@ -1215,10 +1303,10 @@ jobs:
           done
           for good in kubeflow localhost 10.43.1.7 kf.example.com; do
             helm template ci ./kubeflow --kube-version "$KUBE_VERSION" --set global.demoMode=true \
-              --set kubeflow-istio-resources.hostname="$good" >/dev/null 2>&1 \
+              --set global.gateway.hostname="$good" >/dev/null 2>&1 \
               || { echo "FAIL: umbrella rejected hostname='$good' — a legit single-label name / IPv4 literal / FQDN must be accepted." >&2; exit 1; }
             helm template ci ./kubeflow/charts/kubeflow-istio-resources --kube-version "$KUBE_VERSION" \
-              --set global.demoMode=true --set hostname="$good" >/dev/null 2>&1 \
+              --set global.demoMode=true --set global.gateway.hostname="$good" >/dev/null 2>&1 \
               || { echo "FAIL: sub-chart rejected hostname='$good' standalone — a legit hostname must be accepted." >&2; exit 1; }
           done
           echo "OK: hostname schema (umbrella + sub-chart) rejects bare public suffixes and '*', accepts single-label / IPv4 / FQDN."

@@ -943,7 +943,7 @@ NODE_IP=$(kubectl get nodes \
   -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 [[ -z "$NODE_IP" ]] && { echo "ERROR: could not determine node IP"; exit 1; }
 
-# global.kserveDomain is the single source of truth for the inference domain: it feeds Knative,
+# global.kserve.domain is the single source of truth for the inference domain: it feeds Knative,
 # KServe and the dedicated kserve-ingress-gateway together (setting knativeServing.domain or
 # kserve.ingressDomain on their own fails the upgrade).
 # --force-conflicts: cert-manager-cainjector holds SSA field ownership on some ClusterRoles;
@@ -951,7 +951,7 @@ NODE_IP=$(kubectl get nodes \
 # -f: re-supply the values file you installed with (e.g. demo-overrides.yaml); avoid --reuse-values,
 # which carries forward an old value tree (see docs/upgrade-notes.md).
 helm upgrade kubeflow charts/kubeflow -f <your-values.yaml> \
-  --set "global.kserveDomain=${NODE_IP}.nip.io" \
+  --set "global.kserve.domain=${NODE_IP}.nip.io" \
   -n kubeflow \
   --force-conflicts
 
@@ -1099,9 +1099,9 @@ kubectl get inferenceservice gpt2 -n kubeflow-user-example-com -w
 # "Application startup complete" appears in the kserve-container log.
 ```
 
-> If you enabled external HTTPS for inference (`global.kserveExternalHttps: true`),
+> If you enabled external HTTPS for inference (`global.kserve.externalHttps: true`),
 > the reported URL is `https://gpt2-kubeflow-user-example-com.example.com` — KServe's
-> usual `{name}-{namespace}.{domain}` host, now over `https` on your `global.kserveDomain`
+> usual `{name}-{namespace}.{domain}` host, now over `https` on your `global.kserve.domain`
 > — and clients must call it over `https` (the `http` endpoint is 301-redirected).
 >
 > **Note:** this `status.url` is KServe's top-level InferenceService URL.

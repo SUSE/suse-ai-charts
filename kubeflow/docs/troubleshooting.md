@@ -186,14 +186,19 @@ kubectl logs -n istio-system -l app=istiod | grep "RBAC"
 kubectl get authorizationpolicy -A
 ```
 
+### Login fails with 403 at `/oauth2/callback` after changing TLS
+
+oauth2-proxy still uses the session-cookie setting from before the change (a `Secure` cookie on plain
+HTTP, or the reverse). The `oauth2-proxy-cookie-sync` Job restarts it after the upgrade; if that Job couldn't
+run (see `kubectl -n kubeflow logs job/oauth2-proxy-cookie-sync`), restart it yourself:
+`kubectl -n kubeflow rollout restart deploy/kubeflow-oauth2-proxy`.
+
 ### "Could not find CSRF cookie" when creating a notebook
 
 The browser dropped the web app's CSRF cookie because it is marked `Secure` and the page was served
-over plain HTTP. The chart sets `Secure` only when `kubeflow-istio-resources.tls.source` is set; so
-either open the HTTPS URL, or, if TLS was turned on or off recently, restart the web apps
-(`kubectl -n kubeflow rollout restart deploy/jupyter-web-app-deployment deploy/volumes-web-app-deployment
-deploy/tensorboards-web-app-deployment`). An explicit `env.APP_SECURE_COOKIES: "true"` on a web app
-also forces it; remove it for HTTP access.
+over plain HTTP. The chart marks it `Secure` whenever `global.tls.source` is set (including `edge`), so
+open the HTTPS URL. If you browse over plain HTTP on purpose, leave `global.tls.source` empty; an explicit
+`env.APP_SECURE_COOKIES: "true"` on a web app also forces `Secure`, so remove it for HTTP access.
 
 ### "Trainer control-plane version info is not available" (Kubeflow SDK)
 

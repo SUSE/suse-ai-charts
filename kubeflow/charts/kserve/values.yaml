@@ -119,11 +119,11 @@ torchServe:
     pullPolicy: IfNotPresent
 
 # Domain for InferenceService external URLs.
-# Automatically set from global.kserveDomain.
+# Automatically set from global.kserve.domain.
 ingressDomain: "example.com"
 
 # Scheme KServe stamps into each InferenceService's status.url.
-# Automatically set from global.kserveExternalHttps.
+# Automatically set from global.kserve.externalHttps.
 urlScheme: "http"
 
 inferenceServiceConfig:
@@ -173,7 +173,7 @@ inferenceServiceConfig:
   # kubeflow-istio-resources sub-chart), not the shared kubeflow-gateway — so the
   # Knative net-istio readiness prober only probes that gateway's ports and stays
   # independent of the dashboard's :443 TLS. When installed under the umbrella it
-  # is overridden by global.kserveGateway.name (single source of truth); the value
+  # is overridden by global.kserve.gateway.name (single source of truth); the value
   # below is only the fallback for standalone kserve installs.
   ingress: |
     {

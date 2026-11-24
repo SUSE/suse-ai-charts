@@ -25,7 +25,7 @@ data:
   ingress: |-
     {{- /* domainTemplate stays as-is (KServe's default hyphen host = status.url,
            unchanged by the opt-in); ingressDomain and urlScheme are derived from
-           the umbrella globals, and ingressGateway from global.kserveGateway.name
+           the umbrella globals (global.kserve.*), and ingressGateway from global.kserve.gateway.name
            (single source of truth for the dedicated inference gateway). */}}
     {{- mergeOverwrite (.Values.inferenceServiceConfig.ingress | fromJson) (dict "ingressDomain" (include "kserve.kserveDomain" .) "urlScheme" (include "kserve.kserveUrlScheme" .) "ingressGateway" (include "kserve.kserveGatewayRef" .)) | toJson | nindent 4 }}
   logger: |-

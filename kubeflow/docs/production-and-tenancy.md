@@ -45,12 +45,6 @@ pipelines:
   seaweedfs:
     accessKey: "<STRONG-ACCESS-KEY>"
     secretKey: "<STRONG-SECRET-KEY>"
-
-user-namespace:
-  pipelines:
-    seaweedfs:
-      accessKey: "<STRONG-ACCESS-KEY>"    # must match pipelines.seaweedfs.accessKey
-      secretKey: "<STRONG-SECRET-KEY>"    # must match pipelines.seaweedfs.secretKey
 ```
 
 > **Rotating the OIDC secrets:** `auth.oidc.clientSecret` and `auth.oidc.cookieSecret` are stored

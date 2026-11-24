@@ -30,6 +30,39 @@ every release.
 
 ## Upgrading to 0.7.0
 
+### Moved values: hostname, TLS and KServe exposure (breaking)
+
+How users reach Kubeflow is now set in one place under `global`, read by every sub-chart:
+`global.gateway` (dashboard), `global.tls` (gateway TLS) and `global.kserve` (inference). The old keys
+are no longer read. An install or upgrade that still sets one fails with `REMOVED VALUE KEY` and lists
+the new location of every old key it found. Move your values as follows (notes for earlier versions
+below still use the old names):
+
+| Old | New |
+|---|---|
+| `kubeflow-istio-resources.hostname` | `global.gateway.hostname` |
+| `kubeflow-istio-resources.externalDNSEnabled` | `global.gateway.externalDNS` |
+| `kubeflow-istio-resources.tls.source` | `global.tls.source` |
+| `kubeflow-istio-resources.tls.credentialName` | `global.tls.secretName` |
+| `kubeflow-istio-resources.tls.existingSecret` | `global.tls.secretName` (with `source: secret`) |
+| `kubeflow-istio-resources.tls.issuer` | removed: use `source: issuerRef` with `issuerRef.name` |
+| `kubeflow-istio-resources.tls.issuerRef` | `global.tls.issuerRef` |
+| `kubeflow-istio-resources.tls.httpsRedirect` | `global.tls.httpsRedirect` |
+| `kubeflow-istio-resources.tls.letsEncrypt.*` | `global.tls.letsEncrypt.*` |
+| `kubeflow-istio-resources.tls.cloudflare.*` | `global.tls.letsEncrypt.cloudflare.*` |
+| `kubeflow-istio-resources.tls.kserveExistingSecret` | `global.kserve.tls.secretName` |
+| `kubeflow-istio-resources.kserveGateway.enabled` | `global.kserve.gateway.enabled` |
+| `global.kserveDomain` | `global.kserve.domain` |
+| `global.kserveExternalHttps` | `global.kserve.externalHttps` |
+| `global.kserveGateway.name` | `global.kserve.gateway.name` |
+| `kubeflow-istio-resources.gateway.hosts` | removed (it was never read) |
+
+Rendered resources are unchanged for every configuration that worked before; only the key names
+moved. New: `global.tls.source: edge` for TLS terminated in front of the gateway (a load balancer or
+proxy): the gateway serves plain HTTP without a redirect, and both cookies are marked `Secure`. See
+[TLS terminated in front of the gateway](access-and-tls.md#production-tls-terminated-in-front-of-the-gateway).
+`edge` doesn't support KServe external HTTPS yet.
+
 ### Install presets
 
 Presets now live in `presets/`: the trainer-only preset moved from `trainer-only-overrides.yaml` to
@@ -61,8 +94,9 @@ section); to remove a single component, run `helm upgrade` with the chart yourse
   later needs a Dex restart (`kubectl -n kubeflow rollout restart deploy/kubeflow-dex`).
 - **Releases installed in demo mode** (`global.demoMode: true`, for example with `-f demo-overrides.yaml`;
   0.6.0 refused the demo credentials otherwise) hold the demo values in the `kubeflow-oidc-client` and
-  `mlpipeline-minio-artifact` Secrets. Upgrading them without demo mode fails on purpose, listing those
-  Secrets, because generated mode would otherwise keep the published credentials. Either:
+  `mlpipeline-minio-artifact` Secrets, and, once they have run 0.7.0 in demo mode, the demo password hash
+  in `kubeflow-initial-user`. Upgrading them without demo mode fails on purpose, listing those Secrets,
+  because generated mode would otherwise keep the published credentials. Either:
   - keep demo mode (development only): pass `-f demo-overrides.yaml` or `--set global.demoMode=true` as
     before;
   - set `auth.oidc.clientSecret`, `auth.oidc.cookieSecret` and `pipelines.seaweedfs.accessKey`/`secretKey`;
@@ -70,6 +104,7 @@ section); to remove a single component, run `helm upgrade` with the chart yourse
     reads them (pods don't restart when a Secret changes):
     ```bash
     kubectl -n kubeflow delete secret kubeflow-oidc-client mlpipeline-minio-artifact
+    kubectl -n kubeflow delete secret kubeflow-initial-user --ignore-not-found   # if the error lists it
     # helm upgrade / ./runMe.sh as usual, then:
     kubectl -n kubeflow rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy
     ```
@@ -109,15 +144,13 @@ added earlier can stay or go.
 ### Web apps' CSRF cookie follows TLS
 
 The Jupyter, Volumes and TensorBoards web apps now set the `Secure` flag on their CSRF cookie only when
-the gateway serves HTTPS (`kubeflow-istio-resources.tls.source` set), like oauth2-proxy's session
-cookie. Before, Jupyter and Volumes always set it, so creating a notebook over plain HTTP failed with
-"Could not find CSRF cookie"; TensorBoards never set it (a typo in its default).
-
-- TLS terminated in front of the gateway (`tls.source` empty, users on HTTPS): set
-  `APP_SECURE_COOKIES: "true"` under `env` of `jupyter-web-app`, `volumes-web-app` and
-  `tensorboards-web-app`.
-- After turning TLS on or off on an existing release, restart the web apps:
-  `kubectl -n kubeflow rollout restart deploy/jupyter-web-app-deployment deploy/volumes-web-app-deployment deploy/tensorboards-web-app-deployment`.
+users browse over HTTPS (any `global.tls.source`, including `edge`), like oauth2-proxy's session cookie.
+Before, Jupyter and Volumes always set it, so creating a notebook over plain HTTP failed with "Could not
+find CSRF cookie"; TensorBoards never set it (a typo in its default). Changing `global.tls.source`
+restarts the web apps and oauth2-proxy by itself (a post-upgrade Job restarts oauth2-proxy only when its
+cookie setting changes); before, oauth2-proxy kept its old setting until restarted, so turning TLS off
+broke logins with a 403 at `/oauth2/callback`. With TLS terminated in front of the gateway, use `global.tls.source: edge`.
+An explicit `env.APP_SECURE_COOKIES` on a web app still overrides.
 
 ---
 

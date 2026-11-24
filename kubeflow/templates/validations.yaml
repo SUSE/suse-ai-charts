@@ -6,6 +6,23 @@ with a human-readable error when required dependencies are misconfigured.
 {{- if hasKey (index .Values "user-namespace" | default dict) "pipelines" }}
 {{- fail "REMOVED VALUE KEY: user-namespace.pipelines.* is no longer read — the KFP profile controller creates the per-profile KFP objects. Remove it from your overrides; set the SeaweedFS credentials only in pipelines.seaweedfs.* (see docs/upgrade-notes.md#kfp-profile-controller)." }}
 {{- end }}
+{{- /* Moved in 0.7.0: hostname, TLS and KServe exposure live under global.gateway / global.tls /
+       global.kserve. Old keys are never read, so fail with every new location at once rather than
+       silently falling back to defaults (Helm accepts any key under global). */}}
+{{- $kirOld := index .Values "kubeflow-istio-resources" | default dict }}
+{{- $gOld := .Values.global | default dict }}
+{{- $moved := list }}
+{{- if hasKey $kirOld "hostname" }}{{ $moved = append $moved "kubeflow-istio-resources.hostname -> global.gateway.hostname" }}{{ end }}
+{{- if hasKey $kirOld "externalDNSEnabled" }}{{ $moved = append $moved "kubeflow-istio-resources.externalDNSEnabled -> global.gateway.externalDNS" }}{{ end }}
+{{- if hasKey $kirOld "tls" }}{{ $moved = append $moved "kubeflow-istio-resources.tls -> global.tls (credentialName and existingSecret -> secretName; cloudflare -> letsEncrypt.cloudflare; kserveExistingSecret -> global.kserve.tls.secretName; issuer removed: use source issuerRef with issuerRef.name)" }}{{ end }}
+{{- if hasKey $kirOld "kserveGateway" }}{{ $moved = append $moved "kubeflow-istio-resources.kserveGateway.enabled -> global.kserve.gateway.enabled" }}{{ end }}
+{{- if hasKey ($kirOld.gateway | default dict) "hosts" }}{{ $moved = append $moved "kubeflow-istio-resources.gateway.hosts -> removed (it was never read; use global.gateway.hostname)" }}{{ end }}
+{{- if hasKey $gOld "kserveDomain" }}{{ $moved = append $moved "global.kserveDomain -> global.kserve.domain" }}{{ end }}
+{{- if hasKey $gOld "kserveExternalHttps" }}{{ $moved = append $moved "global.kserveExternalHttps -> global.kserve.externalHttps" }}{{ end }}
+{{- if hasKey $gOld "kserveGateway" }}{{ $moved = append $moved "global.kserveGateway.name -> global.kserve.gateway.name" }}{{ end }}
+{{- if $moved }}
+{{- fail (printf "REMOVED VALUE KEY: these values moved in 0.7.0 (see docs/upgrade-notes.md, Moved values). Set the new keys instead:\n  - %s" (join "\n  - " $moved)) }}
+{{- end }}
 {{- /* Empty would make the profiles controller fall back to upstream's gateway SA, breaking Rancher Istio. */}}
 {{- $igw := dig "istio" "ingressGateway" (dict) (.Values.global | default dict) }}
 {{- if and (hasKey $igw "principal") (eq (toString ($igw.principal | default "")) "") }}
@@ -21,8 +38,8 @@ with a human-readable error when required dependencies are misconfigured.
 {{- $needGw := list }}
 {{- if not .Values.istioResources.enabled }}
 {{-   $needGw = include "kubeflow.istioUsers" . | fromJsonArray }}
-{{-   if .Values.global.kserveExternalHttps }}{{ $needGw = append $needGw "global.kserveExternalHttps" }}{{ end }}
-{{-   if include "kubeflow.tlsSource" . }}{{ $needGw = append $needGw "kubeflow-istio-resources.tls.source" }}{{ end }}
+{{-   if dig "kserve" "externalHttps" false (.Values.global | default dict) }}{{ $needGw = append $needGw "global.kserve.externalHttps" }}{{ end }}
+{{-   if include "kubeflow.tlsSource" . }}{{ $needGw = append $needGw "global.tls.source" }}{{ end }}
 {{- end }}
 {{- if or $reqErrs $needGw }}
 {{-   $msg := list }}
@@ -35,9 +52,9 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   fail (join "\n" $msg) }}
 {{- end }}
 {{- /* The dedicated KServe gateway is what KServe, Knative Serving and the external-HTTPS opt-in route through. */}}
-{{- $kirGw := dig "kserveGateway" "enabled" true (index .Values "kubeflow-istio-resources" | default dict) }}
-{{- if and .Values.istioResources.enabled (not $kirGw) (or .Values.kserve.enabled .Values.knativeServing.enabled .Values.global.kserveExternalHttps) }}
-{{- fail "kubeflow-istio-resources.kserveGateway.enabled=false, but KServe, Knative Serving or global.kserveExternalHttps route inference through that gateway. Set kubeflow-istio-resources.kserveGateway.enabled=true (or remove the override)." }}
+{{- $ksGwOn := dig "kserve" "gateway" "enabled" true (.Values.global | default dict) }}
+{{- if and .Values.istioResources.enabled (not $ksGwOn) (or .Values.kserve.enabled .Values.knativeServing.enabled (dig "kserve" "externalHttps" false (.Values.global | default dict))) }}
+{{- fail "global.kserve.gateway.enabled=false, but KServe, Knative Serving or global.kserve.externalHttps route inference through that gateway. Set global.kserve.gateway.enabled=true (or remove the override)." }}
 {{- end }}
 {{- /* A custom externaldns.env replaces the default one that passes cloudflare.apiToken. */}}
 {{- $dns := .Values.externaldns }}
@@ -100,32 +117,18 @@ with a human-readable error when required dependencies are misconfigured.
 {{- fail "user-namespace.modelRegistry.enabled=true conflicts with global.modelRegistry.mode=shared. Remove the explicit user-namespace.modelRegistry.enabled override (the data plane follows the mode)." }}
 {{- end }}
 
-{{- /*
-  Reject a literal '*' as the gateway hostname. Leaving hostname empty already
-  serves the wildcard '*' listener for IP/NodePort access; setting hostname: "*"
-  additionally makes the auth-bypass filter trust every host, reinstating the
-  auth bypass on an internet-facing named listener. Use "" for wildcard access.
-  NOTE: values.schema.json (hostname `not: { pattern: "\\*" }`) is now the PRIMARY
-  reject and fires before this template renders, so this fail() is normally
-  unreachable. It is kept as defense-in-depth: it still catches '*' if the schema
-  pattern is ever weakened or schema validation is skipped.
-*/}}
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- if and $kir $kir.hostname (eq $kir.hostname "*") }}
-{{- fail "kubeflow-istio-resources.hostname must not be '*'. Leave it empty (\"\") for wildcard / IP+NodePort access, or set a concrete FQDN to scope the gateway (and the auth bypass) to that host." }}
-{{- end }}
 
 {{- /*
   Enforce single source of truth for the inference domain.
   If the legacy sub-chart keys (knativeServing.domain or kserve.ingressDomain)
-  are set to something other than the "example.com" default, but global.kserveDomain
+  are set to something other than the "example.com" default, but global.kserve.domain
   is not set, fail fast to prevent the dedicated kserve-ingress-gateway hosts
   (which fall back to *.example.com) from silently diverging and breaking readiness.
   Each key is checked only when its component is enabled: Helm merges a disabled
   sub-chart's defaults into neither .Values.knativeServing nor .Values.kserve, so
   the key reads '' and would otherwise trip the guard on installs without them.
 */}}
-{{- if not .Values.global.kserveDomain }}
+{{- if not (dig "kserve" "domain" "" (.Values.global | default dict)) }}
 {{- /*
       Use `dig` with a "" fallback rather than hasKey: Helm drops a key whose
       value is null, so `--set-json knativeServing.domain=null` (or a bare
@@ -139,64 +142,12 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   $kdBad := and .Values.knativeServing.enabled (ne $kd "example.com") }}
 {{-   $idBad := and .Values.kserve.enabled (ne $id "example.com") }}
 {{-   if or $kdBad $idBad }}
-{{-     fail (printf "DIVERGENCE: knativeServing.domain is '%s' and kserve.ingressDomain is '%s' but global.kserveDomain is empty. When overriding the inference domain, you MUST set global.kserveDomain to the same value (e.g., --set global.kserveDomain=10.0.0.5.nip.io) so that the dedicated gateway's hosts stay in sync and route traffic." $kd $id) }}
+{{-     fail (printf "DIVERGENCE: knativeServing.domain is '%s' and kserve.ingressDomain is '%s' but global.kserve.domain is empty. When overriding the inference domain, you MUST set global.kserve.domain to the same value (e.g., --set global.kserve.domain=10.0.0.5.nip.io) so that the dedicated gateway's hosts stay in sync and route traffic." $kd $id) }}
 {{-   end }}
 {{- end }}
 
-{{- /*
-  KServe external HTTPS: the dedicated kserve-ingress-gateway wildcard cert only
-  works if a real gateway hostname is set and the ACME challenge can issue a
-  wildcard. These fail silently at runtime (readiness probe EOF / stuck cert
-  order), so fail fast here.
-
-  The companion knative/kserve settings (domainTemplate, urlScheme, ingressDomain)
-  are auto-derived from global.kserveExternalHttps / global.kserveDomain via chart
-  helpers, so the operator only needs the two globals plus a working TLS issuer —
-  no more hand-aligned sub-chart knobs, and no guards for them.
-*/}}
-{{- if .Values.global.kserveExternalHttps }}
-{{-   $kir := index .Values "kubeflow-istio-resources" }}
-{{-   $tls := $kir.tls | default dict }}
-{{-   $tlsSource := include "kubeflow.tlsSource" . }}
-{{- /*
-      Collect every unmet opt-in prerequisite and fail once with the full list.
-    */}}
-{{-   $errs := list }}
-{{-   if not .Values.global.kserveDomain }}
-{{-     $errs = append $errs "global.kserveDomain must be set (a scoped subdomain such as \"models.example.com\" is recommended over a bare org-wide domain) to use global.kserveExternalHttps — it is the base domain for the '*.<kserveDomain>' wildcard cert and inference hosts." }}
-{{-   end }}
-{{-   if not (and .Values.global.oauth2Proxy .Values.global.oauth2Proxy.enabled) }}
-{{-     $errs = append $errs "global.oauth2Proxy.enabled must be true to use global.kserveExternalHttps — the bundled ext_authz auth chain (authn-filter EnvoyFilter) is only rendered when oauth2-proxy is enabled, so with it disabled the '*.<kserveDomain>:443' wildcard server would perform no gateway auth. Because every app VirtualService binds hosts: ['*'], that exposes the ENTIRE Kubeflow surface (not just inference) unauthenticated. If you front Kubeflow with your own IdP at the gateway, do not enable the bundled global.kserveExternalHttps opt-in." }}
-{{-   end }}
-{{-   if not $kir.hostname }}
-{{-     $errs = append $errs "kubeflow-istio-resources.hostname must be set to use global.kserveExternalHttps — otherwise the gateway serves the '*' listener with the auth-bypass filter trusting every host, and the KServe wildcard server is refused." }}
-{{-   end }}
-{{-   if not (has $tlsSource (list "letsEncrypt" "selfSigned" "secret" "issuerRef")) }}
-{{-     $errs = append $errs "kubeflow-istio-resources.tls.source must be one of {letsEncrypt, selfSigned, secret, issuerRef} to use global.kserveExternalHttps — with source \"\" there is no :443 server or wildcard cert, so advertised https:// inference URLs would be dead." }}
-{{-   end }}
-{{-   if and (eq $tlsSource "secret") (not $tls.kserveExistingSecret) }}
-{{-     $errs = append $errs "kubeflow-istio-resources.tls.kserveExistingSecret must be set when tls.source is \"secret\" and global.kserveExternalHttps is true — the KServe wildcard server needs a Secret whose SAN covers \"*.<global.kserveDomain>\". Reusing the dashboard's tls.existingSecret silently fails the TLS handshake on inference hosts; point this at that Secret only if it is a multi-SAN/wildcard cert covering both hosts." }}
-{{-   end }}
-{{-   if eq $tlsSource "letsEncrypt" }}
-{{- /* `| default dict`: an explicit tls.letsEncrypt: null otherwise nil-derefs
-      on `.solver` with a raw Go panic instead of reaching this validation. */}}
-{{-     $le := $tls.letsEncrypt | default dict }}
-{{-     if eq $le.solver "http01" }}
-{{-       $errs = append $errs "tls.letsEncrypt.solver must be a DNS-01 solver (e.g. cloudflare) — Let's Encrypt HTTP-01 cannot issue wildcard certificates." }}
-{{-     else if eq ($le.solver | default "cloudflare") "cloudflare" }}
-{{- /*
-          A cloudflare DNS-01 solver with an unpopulated cloudflare block renders a
-          bare "- dns01:" the ClusterIssuer can't use, so the wildcard order hangs.
-        */}}
-{{-       if not (and $tls.cloudflare $tls.cloudflare.apiTokenSecretRef $tls.cloudflare.apiTokenSecretRef.name) }}
-{{-         $errs = append $errs "kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name must be set for the cloudflare DNS-01 solver — the token Secret must exist in cert-manager's namespace (see values.yaml)." }}
-{{-       end }}
-{{-     end }}
-{{-   end }}
-{{-   if $errs }}
-{{-     fail (printf "global.kserveExternalHttps is true, but the external-HTTPS-for-inference opt-in is incomplete. Fix all of the following:\n  - %s" (join "\n  - " $errs)) }}
-{{-   end }}
-{{- end }}
+{{- /* The KServe external-HTTPS checks live in kubeflow-istio-resources (templates/validations.yaml),
+       the chart that renders the gateways; they run here too, since it renders with this chart. */}}
 
 {{- /*
   Migration guard: the per-subchart ingress-gateway identity knobs were removed

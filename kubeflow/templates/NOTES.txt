@@ -96,20 +96,20 @@ GETTING STARTED
 
 2. Get the Kubeflow dashboard URL:
 
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- if $kir.hostname }}
-   Hostname: {{ $kir.hostname }}
-{{- if include "kubeflow.tlsSource" . }}
-   Dashboard URL: https://{{ $kir.hostname }}
+{{- $hostname := dig "gateway" "hostname" "" (.Values.global | default dict) }}
+{{- if $hostname }}
+   Hostname: {{ $hostname }}
+{{- if include "kubeflow.publicHttps" . }}
+   Dashboard URL: https://{{ $hostname }}
 {{- else }}
-   Dashboard URL: http://{{ $kir.hostname }}
+   Dashboard URL: http://{{ $hostname }}
 {{- end }}
 {{- if .Values.externaldns.enabled }}
    DNS: managed automatically by external-dns
 {{- else }}
    ⚠ DNS not managed automatically. Add one of:
-     /etc/hosts:   <node-ip>  {{ $kir.hostname }}
-     DNS provider: A record {{ $kir.hostname }} → <node-ip>
+     /etc/hosts:   <node-ip>  {{ $hostname }}
+     DNS provider: A record {{ $hostname }} → <node-ip>
      Auto:         set externaldns.enabled=true with provider credentials
 {{- end }}
 {{- else }}
@@ -224,7 +224,7 @@ NEXT STEPS
 3. For production:
    - Change ALL default credentials (see SECURITY WARNING above)
    - Configure OIDC authentication with an external identity provider
-   - Set up TLS certificates (set kubeflow-istio-resources.tls.source=selfSigned|letsEncrypt|secret)
+   - Set up TLS (global.tls.source: selfSigned|letsEncrypt|issuerRef|secret, or edge when TLS ends in front of the gateway)
    - Configure persistent storage with a production-grade StorageClass
    - Set resource quotas per namespace
    - NetworkPolicies are enabled by default; disable with networkPolicies.enabled=false

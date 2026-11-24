@@ -1,5 +1,5 @@
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- $tls := $kir.tls | default dict }}
+{{- $g := .Values.global | default dict }}
+{{- $tls := $g.tls | default dict }}
 {{- $tlsSource := include "kubeflow.tlsSource" . }}
 {{- if eq $tlsSource "letsEncrypt" }}
 {{- /* `| default dict`: an explicit `tls.letsEncrypt: null` (or a value space
@@ -42,8 +42,8 @@ spec:
 
       Use the dashboard FQDN verbatim, NOT its parent zone. Stripping a label
       (e.g. "example.com" -> "com") would widen the reachable set to every name
-      under that parent. The KServe wildcard "*.<kserveDomain>" matches the
-      kserveDomain zone below, so that entry needs the base domain, not an FQDN.
+      under that parent. The KServe wildcard "*.<global.kserve.domain>" matches the
+      global.kserve.domain zone below, so that entry needs the base domain, not an FQDN.
 
       Caveat: this selector also means an out-of-chart Certificate referencing
       kubeflow-letsencrypt for a different zone will no longer be solved by this
@@ -57,9 +57,10 @@ spec:
       unselected solver is a catch-all mintable for any name, which we must never
       emit.
     */}}
-    {{- $zones := list ($kir.hostname | default "kubeflow.local") }}
-    {{- if and .Values.global .Values.global.kserveExternalHttps .Values.global.kserveDomain }}
-    {{-   $zones = append $zones .Values.global.kserveDomain }}
+    {{- $zones := list (dig "gateway" "hostname" "" $g | default "kubeflow.local") }}
+    {{- $ks := $g.kserve | default dict }}
+    {{- if and $ks.externalHttps $ks.domain }}
+    {{-   $zones = append $zones $ks.domain }}
     {{- end }}
     solvers:
     {{- /* Default an unset/empty solver to "cloudflare" (the documented values.yaml
@@ -69,7 +70,7 @@ spec:
            taken only when it is explicitly requested. */}}
     {{- if eq ($le.solver | default "cloudflare") "cloudflare" }}
     - dns01:
-        {{- with $kir.tls.cloudflare }}
+        {{- with $le.cloudflare }}
         cloudflare: {{- toYaml . | nindent 10 }}
         {{- end }}
       selector:

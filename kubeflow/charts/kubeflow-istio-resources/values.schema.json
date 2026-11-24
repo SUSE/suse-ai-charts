@@ -3,15 +3,6 @@
   "title": "kubeflow-istio-resources values",
   "type": "object",
   "properties": {
-    "hostname": {
-      "type": "string",
-      "not": { "anyOf": [
-        { "pattern": "\\*" },
-        { "pattern": "(?i)^(com|org|net|edu|gov|mil|int|io|co|ai|app|dev|cloud|online|site|info|biz|xyz|me|tv|us|uk|de|fr|jp|cn|au|ca|eu|ru|in|br|nl|it|es|se|no|fi|ch|nz|za|kr|mx|pl|tr|id|sg|hk)$" }
-      ] },
-      "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$",
-      "description": "Host for the gateway. Leave empty ('') for wildcard/IP+NodePort access, or set a hostname: a dotted FQDN (kubeflow.example.com), a single-label name (kubeflow, localhost), or an IPv4 literal (10.43.1.7) are all accepted. Must not contain '*' — a literal wildcard hostname would make the auth-bypass filter trust every host on an internet-facing named listener. A bare public suffix (a single-label registry TLD such as 'com'/'io') is ALSO rejected: hostname seeds the letsEncrypt ClusterIssuer's DNS-01 dnsZones, so a bare TLD would scope the ACME solver to the entire TLD. The list is the common gTLD/ccTLD set, not the full Public Suffix List. The DNS charset is enforced (no whitespace, non-breaking space, embedded newlines, trailing dot, leading '-', or '_'): the hostname is embedded verbatim into the authn EnvoyFilter's Lua, and an invalid character makes LuaJIT reject the inline_code, so istiod NACKs the whole filter and the gateway falls open (no auth). Rejecting it here fails the install instead. Independent of TLS. Kept in sync with the umbrella values.schema.json."
-    },
     "global": {
       "type": "object",
       "properties": {
@@ -47,20 +38,172 @@
             }
           }
         },
-        "kserveDomain": {
-          "type": "string",
-          "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$",
-          "description": "Base domain for the KServe wildcard cert/listener. Must be a bare FQDN with no leading '*.' — the chart forms '*.<kserveDomain>' itself, so a value like '*.example.com' would produce a '*.*.example.com' host (unissuable, and a malformed listener). Kept in sync with the umbrella values.schema.json constraint."
-        },
-        "kserveGateway": {
+        "gateway": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "name": {
               "type": "string",
               "pattern": "^[^/]+/[^/]+$",
-              "description": "Dedicated KServe/Knative inference gateway (namespace/name). This sub-chart renders a Gateway CR of this name/namespace; kept in sync with the umbrella global.kserveGateway.name (parent overrides). Default 'kubeflow/kserve-ingress-gateway'."
+              "description": "Istio Gateway (<namespace>/<name>) for the Kubeflow dashboard and app VirtualServices. KServe inference uses global.kserve.gateway.name."
+            },
+            "hostname": {
+              "type": "string",
+              "not": {
+                "anyOf": [
+                  {
+                    "pattern": "\\*"
+                  },
+                  {
+                    "pattern": "(?i)^(com|org|net|edu|gov|mil|int|io|co|ai|app|dev|cloud|online|site|info|biz|xyz|me|tv|us|uk|de|fr|jp|cn|au|ca|eu|ru|in|br|nl|it|es|se|no|fi|ch|nz|za|kr|mx|pl|tr|id|sg|hk)$"
+                  }
+                ]
+              },
+              "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$",
+              "description": "Dashboard host (global.gateway.hostname). Leave empty ('') for wildcard/IP+NodePort access, or set a hostname: a dotted FQDN (kubeflow.example.com), a single-label name (kubeflow, localhost), or an IPv4 literal (10.43.1.7) are all accepted. Must not contain '*' — a literal wildcard hostname would make the auth-bypass filter trust every host. A bare public suffix (a single-label registry TLD such as 'com'/'io'/'co.uk') is ALSO rejected: hostname is seeded into the letsEncrypt ClusterIssuer's DNS-01 dnsZones (letsencrypt-ClusterIssuer.yaml), so 'com' would scope the ACME solver to the entire TLD — exactly what that template's comment warns against. The list is the common gTLD/ccTLD set, not the full Public Suffix List; the ClusterIssuer comment remains the backstop for the rest. The DNS charset is enforced (no whitespace/non-breaking-space/embedded-newline/trailing-dot/'_'/leading-'-'): the hostname is embedded verbatim into the authn EnvoyFilter's Lua, and an invalid character makes LuaJIT reject the inline_code so istiod NACKs the filter and the gateway falls open. Rejecting it here fails the install instead. Independent of TLS. Kept in sync with the kubeflow-istio-resources values.schema.json."
+            },
+            "externalDNS": {
+              "type": "boolean",
+              "description": "Annotate kubeflow-gateway so an external-dns (bundled or existing) publishes a record for hostname. No effect without hostname."
             }
-          }
+          },
+          "description": "Dashboard gateway (kubeflow-gateway)."
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "",
+                "selfSigned",
+                "letsEncrypt",
+                "secret",
+                "issuerRef",
+                "edge"
+              ],
+              "description": "Gateway TLS: '' plain HTTP; selfSigned / letsEncrypt (issuers created by the chart); issuerRef (your issuer); secret (your Secret); edge (TLS terminated in front of the gateway: plain HTTP, no redirect, Secure cookies, https URLs)."
+            },
+            "secretName": {
+              "pattern": "^$|^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$",
+              "type": "string",
+              "minLength": 1,
+              "description": "TLS Secret in istio-system: written by the chart's Certificate (selfSigned, letsEncrypt, issuerRef) or yours (secret)."
+            },
+            "issuerRef": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "ClusterIssuer",
+                    "Issuer"
+                  ]
+                }
+              },
+              "description": "Your cert-manager issuer (source issuerRef)."
+            },
+            "httpsRedirect": {
+              "type": "boolean",
+              "description": "Redirect the dashboard host's :80 to :443 (gateway TLS sources; never with edge)."
+            },
+            "letsEncrypt": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "description": "Optional ACME account email for expiry notices."
+                },
+                "server": {
+                  "type": "string",
+                  "enum": [
+                    "prod",
+                    "staging"
+                  ]
+                },
+                "solver": {
+                  "type": "string",
+                  "enum": [
+                    "cloudflare",
+                    "http01"
+                  ],
+                  "description": "cloudflare (DNS-01, needs cloudflare) or http01 (no wildcards)."
+                },
+                "cloudflare": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "apiTokenSecretRef": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Cloudflare DNS-01 solver; the token Secret must be in cert-manager's namespace."
+                }
+              },
+              "description": "Let's Encrypt (source letsEncrypt); the chart creates the kubeflow-letsencrypt ClusterIssuer."
+            }
+          },
+          "description": "Gateway TLS."
+        },
+        "kserve": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "domain": {
+              "type": "string",
+              "pattern": "^$|^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$",
+              "description": "Base domain for KServe InferenceServices. Prefer a scoped subdomain (e.g. 'models.example.com') over a bare org-wide domain: with externalHttps the cert is a '*.<domain>' wildcard. Pushed to the knative-serving and kserve subcharts. Empty = their chart-local knativeServing.domain / kserve.ingressDomain (example.com). Must not include a leading '*.'."
+            },
+            "externalHttps": {
+              "type": "boolean",
+              "description": "Inference over HTTPS on the dedicated inference gateway: a '*.<domain>' wildcard cert on :443, route hosts flattened to '{name}-{namespace}.<domain>'. Needs domain, a gateway hostname and a gateway TLS source (not edge)."
+            },
+            "gateway": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[^/]+/[^/]+$",
+                  "description": "Dedicated inference gateway (<namespace>/<name>), shared by kubeflow-istio-resources (the Gateway), knative-serving (config-istio) and kserve (inferenceservice-config)."
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Render the inference gateway. false only when neither KServe nor Knative Serving is installed."
+                }
+              }
+            },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "secretName": {
+                  "pattern": "^$|^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$",
+                  "type": "string",
+                  "description": "Wildcard TLS Secret in istio-system. '' = kserve-wildcard-tls (issued by cert-manager); required with tls.source secret."
+                }
+              }
+            }
+          },
+          "description": "KServe inference exposure."
         }
       }
     }

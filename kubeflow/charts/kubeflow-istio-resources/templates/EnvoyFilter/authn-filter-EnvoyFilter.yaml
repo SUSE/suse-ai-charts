@@ -73,7 +73,7 @@ spec:
               -- Only allow unauthenticated access to /dex/ and /oauth2/ paths
               -- when they are requested on the TRUSTED dashboard host.
               -- This prevents attackers from bypassing auth on tenant wildcard hosts.
-              {{- if .Values.hostname }}
+              {{- if dig "gateway" "hostname" "" (.Values.global | default dict) }}
               -- A dashboard hostname is set, so the gateway has a dedicated listener
               -- for it. Scope the bypass strictly to that host; strip any :port from
               -- :authority first so named-host installs on non-443 ports still match.
@@ -81,7 +81,7 @@ spec:
               -- upper-case Host must still match or it falls through to auth and
               -- reintroduces the /oauth2/ login loop on the dashboard.
               local host = (request_handle:headers():get(":authority") or ""):gsub(":%d+$", ""):lower()
-              local dashboard_host = ({{ .Values.hostname | quote }}):lower()
+              local dashboard_host = ({{ dig "gateway" "hostname" "" (.Values.global | default dict) | quote }}):lower()
               local is_trusted_host = (host == dashboard_host)
               {{- else }}
               -- No hostname set: the gateway serves the '*' wildcard listener, so
@@ -95,7 +95,7 @@ spec:
 
               -- Carry the trust decision into envoy_on_response. Only a 403 on the
               -- trusted dashboard host should be rewritten into a login redirect;
-              -- on an untrusted inference host (*.<kserveDomain>) the
+              -- on an untrusted inference host (*.<global.kserve.domain>) the
               -- /oauth2/sign_in target is itself behind ext_authz, so a browser
               -- would loop 403 → 302 → 403 and pile up CSRF cookies.
               request_handle:streamInfo():dynamicMetadata():set(
@@ -123,7 +123,7 @@ spec:
                 local md = response_handle:streamInfo():dynamicMetadata():get(
                   "envoy.filters.http.lua")
                 -- Only rewrite the login redirect on the trusted dashboard host.
-                -- On an untrusted inference host (*.<kserveDomain>) /oauth2/sign_in
+                -- On an untrusted inference host (*.<global.kserve.domain>) /oauth2/sign_in
                 -- is itself ext_authz'd, so redirecting a browser there loops
                 -- 403 → 302 → 403 and accumulates CSRF cookies. Let the raw 403
                 -- through instead — curl clients pass a pasted cookie and never 403.
