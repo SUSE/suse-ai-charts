@@ -30,6 +30,8 @@ metadata:
     "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+# Can delete any Profile: RBAC can't select by label, so the script limits itself to this release's
+# Profiles (app.kubernetes.io/instance and managed-by labels).
 rules:
 - apiGroups: [kubeflow.org]
   resources: [profiles]
@@ -77,25 +79,10 @@ spec:
     spec:
       serviceAccountName: profiles-cleanup
       restartPolicy: Never
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      {{- include "kubeflow.imagePullSecrets" . | nindent 6 }}
+      {{- include "kubeflow.hookPodSecurity" . | nindent 6 }}
       containers:
       - name: cleanup
-        image: "{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.preflightChecks.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.preflightChecks.image.repository }}{{- if .Values.preflightChecks.image.digest }}@{{ .Values.preflightChecks.image.digest }}{{- else }}:{{ .Values.preflightChecks.image.tag }}{{- end }}"
-        imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
-        {{- with .Values.preflightChecks.resources }}
-        resources:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: [ALL]
-          readOnlyRootFilesystem: true
+        {{- include "kubeflow.hookContainer" . | nindent 8 }}
         env:
         - name: RELEASE
           value: {{ .Release.Name | quote }}

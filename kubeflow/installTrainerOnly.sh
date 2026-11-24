@@ -36,9 +36,10 @@ set -euo pipefail
 for _a in "$@"; do
   case "$_a" in
     -h | --help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;;
-    --preset | --no-istio-cni | --legacy-authz | --disable-cert-manager | --cloudflare-api-key)
+    --preset | --no-istio-cni | --legacy-authz | --istio-values | --disable-cert-manager | --cloudflare-api-key | --cloudflare-api-token)
       echo "ERROR: unknown option $_a" >&2; exit 1 ;;
   esac
 done
 
-exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install.sh" --preset trainer-only "$@"
+# bash: a chart from `helm pull` keeps no execute bits.
+exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install.sh" --preset trainer-only "$@"

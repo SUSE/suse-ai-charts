@@ -56,6 +56,19 @@ with a human-readable error when required dependencies are misconfigured.
 {{- if and .Values.istioResources.enabled (not $ksGwOn) (or .Values.kserve.enabled .Values.knativeServing.enabled (dig "kserve" "externalHttps" false (.Values.global | default dict))) }}
 {{- fail "global.kserve.gateway.enabled=false, but KServe, Knative Serving or global.kserve.externalHttps route inference through that gateway. Set global.kserve.gateway.enabled=true (or remove the override)." }}
 {{- end }}
+{{- /* oauth2-proxy's cookie-secure follows TLS through its extraEnv; a custom extraEnv replaces it. */}}
+{{- if .Values.global.oauth2Proxy.enabled }}
+{{-   $o2pEnv := dig "extraEnv" (list) (index .Values "oauth2-proxy" | default dict) }}
+{{-   $has := false }}
+{{-   $oldRef := false }}
+{{-   range $o2pEnv }}{{ if eq (.name | default "") "OAUTH2_PROXY_COOKIE_SECURE" }}{{ $has = true }}{{ if eq (dig "valueFrom" "configMapKeyRef" "name" "" .) "oauth2-proxy-dynamic-config" }}{{ $oldRef = true }}{{ end }}{{ end }}{{ end }}
+{{-   if $oldRef }}
+{{- fail "oauth2-proxy.extraEnv reads OAUTH2_PROXY_COOKIE_SECURE from the oauth2-proxy-dynamic-config ConfigMap, which this chart version no longer creates, so oauth2-proxy would not start. Replace that entry with the chart's (values.yaml, oauth2-proxy.extraEnv: a value that follows global.tls.source)." }}
+{{-   end }}
+{{-   if not $has }}
+{{- fail "oauth2-proxy.extraEnv has no OAUTH2_PROXY_COOKIE_SECURE entry: overriding extraEnv replaces the chart's list. Copy the chart's entries (values.yaml, oauth2-proxy.extraEnv) into yours, or the session cookie no longer follows global.tls.source." }}
+{{-   end }}
+{{- end }}
 {{- /* A custom externaldns.env replaces the default one that passes cloudflare.apiToken. */}}
 {{- $dns := .Values.externaldns }}
 {{- if and $dns.enabled (eq $dns.provider.name "cloudflare") $dns.cloudflare.apiToken }}
@@ -63,6 +76,23 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   range $dns.env | default list }}{{ if eq (.name | default "") "CF_API_TOKEN" }}{{ $hasToken = true }}{{ end }}{{ end }}
 {{-   if not $hasToken }}
 {{- fail "externaldns.cloudflare.apiToken is set, but externaldns.env (which replaces the chart's default) has no CF_API_TOKEN, so external-dns would run without Cloudflare credentials. Add the CF_API_TOKEN entry from values.yaml (Secret cloudflare-api-token, key token) to your env, or remove apiToken and pass the token from your own Secret." }}
+{{-   end }}
+{{- end }}
+{{- /* The default env reads cloudflare-api-token optionally (other providers keep it), so for
+       Cloudflare check here that something provides that Secret: apiToken, or install.sh. Live only. */}}
+{{- if and $dns.enabled (eq $dns.provider.name "cloudflare") (not $dns.cloudflare.apiToken) (include "kubeflow.clusterVisible" .) }}
+{{-   $readsSecret := false }}
+{{-   range $dns.env | default list }}{{ if eq (dig "valueFrom" "secretKeyRef" "name" "" .) "cloudflare-api-token" }}{{ $readsSecret = true }}{{ end }}{{ end }}
+{{-   if and $readsSecret (not (lookup "v1" "Secret" .Release.Namespace "cloudflare-api-token")) }}
+{{- fail (printf "externaldns uses Cloudflare, but neither externaldns.cloudflare.apiToken nor Secret %s/cloudflare-api-token exists (install.sh --cloudflare-api-token creates it), so external-dns would run without credentials." .Release.Namespace) }}
+{{-   end }}
+{{- end }}
+{{- /* With apiToken the chart creates cloudflare-api-token; one install.sh created (not Helm-owned) would
+       make Helm fail with a generic ownership error, so say which two settings collide. Live only. */}}
+{{- if and $dns.enabled (eq $dns.provider.name "cloudflare") $dns.cloudflare.apiToken (include "kubeflow.clusterVisible" .) }}
+{{-   $cfSecret := lookup "v1" "Secret" .Release.Namespace "cloudflare-api-token" }}
+{{-   if and $cfSecret (ne (dig "metadata" "annotations" "meta.helm.sh/release-name" "" $cfSecret) .Release.Name) }}
+{{- fail (printf "externaldns.cloudflare.apiToken is set, but Secret %s/cloudflare-api-token already exists outside this release (e.g. from install.sh --cloudflare-api-token). Use one of the two: remove apiToken, or delete that Secret so the chart creates it." .Release.Namespace) }}
 {{-   end }}
 {{- end }}
 {{- /* externalSecrets renders ClusterSecretStore / ClusterExternalSecret
@@ -74,11 +104,10 @@ with a human-readable error when required dependencies are misconfigured.
        for kind ClusterExternalSecret"); this guard reports that case as well.
        Skipped when rendering offline (helm template, --dry-run=client): .Capabilities
        then lists only built-in APIs, so the check would reject every offline render.
-       lookup returns an empty map offline, so an empty kube-system Namespace means
-       offline. */}}
+       kubeflow.clusterVisible tells the two apart. */}}
 {{- if and .Values.externalSecrets.enabled
            (not (.Capabilities.APIVersions.Has "external-secrets.io/v1"))
-           (lookup "v1" "Namespace" "" "kube-system") }}
+           (include "kubeflow.clusterVisible" .) }}
 {{- fail "externalSecrets.enabled=true, but the cluster has no External Secrets Operator API (external-secrets.io/v1). Install ESO before this chart, or set externalSecrets.enabled=false. (With externalSecretsOperator.enabled=true, ESO's CRDs are created by this release: install once with externalSecrets.enabled=false, then enable it.)" }}
 {{- end }}
 {{- /* Istio CNI must match the cluster, or Pod Security baseline rejects istio-init pods (live lookup;
@@ -296,25 +325,26 @@ with a human-readable error when required dependencies are misconfigured.
        also unused when neither Dex nor oauth2-proxy is enabled (the same condition as
        templates/secrets/oidc-client-Secret.yaml). */}}
 {{- $oidcInUse := and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) }}
-{{- if and $oidcInUse (eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok") }}
+{{- $demoCreds := include "kubeflow.demoCredentials" . | fromYaml }}
+{{- if and $oidcInUse (eq (.Values.auth.oidc.clientSecret | default "") $demoCreds.clientSecret) }}
 {{- fail "SECURITY: auth.oidc.clientSecret is the well-known demo value.\nGenerate a real secret: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if and $oidcInUse (eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=") }}
+{{- if and $oidcInUse (eq (.Values.auth.oidc.cookieSecret | default "") $demoCreds.cookieSecret) }}
 {{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if and (include "kubeflow.dexPasswordLogin" .) (eq (toString .Values.auth.initialUser.passwordHash) (include "kubeflow.demoCredentials" . | fromYaml).passwordHash) }}
+{{- if and (include "kubeflow.dexPasswordLogin" .) (eq (toString .Values.auth.initialUser.passwordHash) $demoCreds.passwordHash) }}
 {{- fail "SECURITY: auth.initialUser.passwordHash is the hash of the well-known demo password 12341234.\nSet your own hash (htpasswd -nbBC 12 \"\" <password> | tr -d ':\\n' | sed 's/$2y/$2a/'), or \"\" to generate a password.\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
 {{- /* SeaweedFS credentials are only used by KFP (and its per-namespace servers in
        user-namespace), so skip them when pipelines are disabled. */}}
-{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow") }}
+{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.accessKey | default "") $demoCreds.accessKey) }}
 {{- fail "SECURITY: pipelines.seaweedfs.accessKey is the well-known demo value.\nSet a real value or for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.secretKey | default "") "kubeflow123") }}
+{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.secretKey | default "") $demoCreds.secretKey) }}
 {{- fail "SECURITY: pipelines.seaweedfs.secretKey is the well-known demo value.\nGenerate: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 

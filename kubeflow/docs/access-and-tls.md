@@ -143,9 +143,9 @@ global:
       solver: cloudflare           # dns01 via Cloudflare
       cloudflare:
         email: "admin@example.com"
-        apiTokenSecretRef:
-          name: cloudflare-api-key
-          key: apiKey
+        apiTokenSecretRef:         # created in cert-manager by --cloudflare-api-token
+          name: cloudflare-api-token
+          key: token
   kserve:
     domain: "models.example.com"   # inference domain — see note above
 
@@ -154,43 +154,20 @@ externaldns:
   enabled: true
   provider:
     name: cloudflare
-  cloudflare:
-    apiToken: "<YOUR-CLOUDFLARE-API-TOKEN>"  # chart creates the Secret and passes it to external-dns
+  # The token comes from the cloudflare-api-token Secret that --cloudflare-api-token creates (or set
+  # cloudflare.apiToken and the chart creates it in the kubeflow namespace; one of the two, not both).
   domainFilters:
     - "example.com"
   txtOwnerId: "kubeflow"   # unique per cluster — prevents conflicts
   sources:
     - istio-gateway
 
-# ── Credentials — change ALL of these (see Production Hardening) ─────────────────
-auth:
-  oidc:
-    clientSecret: "<STRONG-RANDOM-32-CHAR-SECRET>"
-    cookieSecret: "<STRONG-RANDOM-32-BYTE-BASE64>"  # generate: openssl rand -base64 32 | tr -- '+/' '-_'
-  initialUser:
-    email: "admin@example.com"
+# ── Credentials ──────────────────────────────────────────────────────────────────
+# Generated on install and kept on upgrade when left empty. To set your own: auth.oidc.clientSecret /
+# cookieSecret, auth.initialUser.passwordHash and pipelines.seaweedfs.accessKey / secretKey (README,
+# "change-initial-password" for the login).
 
-dex:
-  config:
-    staticClients:
-      - id: kubeflow-oidc-authservice
-        redirectURIs:
-          - /oauth2/callback
-        name: kubeflow-oidc-authservice
-        secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET   # read from the kubeflow-oidc-client Secret; set auth.oidc.clientSecret, not this
-    staticPasswords:
-      - email: "admin@example.com"
-        # Generate: htpasswd -nbBC 12 "" 'YourPassword' | tr -d ':\n' | sed 's/$2y/$2a/'
-        hash: "<BCRYPT-HASH-OF-YOUR-PASSWORD>"
-        username: admin
-        userID: "1"
-    enablePasswordDB: true
-
-# ── Storage credentials — change these (see Production Hardening) ────────────────
 pipelines:
-  seaweedfs:
-    accessKey: "<STRONG-ACCESS-KEY>"
-    secretKey: "<STRONG-SECRET-KEY>"
   mariadb:
     backup:
       enabled: true        # recommended for production
@@ -207,19 +184,24 @@ monitoring:
 Install with `runMe.sh`:
 
 ```bash
-./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
-  --cloudflare-api-key "<YOUR-CLOUDFLARE-API-TOKEN>" \
+bash ./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
+  --cloudflare-api-token "<YOUR-CLOUDFLARE-API-TOKEN>" \
   -f prod-values.yaml
 ```
 
-Or manually (see [Mode 2](../README.md#mode-2--manual-helm-install-oci-recommended-for-production)):
+Or manually (see [Mode 2](../README.md#mode-2--manual-helm-install-oci-recommended-for-production)),
+creating the token Secret that external-dns and the DNS-01 solver read (what `--cloudflare-api-token` does):
 
 ```bash
+for ns in kubeflow cert-manager; do
+  kubectl -n "$ns" create secret generic cloudflare-api-token --from-literal=token="<YOUR-CLOUDFLARE-API-TOKEN>" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
 helm upgrade --install kubeflow \
   oci://registry.suse.com/ai/charts/kubeflow \
   --version <chart-version> \
   -n kubeflow \
-  --force-conflicts \
+  --force-conflicts --server-side=true \
   --wait --timeout 15m \
   -f prod-values.yaml
 ```
@@ -256,11 +238,7 @@ global:
     domain: "models.example.com"   # inference domain — see note above
     externalHttps: false
 
-# Change credentials as shown in the Let's Encrypt scenario / Production Hardening
-auth:
-  oidc:
-    clientSecret: "<STRONG-RANDOM-32-CHAR-SECRET>"
-# ... (rest of credentials)
+# Credentials are generated on install; to set your own, see the Let's Encrypt scenario above.
 ```
 
 <details>
@@ -362,11 +340,7 @@ global:
 externaldns:
   enabled: false
 
-# Change credentials as shown in the Let's Encrypt scenario / Production Hardening
-auth:
-  oidc:
-    clientSecret: "<STRONG-RANDOM-32-CHAR-SECRET>"
-# ... (rest of credentials)
+# Credentials are generated on install; to set your own, see the Let's Encrypt scenario above.
 ```
 
 > **Note:** when adding `istio-gateway` as an `external-dns` source, make sure the Istio CRDs are
@@ -465,8 +439,8 @@ global:
       cloudflare:                       # required for the cloudflare DNS-01 solver
         email: "admin@example.com"
         apiTokenSecretRef:
-          name: cloudflare-api-token-secret   # must live in cert-manager's namespace
-          key: api-token
+          name: cloudflare-api-token    # must live in cert-manager's namespace
+          key: token
   kserve:
     domain: "models.example.com"        # base domain for inference hosts + wildcard cert. Prefer a
                                         # scoped subdomain (models.example.com) over an org-wide domain:
@@ -584,7 +558,7 @@ EnvoyFilter's own Lua handles the /dex,/oauth2 skip, so oauth2-proxy must not al
 
 ```bash
 # runMe.sh:
-./runMe.sh <appco-user> <appco-token> regcode <suse-ai-token> --legacy-authz
+bash ./runMe.sh <appco-user> <appco-token> regcode <suse-ai-token> --legacy-authz
 
 # Manual install (README, Mode 2): skip -f istio-native-authz-values.yaml in Step 6, and add
 # the overlay to the Kubeflow install in Step 8:

@@ -14,12 +14,18 @@
 #   --oci                       install the released chart (latest version) instead of this checkout
 #   --chart-version <v>         install this released chart version (implies --oci)
 #   --chart-ref <ref>           released chart reference (implies --oci; default oci://<suse-registry>/ai/charts/kubeflow)
-#                               (runs the install.sh shipped with that chart, so script and chart match)
+#                               (runs the install.sh shipped with that chart, so script and chart match;
+#                               only references on the SUSE registry unless --allow-any-chart-ref)
+#   --allow-any-chart-ref       accept a --chart-ref outside oci://<suse-registry>/ (its script runs here)
+#   --verify [--keyring <file>] verify the pulled chart's provenance (helm pull --verify)
 # Presets with Istio:
 #   --no-istio-cni              classic istio-init sidecars (sets global.istio.cni=false)
 #   --legacy-authz              EnvoyFilter gateway auth instead of native ext_authz (no istiod MeshConfig change)
+#   --istio-values <file>       extra values for the Istio chart, applied last (repeatable), e.g. gateway
+#                               Service annotations for a cloud load balancer
 #   --disable-cert-manager      don't install cert-manager (bring your own)
-#   --cloudflare-api-key <key>  create the cloudflare-api-key Secret (external-dns, Let's Encrypt DNS-01)
+#   --cloudflare-api-token <t>  create the cloudflare-api-token Secret (key token) that external-dns reads,
+#                               also in cert-manager for Let's Encrypt DNS-01 (--cloudflare-api-key: deprecated)
 # Presets with Trainer:
 #   --no-runtimes               don't install the bundled ClusterTrainingRuntimes
 #   --skip-tests                don't run `helm test`
@@ -46,10 +52,13 @@ EXTRA_VALUES=()
 USE_OCI=0
 CHART_VERSION=""
 CHART_REF=""
+ALLOW_ANY_CHART_REF=0
+VERIFY_ARGS=()
 ISTIO_CNI=true
 AUTH_MODE=native
+ISTIO_VALUES=()
 INSTALL_CERT_MANAGER=1
-CLOUDFLARE_API_KEY="${CLOUDFLARE_API_KEY:-}"
+CLOUDFLARE_API_KEY="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_KEY:-}}"
 INSTALL_RUNTIMES=1
 RUN_TESTS=1
 RUN_SAMPLE=0
@@ -69,11 +78,18 @@ while [ $# -gt 0 ]; do
     --oci)                  USE_OCI=1; shift ;;
     --chart-version)        need_arg "$1" "${2-}"; CHART_VERSION="$2"; USE_OCI=1; shift 2 ;;
     --chart-ref)            need_arg "$1" "${2-}"; CHART_REF="$2"; USE_OCI=1; shift 2 ;;
+    --allow-any-chart-ref)  ALLOW_ANY_CHART_REF=1; shift ;;
+    --verify)               VERIFY_ARGS+=(--verify); shift ;;
+    --keyring)              need_arg "$1" "${2-}"; VERIFY_ARGS+=(--verify --keyring "$2"); shift 2 ;;
     --force)                echo "ERROR: --force was removed: an upgrade can't safely remove components. Uninstall and reinstall (README.md#uninstall), or run helm upgrade yourself." >&2; exit 1 ;;
     --no-istio-cni)         ISTIO_CNI=false; FORWARD+=("$1"); shift ;;
     --legacy-authz)         AUTH_MODE=envoyfilter; FORWARD+=("$1"); shift ;;
+    --istio-values)         need_arg "$1" "${2-}"; [ -f "$2" ] || { echo "ERROR: --istio-values: $2 not found" >&2; exit 1; }
+                            f="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; ISTIO_VALUES+=("$f"); FORWARD+=("$1" "$f"); shift 2 ;;
     --disable-cert-manager) INSTALL_CERT_MANAGER=0; FORWARD+=("$1"); shift ;;
-    --cloudflare-api-key)   need_arg "$1" "${2-}"; CLOUDFLARE_API_KEY="$2"; shift 2 ;;
+    --cloudflare-api-token) need_arg "$1" "${2-}"; CLOUDFLARE_API_KEY="$2"; shift 2 ;;
+    --cloudflare-api-key)   need_arg "$1" "${2-}"; CLOUDFLARE_API_KEY="$2"; shift 2
+                            echo "NOTE: --cloudflare-api-key is deprecated; use --cloudflare-api-token." >&2 ;;
     --no-runtimes)          INSTALL_RUNTIMES=0; FORWARD+=("$1"); shift ;;
     --skip-tests)           RUN_TESTS=0; FORWARD+=("$1"); shift ;;
     --sample)               RUN_SAMPLE=1; FORWARD+=("$1"); shift ;;
@@ -105,6 +121,15 @@ if [[ -z "$APPCO_REGISTRY_USER" || -z "$APPCO_REGISTRY_TOKEN" || -z "$SUSE_AI_RE
   exit 1
 fi
 [[ -z "$CHART_REF" ]] && CHART_REF="oci://${SUSE_REGISTRY}/ai/charts/kubeflow"
+[[ ${#VERIFY_ARGS[@]} -eq 0 || $USE_OCI -eq 1 || -n "${KUBEFLOW_INSTALL_CHART_REF:-}" ]] \
+  || die "--verify and --keyring check a chart pulled from the registry; use them with --oci, --chart-version or --chart-ref."
+# --oci runs the install.sh shipped with the pulled chart, on this machine, with the registry credentials
+# in its environment: accept only the SUSE registry unless the source is allowed explicitly.
+if [[ $USE_OCI -eq 1 && "$CHART_REF" != "oci://${SUSE_REGISTRY}/"* ]]; then
+  [[ $ALLOW_ANY_CHART_REF -eq 1 ]] \
+    || die "--chart-ref $CHART_REF is not on the SUSE registry (oci://${SUSE_REGISTRY}/). --oci runs the install.sh shipped with that chart on this machine, with your registry credentials; pass --allow-any-chart-ref to use this source anyway."
+  echo "WARNING: installing from $CHART_REF, outside the SUSE registry; its install.sh will run here."
+fi
 
 # A released chart is installed by the install.sh it ships, so script and chart always match. That
 # script installs from the registry reference given in KUBEFLOW_INSTALL_CHART_REF/_VERSION (keep these
@@ -115,19 +140,21 @@ if [[ $USE_OCI -eq 1 ]]; then
   echo "=== Pull the released chart ${CHART_REF}${CHART_VERSION:+ (version $CHART_VERSION)} ==="
   VERSION_ARGS=()
   [[ -n "$CHART_VERSION" ]] && VERSION_ARGS=(--version "$CHART_VERSION")
-  helm pull "$CHART_REF" "${VERSION_ARGS[@]}" --untar -d "$WORKDIR/pulled"
+  helm pull "$CHART_REF" "${VERSION_ARGS[@]}" "${VERIFY_ARGS[@]}" --untar -d "$WORKDIR/pulled"
   PULLED_CHART="$(find "$WORKDIR/pulled" -mindepth 2 -maxdepth 2 -name Chart.yaml 2>/dev/null | head -1 || true)"
   [[ -n "$PULLED_CHART" && -f "$PULLED_CHART" ]] || die "helm pull of ${CHART_REF} produced no chart (no Chart.yaml under $WORKDIR/pulled)."
   PULLED="$(dirname "$PULLED_CHART")"
   PULLED_VERSION="$(awk '/^version:/{gsub(/"/,"",$2); print $2; exit}' "$PULLED/Chart.yaml")"
+  # Both names, so a stale CLOUDFLARE_API_TOKEN in the environment can't override the option's value.
   export APPCO_REGISTRY_USER APPCO_REGISTRY_TOKEN SUSE_AI_REGISTRY_USER SUSE_AI_REGISTRY_TOKEN CLOUDFLARE_API_KEY
+  export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_KEY"
   if grep -q KUBEFLOW_INSTALL_CHART_REF "$PULLED/install.sh" 2>/dev/null; then
-    echo "  Running install.sh of chart version $PULLED_VERSION"
+    echo "  Running the install.sh shipped with $CHART_REF version $PULLED_VERSION"
     KUBEFLOW_INSTALL_CHART_REF="$CHART_REF" KUBEFLOW_INSTALL_CHART_VERSION="$PULLED_VERSION" \
-      bash "$PULLED/install.sh" --preset "$PRESET" "${FORWARD[@]}"
+      bash "$PULLED/install.sh" --preset "$PRESET" "${FORWARD[@]}" "${VERIFY_ARGS[@]}"
   elif [[ "$PRESET" == trainer-only && -f "$PULLED/installTrainerOnly.sh" ]]; then
     # Charts up to 0.6.x have no install.sh; their installTrainerOnly.sh installs released charts itself.
-    echo "  Running installTrainerOnly.sh of chart version $PULLED_VERSION"
+    echo "  Running the installTrainerOnly.sh shipped with $CHART_REF version $PULLED_VERSION"
     bash "$PULLED/installTrainerOnly.sh" --chart-ref "$CHART_REF" --chart-version "$PULLED_VERSION" "${FORWARD[@]}"
   else
     die "chart version $PULLED_VERSION has no install.sh. Install it with the scripts of that release (a checkout of tag kubeflow-$PULLED_VERSION)."
@@ -149,10 +176,11 @@ echo "=== Helm registry login ==="
 registry_login
 if [[ -n "${KUBEFLOW_INSTALL_CHART_REF:-}" ]]; then
   # Run from a pulled released chart (see --oci above): install that chart from the registry.
-  CHART_ARGS=("$KUBEFLOW_INSTALL_CHART_REF" --version "$KUBEFLOW_INSTALL_CHART_VERSION")
+  # --verify/--keyring also check the chart that gets installed, not only the copy whose script runs.
+  CHART_ARGS=("$KUBEFLOW_INSTALL_CHART_REF" --version "$KUBEFLOW_INSTALL_CHART_VERSION" "${VERIFY_ARGS[@]}")
   echo "  Using released chart $KUBEFLOW_INSTALL_CHART_REF version $KUBEFLOW_INSTALL_CHART_VERSION"
 else
-  echo "=== Package Kubeflow sub-charts (source checkout) ==="
+  echo "=== Package Kubeflow sub-charts ==="
   build_chart_dependencies "$SCRIPT_DIR"
   CHART_ARGS=("$SCRIPT_DIR")
 fi
@@ -211,9 +239,15 @@ done
 # Created before the release, so the release must be allowed to adopt them.
 adopt_namespace "$NAMESPACE"
 has "$REQUIRES" knative-namespace && adopt_namespace knative-serving
+# The name and key the chart's default externaldns.env reads. Not Helm-owned, so no upgrade deletes it;
+# one the chart manages (externaldns.cloudflare.apiToken) is left alone, as Helm would delete it.
 if [[ -n "$CLOUDFLARE_API_KEY" ]]; then
+  if [[ -n "$(kubectl get secret cloudflare-api-token -n "$NAMESPACE" --ignore-not-found \
+      -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}')" ]]; then
+    die "Secret $NAMESPACE/cloudflare-api-token is managed by the chart (externaldns.cloudflare.apiToken). Keep setting the token there, or first upgrade without it (Helm then deletes that Secret; if it remains, run kubectl -n $NAMESPACE delete secret cloudflare-api-token) and rerun with --cloudflare-api-token; external-dns has no token until you rerun."
+  fi
   for ns in "$NAMESPACE" cert-manager; do
-    kubectl get namespace "$ns" >/dev/null 2>&1 && create_key_secret cloudflare-api-key apiKey "$CLOUDFLARE_API_KEY" "$ns"
+    kubectl get namespace "$ns" >/dev/null 2>&1 && create_key_secret cloudflare-api-token token "$CLOUDFLARE_API_KEY" "$ns"
   done
 fi
 
@@ -223,7 +257,9 @@ if has "$REQUIRES" cert-manager && [[ $INSTALL_CERT_MANAGER -eq 1 ]]; then
 fi
 if has "$REQUIRES" istio; then
   echo "=== Install Istio (gateway auth: $AUTH_MODE, istio-cni: $ISTIO_CNI) ==="
-  install_istio "$AUTH_MODE" "$ISTIO_CNI"
+  install_istio "$AUTH_MODE" "$ISTIO_CNI" "${ISTIO_VALUES[@]}"
+elif [[ ${#ISTIO_VALUES[@]} -gt 0 ]]; then
+  echo "NOTE: --istio-values ignored: preset $PRESET doesn't install Istio."
 fi
 if has "$REQUIRES" eso; then
   echo "=== Install External Secrets Operator ==="
@@ -266,7 +302,7 @@ echo "  Release:    $RELEASE (namespace $NAMESPACE)"
 if [[ -n "${KUBEFLOW_INSTALL_CHART_REF:-}" ]]; then
   echo "  Chart:      $KUBEFLOW_INSTALL_CHART_REF version $CHART_VERSION"
 else
-  echo "  Chart:      $SCRIPT_DIR (source checkout)"
+  echo "  Chart:      $SCRIPT_DIR"
 fi
 if has "$CHECKS" trainer; then
   echo "  Runtimes:   kubectl get clustertrainingruntimes"

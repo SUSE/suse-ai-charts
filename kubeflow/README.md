@@ -65,11 +65,13 @@ Prerequisite for either mode: a RKE2 cluster with a default StorageClass configu
 
 ### Mode 1 — Automated via `runMe.sh`
 
-`runMe.sh` runs the prerequisite steps and then installs the Kubeflow chart:
+`runMe.sh` runs the prerequisite steps and then installs the Kubeflow chart. Run it from a source checkout
+or from a chart pulled with `helm pull --untar` (the examples use `bash`, as Helm doesn't keep execute bits):
 
 1. Checks that the cluster is reachable and runs Kubernetes ≥ 1.35, and that Helm ≥ 4 is installed
 2. Performs Helm registry logins for `dp.apps.rancher.io` and `registry.suse.com`, and packages sub-charts
-   via `helm dependency build` (the versions `Chart.lock` pins)
+   via `helm dependency build` (the versions `Chart.lock` pins; a pulled chart whose sub-charts are
+   packaged archives, as on the SUSE registry and its mirrors, uses them as they are)
 3. Stops if an existing release would lose components (and their data), e.g. when a values file used
    before is left out
 4. Creates namespaces: `cert-manager`, `istio-system`, `kubeflow`, `knative-serving`
@@ -84,7 +86,7 @@ Fastest path for dev/demo — install with NodePort access and the demo credenti
 `demo-overrides.yaml` (**never use it in production**):
 
 ```bash
-./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f demo-overrides.yaml
+bash ./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f demo-overrides.yaml
 ```
 
 The script prints the access URL when it finishes. Log in with the demo credentials:
@@ -102,26 +104,26 @@ client and cookie secrets and the SeaweedFS keys) and prints how to read the pas
 values file for anything else; see [Configuration Scenarios](docs/access-and-tls.md#configuration-scenarios):
 
 ```bash
-./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f my-values.yaml
+bash ./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> -f my-values.yaml
 ```
 
 `runMe.sh` installs the `full` preset. To install a subset of the components, run `install.sh` with a
 preset from `presets/`, e.g. notebooks, Central Dashboard and Trainer. It takes the credentials from
 the environment variables below and the same options as `runMe.sh`, and installs only the
-prerequisites the chosen components need (Istio, cert-manager, ESO); `./install.sh --help` lists the
+prerequisites the chosen components need (Istio, cert-manager, ESO); `bash ./install.sh --help` lists the
 presets and options:
 
 ```bash
-./install.sh --preset notebooks-trainer -f my-values.yaml
+bash ./install.sh --preset notebooks-trainer -f my-values.yaml
 ```
 
 <details>
 <summary><strong>Full argument reference</strong></summary>
 
 ```bash
-./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
+bash ./runMe.sh <appco-registry-username> <appco-registry-token> regcode <suse-ai-registry-token> \
   [--kubeconfig <path-to-kubeconfig>] \
-  [--cloudflare-api-key <CF-API-KEY>] \
+  [--cloudflare-api-token <CF-API-TOKEN>] \
   [-f <path-to-values-override.yaml>]
 ```
 
@@ -132,13 +134,15 @@ presets and options:
 | `<suse-ai-registry-username>` | `SUSE_AI_REGISTRY_USER` | SUSE Registry username (default: `regcode`) |
 | `<suse-ai-registry-token>` | `SUSE_AI_REGISTRY_TOKEN` | SUSE Registry token / password (for `registry.suse.com`) SCC_REG_CODE for AI |
 | `--kubeconfig <path>` | `KUBECONFIG` | Path to kubeconfig (defaults to `~/.kube/config`, or KUBECONFIG environment variable if set) |
-| `--cloudflare-api-key <key>` | `CLOUDFLARE_API_KEY` | Creates `cloudflare-api-key` Secret in `kubeflow` and `cert-manager` namespaces |
+| `--cloudflare-api-token <token>` (`--cloudflare-api-key` is deprecated) | `CLOUDFLARE_API_TOKEN` (or `CLOUDFLARE_API_KEY`) | Creates the `cloudflare-api-token` Secret (key `token`) in `kubeflow`, which external-dns reads, and in `cert-manager` for the Let's Encrypt DNS-01 solver |
 | `-f <file>` / `--values-file <file>` | — | Path to a values override YAML file passed to `helm upgrade` |
 | `--disable-cert-manager` | — | Do not upgrade/install cert-manager, use an existing one instead |
 | `--no-istio-cni` | — | Install Istio **without** the istio-cni plugin (classic `istio-init` sidecars) and set `global.istio.cni=false`, so profile namespaces get no Pod Security Standards label. For clusters that cannot run istio-cni. (`runMe.sh` sets `global.istio.cni` itself, overriding your `-f` files.) |
 | `--legacy-authz` | — | Use the legacy self-contained EnvoyFilter ingress-auth mode instead of the default Istio-native ext_authz. See [Ingress gateway authentication mode](docs/access-and-tls.md#ingress-gateway-authentication-mode). |
+| `--istio-values <file>` | — | Extra values for the Istio chart, applied after the script's own (repeatable), e.g. gateway Service annotations for a cloud load balancer |
 | `--suse-registry=<mirror>` | — | SUSE AI registry mirror (default: `registry.suse.com`); redirects all `registry.suse.com/*` image pulls and the registry login |
-| `--oci`, `--chart-version <v>`, `--chart-ref <ref>` | — | Install the released chart (default `oci://registry.suse.com/ai/charts/kubeflow`) instead of this checkout, with the install script that chart ships |
+| `--oci`, `--chart-version <v>`, `--chart-ref <ref>` | — | Install the released chart (default `oci://registry.suse.com/ai/charts/kubeflow`) instead of this checkout, with the install script that chart ships. `--chart-ref` must be on the SUSE registry, or on the mirror given with `--suse-registry`, unless `--allow-any-chart-ref` |
+| `--verify`, `--keyring <file>` | — | Verify the pulled chart's provenance (`helm pull --verify`) |
 | `--suse-app-collection=<mirror>` | — | Application Collection mirror (default: `dp.apps.rancher.io`); redirects all `dp.apps.rancher.io/*` image pulls, the registry login, and the cert-manager / Istio / ESO OCI chart URLs |
 
 </details>
@@ -149,7 +153,7 @@ presets and options:
 To redirect images through an internal mirror registry, pass both flags:
 
 ```bash
-./runMe.sh <appco-username> <appco-token> regcode <suse-ai-token> \
+bash ./runMe.sh <appco-username> <appco-token> regcode <suse-ai-token> \
   --suse-registry=<mirror> \
   --suse-app-collection=<mirror>
 ```
@@ -300,7 +304,8 @@ helm upgrade --install istio oci://dp.apps.rancher.io/charts/istio \
 #### Step 7 — Install External Secrets Operator
 
 ESO must be installed before the Kubeflow chart so its CRDs are present when Helm applies the
-`ClusterSecretStore` and `ClusterExternalSecret` resources.
+`ClusterSecretStore` and `ClusterExternalSecret` resources. Your own ESO must serve the
+`external-secrets.io/v1` API (ESO 0.16 or later; the chart checks); `install.sh` installs 2.6.0.
 
 ```bash
 helm upgrade --install external-secrets-operator oci://dp.apps.rancher.io/charts/external-secrets-operator \
@@ -336,15 +341,22 @@ The chart generates the login password and the other credentials on first instal
 kubectl -n kubeflow get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-<a id="remove-stored-password"></a>The `password` key is only for this first login, and anyone who can read
-Secrets in `kubeflow` can read it. Once you've logged in, remove it; upgrades keep the hash, so the
-password stays the same:
+<a id="change-initial-password"></a>The generated password is for the first login. It is stored in Secret
+`kubeflow-initial-user`, and Helm also keeps a copy in its release history (`sh.helm.release.v1.*` Secrets),
+so deleting it from the Secret doesn't remove it from the cluster. After logging in, set your own password:
+every stored copy of the generated one then stops working, and the chart stops storing a plaintext password.
 
 ```bash
-kubectl -n kubeflow patch secret kubeflow-initial-user --type=json -p '[{"op":"remove","path":"/data/password"}]'
+htpasswd -nbBC 12 "" '<new-password>' | tr -d ':\n' | sed 's/$2y/$2a/'   # bcrypt hash of your password
+# add it to your values as auth.initialUser.passwordHash: '<hash>', run your helm upgrade again, then:
+kubectl -n kubeflow rollout restart deploy/kubeflow-dex
 ```
 
-To never store a plaintext password, set `auth.initialUser.passwordHash` yourself.
+> **GitOps (Argo CD) and `helm template`:** they render without access to the cluster, so the chart can't
+> generate or keep credentials and refuses to render. Set them yourself, e.g. from your secret manager:
+> `auth.oidc.clientSecret`, `auth.oidc.cookieSecret` (or `auth.oidc.existingSecret: true`),
+> `auth.initialUser.passwordHash`, `pipelines.seaweedfs.accessKey` / `secretKey`, and
+> `user-namespace.modelRegistry.db.embedded.existingSecret` (see [Values Reference](docs/values-reference.md#credentials)).
 
 > <a id="force-conflicts"></a>**Why `--force-conflicts`?** cert-manager-cainjector, istiod
 > (pilot-discovery), and the clusterrole-aggregation-controller modify fields (caBundle, webhook

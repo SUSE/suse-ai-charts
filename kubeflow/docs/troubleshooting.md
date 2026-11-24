@@ -123,14 +123,14 @@ tensorboard-controller:
 ```bash
 # From source
 helm upgrade kubeflow . -n kubeflow \
-  --reuse-values --force-conflicts \
+  --reuse-values --force-conflicts --server-side=true \
   --set tensorboard-controller.configMapData.ISTIO_HOST="*" \
   --set tensorboard-controller.configMapData.ISTIO_GATEWAY=kubeflow/kubeflow-gateway
 
 # From OCI registry (production)
 helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> -n kubeflow \
-  --reuse-values --force-conflicts \
+  --reuse-values --force-conflicts --server-side=true \
   --set tensorboard-controller.configMapData.ISTIO_HOST="*" \
   --set tensorboard-controller.configMapData.ISTIO_GATEWAY=kubeflow/kubeflow-gateway
 ```
@@ -189,9 +189,14 @@ kubectl get authorizationpolicy -A
 ### Login fails with 403 at `/oauth2/callback` after changing TLS
 
 oauth2-proxy still uses the session-cookie setting from before the change (a `Secure` cookie on plain
-HTTP, or the reverse). The `oauth2-proxy-cookie-sync` Job restarts it after the upgrade; if that Job couldn't
-run (see `kubectl -n kubeflow logs job/oauth2-proxy-cookie-sync`), restart it yourself:
-`kubectl -n kubeflow rollout restart deploy/kubeflow-oauth2-proxy`.
+HTTP, or the reverse). The upgrade rolls it out; check that the rollout finished
+(`kubectl -n kubeflow rollout status deploy/kubeflow-oauth2-proxy`) and that a custom
+`oauth2-proxy.extraEnv` still has the chart's `OAUTH2_PROXY_COOKIE_SECURE` entry.
+
+If instead the login page just keeps coming back over plain HTTP, the browser still holds a `Secure`
+`oauth2_proxy_kubeflow` cookie for this address (from an earlier HTTPS setup, possibly another cluster
+at the same address) and won't let plain HTTP replace it. Delete the cookies for the address, or use a
+private window.
 
 ### "Could not find CSRF cookie" when creating a notebook
 

@@ -52,6 +52,31 @@ this deployment to any network or storing sensitive data.
 {{- end }}
 -------------------------------------------------------------------------------
 {{- end }}
+{{- /* NOTES render before the upgrade applies, so lookup sees the stored hash. Dex reads the hash at
+       start-up and its pod spec doesn't change with it, so a new hash needs a Dex restart. No stored hash
+       means this upgrade generates the password (e.g. from 0.6.x, which had no such Secret). */}}
+{{- if and .Release.IsUpgrade $passwordLogin }}
+{{-   $storedHash := index ((lookup "v1" "Secret" .Release.Namespace "kubeflow-initial-user").data | default dict) "hash" | default "" | b64dec }}
+{{-   $newHash := .Values.auth.initialUser.passwordHash | default (ternary $demo.passwordHash "" $demoMode) | toString }}
+{{-   $generatedPw := and (not $newHash) (not $storedHash) }}
+{{-   $changedPw := and $newHash $storedHash (ne $newHash $storedHash) }}
+{{-   if or $generatedPw $changedPw }}
+
+⚠  LOGIN PASSWORD CHANGED
+-------------------------------------------------------------------------------
+{{-     if $generatedPw }}
+This upgrade generated a new login password for {{ .Values.auth.initialUser.email }}. Dex may keep
+the previous one (coming from 0.6.x: the demo password 12341234) until it restarts:
+  kubectl -n {{ .Release.Namespace }} rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy
+Then read the new one with the command under "3. Log in" below.
+{{-     else }}
+This upgrade changed the login password hash of {{ .Values.auth.initialUser.email }}. Dex keeps
+accepting the previous password until it restarts:
+  kubectl -n {{ .Release.Namespace }} rollout restart deploy/kubeflow-dex
+{{-     end }}
+-------------------------------------------------------------------------------
+{{-   end }}
+{{- end }}
 {{- if eq (include "kubeflow.modelRegistryMode" .) "shared" }}
 
 ⚠  DEPRECATION: global.modelRegistry.mode=shared
@@ -134,7 +159,7 @@ GETTING STARTED
    Password: unchanged; no longer stored (the password key was removed from Secret kubeflow-initial-user)
 {{- else }}
    Password: kubectl -n {{ .Release.Namespace }} get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
-   (for the first login; then remove the password key: README, "remove-stored-password")
+   (for the first login; then set your own password: README, "change-initial-password")
 {{- end }}
 {{- else }}
    Password: the one whose bcrypt hash is auth.initialUser.passwordHash

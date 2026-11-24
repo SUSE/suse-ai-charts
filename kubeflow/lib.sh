@@ -96,8 +96,9 @@ install_cert_manager() {
 }
 
 # install_istio <native|envoyfilter> <true|false (istio-cni)>
+# install_istio <native|envoyfilter> <cni: true|false> [extra values file]...
 install_istio() {
-  local args=()
+  local args=() f
   # native ext_authz needs the oauth2-proxy provider in istiod MeshConfig; envoyfilter doesn't.
   [[ "$1" == native ]] && args+=(--values "$SCRIPT_DIR/istio-native-authz-values.yaml")
   if [[ "$2" == true ]]; then
@@ -108,6 +109,8 @@ install_istio() {
       args+=(--set global.platform=k3s)
     fi
   fi
+  # Extra values files (install.sh --istio-values) go last, so they can override the defaults.
+  for f in "${@:3}"; do args+=(--values "$f"); done
   helm upgrade --install istio "oci://${SUSE_APP_COLLECTION}/charts/istio" \
     --version "$ISTIO_CHART_VERSION" --namespace istio-system \
     --set 'global.imagePullSecrets[0].name=application-collection' --set gateway.enabled=true \
@@ -123,12 +126,23 @@ install_eso() {
     crd/clusterexternalsecrets.external-secrets.io crd/externalsecrets.external-secrets.io --timeout=60s
 }
 
-# Package the local (file://) sub-charts of a checkout and fetch what Chart.lock pins.
+# Package the local (file://) sub-charts of a checkout and fetch what Chart.lock pins; a pulled chart keeps its archives.
 # `dependency build` fails if Chart.yaml drifted from Chart.lock instead of rewriting the lock.
 build_chart_dependencies() {
-  grep -B2 'repository:.*file://' "$1/Chart.yaml" | grep '^\s*-\s*name:\|^\s*name:' \
-    | awk '{print $NF}' | tr -d '"' \
-    | while read -r chart_name; do rm -f "$1/charts/${chart_name}"-*.tgz; done || true
+  local names n src=1
+  names="$(grep -B2 'repository:.*file://' "$1/Chart.yaml" | grep '^\s*-\s*name:\|^\s*name:' \
+    | awk '{print $NF}' | tr -d '"')"
+  for n in $names; do [[ -d "$1/charts/$n" ]] || src=0; done
+  # A pulled (released) chart has the sub-charts only as packaged archives: use them as they are.
+  if [[ $src -eq 0 ]]; then
+    for n in $names; do
+      compgen -G "$1/charts/${n}-*.tgz" >/dev/null \
+        || die "sub-chart $n has neither its source ($1/charts/$n) nor its archive; re-pull the chart or use a source checkout."
+    done
+    echo "  Released chart: using its packaged sub-charts"
+    return
+  fi
+  for n in $names; do rm -f "$1/charts/${n}"-*.tgz; done
   helm dependency build "$1"
 }
 

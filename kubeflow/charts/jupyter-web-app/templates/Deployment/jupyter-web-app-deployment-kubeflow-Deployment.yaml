@@ -38,9 +38,11 @@ spec:
         {{- /* Secure CSRF cookie: explicit env wins; else follows global.tls.source when the umbrella sets
                it (HTTPS for any source, including edge); unset standalone, keeping the app's secure default. */}}
         {{- $tls := (.Values.global | default dict).tls | default dict }}
-        {{- if .Values.env.APP_SECURE_COOKIES }}
+        {{- /* An unquoted false is an explicit choice too, so test for "set", not truthiness. */}}
+        {{- $sc := .Values.env.APP_SECURE_COOKIES }}
+        {{- if and (not (kindIs "invalid" $sc)) (ne (toString $sc) "") }}
         - name: APP_SECURE_COOKIES
-          value: {{ .Values.env.APP_SECURE_COOKIES | quote }}
+          value: {{ toString $sc | quote }}
         {{- else if hasKey $tls "source" }}
         - name: APP_SECURE_COOKIES
           value: {{ ternary "true" "false" (ne ($tls.source | default "") "") | quote }}

@@ -27,9 +27,9 @@ Uninstall section).
 ```bash
 export APPCO_REGISTRY_USER=<appco-registry-username> APPCO_REGISTRY_TOKEN=<appco-registry-token>
 export SUSE_AI_REGISTRY_USER=regcode SUSE_AI_REGISTRY_TOKEN=<suse-ai-registry-token>
-./installTrainerOnly.sh --sample                       # from a chart checkout
-./installTrainerOnly.sh --chart-version <chart-version> # or install the released OCI chart
-./installTrainerOnly.sh --help                         # all options
+bash ./installTrainerOnly.sh --sample                       # from a chart checkout
+bash ./installTrainerOnly.sh --chart-version <chart-version> # or install the released OCI chart
+bash ./installTrainerOnly.sh --help                         # all options
 ```
 
 ---

@@ -231,6 +231,59 @@ accessKey: kubeflow
 secretKey: kubeflow123
 {{- end -}}
 
+{{/* cert-manager issuerRef for the chart's Certificates, from global.tls.source. */}}
+{{- define "kubeflow.certIssuerRef" -}}
+{{- $tls := dig "tls" (dict) (.Values.global | default dict) -}}
+{{- $source := include "kubeflow.tlsSource" . -}}
+{{- if eq $source "selfSigned" -}}
+name: "kubeflow-selfsigned"
+kind: Issuer
+{{- else if eq $source "letsEncrypt" -}}
+name: "kubeflow-letsencrypt"
+kind: ClusterIssuer
+{{- else -}}
+{{- if not (and $tls.issuerRef $tls.issuerRef.name) }}
+{{- fail "global.tls.issuerRef.name is required when global.tls.source is \"issuerRef\"" }}
+{{- end -}}
+name: {{ $tls.issuerRef.name | quote }}
+kind: {{ $tls.issuerRef.kind | default "ClusterIssuer" | quote }}
+{{- end -}}
+{{- end -}}
+
+{{/* Image of the chart's hook Jobs (shell + kubectl), from preflightChecks.image. */}}
+{{- define "kubeflow.hookImage" -}}
+{{- $img := .Values.preflightChecks.image -}}
+{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" $img.registry) -}}
+{{- if $registry }}{{ $registry }}/{{ end }}{{ $img.repository }}{{ if $img.digest }}@{{ $img.digest }}{{ else }}:{{ $img.tag }}{{ end }}
+{{- end -}}
+
+{{/* Pod security and pull secrets shared by the hook Jobs; include at the pod spec's indent. */}}
+{{- define "kubeflow.hookPodSecurity" -}}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+{{- with include "kubeflow.imagePullSecrets" . | trim }}
+{{ . }}
+{{- end }}
+{{- end -}}
+
+{{/* Image, resources and security shared by the hook Job containers; include at the container's indent. */}}
+{{- define "kubeflow.hookContainer" -}}
+image: {{ include "kubeflow.hookImage" . | quote }}
+imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
+{{- with .Values.preflightChecks.resources }}
+resources:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+{{- end -}}
+
 {{/* "true" when the render sees the cluster (helm install/upgrade); "" for helm template, Argo CD and
      --dry-run=client, where lookup finds nothing, so generated credentials would change on every render. */}}
 {{- define "kubeflow.clusterVisible" -}}
@@ -239,10 +292,15 @@ secretKey: kubeflow123
 
 {{/* "true" when cni=true and an enabled component creates profile namespaces (they get Pod Security baseline). */}}
 {{- define "kubeflow.istioCniCheckNeeded" -}}
+{{- if and (eq (include "kubeflow.istioCni" .) "true") (include "kubeflow.profileNamespacesEnabled" .) }}true{{ end -}}
+{{- end -}}
+
+{{/* "true" when an enabled component creates profile namespaces (registry: profileNamespaces). */}}
+{{- define "kubeflow.profileNamespacesEnabled" -}}
 {{- $reg := include "kubeflow.components" . | fromYaml -}}
 {{- $ns := false -}}
 {{- range $n := include "kubeflow.enabledComponents" . | fromJsonArray }}{{ if (index $reg $n).profileNamespaces }}{{ $ns = true }}{{ end }}{{ end -}}
-{{- if and (eq (include "kubeflow.istioCni" .) "true") $ns }}true{{ end -}}
+{{- if $ns }}true{{ end -}}
 {{- end -}}
 
 {{/* Istio CNI check rules, shared by validations.yaml (Helm lookup) and the preflight Job (kubectl).

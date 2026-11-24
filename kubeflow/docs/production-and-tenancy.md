@@ -62,7 +62,7 @@ pipelines:
 > ```bash
 > kubectl delete secret mysql-secret -n kubeflow        # KFP
 > kubectl delete secret katib-mysql-secrets -n kubeflow # Katib
-> helm upgrade kubeflow . -f my-values.yaml -n kubeflow
+> helm upgrade kubeflow . -f my-values.yaml -n kubeflow --force-conflicts --server-side=true
 > ```
 
 ### 2. Use an external identity provider
@@ -158,7 +158,7 @@ controller, training-operator, and KServe controller to 2 replicas. KFP and Dex 
 are already enabled by default.
 
 ```bash
-helm upgrade kubeflow . -f <your-values>.yaml -f ha-overrides.yaml -n kubeflow
+helm upgrade kubeflow . -f <your-values>.yaml -f ha-overrides.yaml -n kubeflow --force-conflicts --server-side=true
 ```
 
 > PDBs protect against voluntary disruptions (node drains) but only provide meaningful coverage with
@@ -248,10 +248,10 @@ Add the user to your values file and run `helm upgrade`:
 # OCI (production)
 helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> \
-  -n kubeflow -f my-values.yaml
+  -n kubeflow -f my-values.yaml --force-conflicts --server-side=true
 
 # From source (development)
-helm upgrade kubeflow -n kubeflow --force-conflicts -f my-values.yaml .
+helm upgrade kubeflow -n kubeflow --force-conflicts --server-side=true -f my-values.yaml .
 ```
 
 This creates the Profile and namespace and the user's own Model Registry (server + Postgres) in a

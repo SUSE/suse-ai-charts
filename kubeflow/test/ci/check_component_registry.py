@@ -18,7 +18,9 @@ registry access): CI runs it on every PR, including forks.
 4. Each preset enables its "# components:" (plus at most its "# optional:" ones), and
    kubeflow.trainerOnly (the NOTES banner) is true for trainer-only, with or without add-ons.
 5. The probe chart (components.yaml, templates/_helpers.tpl and values.yaml only, as install.sh
-   uses it) gives the same components, prerequisites and trainerOnly as the real chart.
+   uses it) gives the same components, prerequisites, trainerOnly and unmet requirements as the
+   real chart, and evaluates the requires.when of enabled components the same way (the real chart
+   sees sub-chart defaults; one case turns every toggle on).
 """
 import json
 import pathlib
@@ -28,18 +30,33 @@ import subprocess
 import sys
 import tempfile
 
+# conditions: the "when" of every enabled component's requirements, met or not, so a registry default
+# (when.default, or a helper's fallback) that no longer matches a sub-chart default shows up. Only
+# enabled components: Helm doesn't merge a disabled sub-chart's defaults into the parent's values.
+CONDITIONS = """{{- define "ci.conditions" -}}
+{{- $out := dict -}}
+{{- $reg := include "kubeflow.components" . | fromYaml -}}
+{{- range $name := include "kubeflow.enabledComponents" . | fromJsonArray -}}
+{{-   range $i, $r := (index $reg $name).requires | default list -}}
+{{-     if $r.when }}{{ $_ := set $out (printf "%s.requires[%d]" $name $i) (eq (include "kubeflow.conditionMet" (dict "ctx" $ "cond" $r.when)) "true") }}{{ end -}}
+{{-   end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+"""
 FIELDS = """  components: {{ include "kubeflow.enabledComponents" . | quote }}
   prerequisites: {{ include "kubeflow.clusterPrerequisites" . | quote }}
   trainerOnly: {{ include "kubeflow.trainerOnly" . | quote }}
+  unmet: {{ include "kubeflow.unmetRequirements" . | quote }}
+  conditions: {{ include "ci.conditions" . | quote }}
 """
-PROBE_TEMPLATE = """apiVersion: v1
+PROBE_TEMPLATE = CONDITIONS + """apiVersion: v1
 kind: ConfigMap
 metadata: {name: ci-registry}
 data:
   registry: {{ include "kubeflow.components" . | fromYaml | toJson | quote }}
-  unmet: {{ include "kubeflow.unmetRequirements" . | quote }}
 """ + FIELDS
-REAL_TEMPLATE = """apiVersion: v1
+REAL_TEMPLATE = CONDITIONS + """apiVersion: v1
 kind: ConfigMap
 metadata: {name: ci-real}
 data:
@@ -73,7 +90,7 @@ def helm(chart, helm_args, sets, files=(), only=None):
 
 def fields(out):
     data = {k: json.loads(v) for k, v in re.findall(r'^  (\w+): (".*")$', out, re.M)}
-    for k in ("registry", "unmet", "components"):
+    for k in ("registry", "unmet", "components", "conditions"):
         if k in data:
             data[k] = json.loads(data[k])  # JSON inside a quoted string
     return data
@@ -278,6 +295,8 @@ def main():
         cases = [([], [])] + [([], [f]) for f in sorted((src / "presets").glob("*.yaml"))] + [
             (["externalSecrets.enabled=true", "monitoring.enabled=true"], [trainer]),
             (["knativeServing.enabled=false", "kserve.enabled=false", "global.modelRegistry.mode=shared"], []),
+            # Every toggle on, so every requires.when is compared at least once.
+            (sorted({f"{c['toggle']}=true" for c in reg.values() if c.get("toggle")}), []),
         ]
         for sets, files in cases:
             ok, out = helm(real, helm_args, demo + sets, files, "templates/zz-ci-real.yaml")
@@ -286,11 +305,13 @@ def main():
                 continue
             got_real = fields(out)
             got_probe = probe(probe_chart, sets, files)
-            for k in ("components", "prerequisites", "trainerOnly"):
+            for k in ("components", "prerequisites", "trainerOnly", "unmet", "conditions"):
                 if got_real[k] != got_probe[k]:
+                    hint = ("A requires.when default (or its helper's fallback) no longer matches the sub-chart's "
+                            "default: update components.yaml or the helper." if k == "conditions" else
+                            "Registry helpers may read only .Values (see components.yaml).")
                     fail(f"probe chart and real chart disagree on {k} for {' '.join(sets)} {' '.join(map(str, files))}: "
-                         f"probe {got_probe[k]!r}, chart {got_real[k]!r}. Registry helpers may read only .Values "
-                         "(see components.yaml).")
+                         f"probe {got_probe[k]!r}, chart {got_real[k]!r}. {hint}")
         print(f"OK: the probe chart matches the real chart for {len(cases)} sets of values.")
     if failures:
         sys.exit(1)

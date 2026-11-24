@@ -5,6 +5,8 @@
 # "Jwt verification fails" until dex-jwt changes. Once Dex serves its keys, the Job changes dex-jwt's
 # spec and changes it back (timeout: 5s is Istio's default), so istiod fetches them again. Never fails
 # the install; the wait and the 240s deadline stay inside helm's default --timeout (5m).
+# Workaround for https://github.com/istio/istio/issues/37456 (closed as stale, unfixed); drop it once
+# istiod retries a failed JWKS fetch.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -81,25 +83,10 @@ spec:
     spec:
       serviceAccountName: dex-jwt-refresh
       restartPolicy: Never
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      {{- include "kubeflow.imagePullSecrets" . | nindent 6 }}
+      {{- include "kubeflow.hookPodSecurity" . | nindent 6 }}
       containers:
       - name: refresh
-        image: "{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.preflightChecks.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.preflightChecks.image.repository }}{{- if .Values.preflightChecks.image.digest }}@{{ .Values.preflightChecks.image.digest }}{{- else }}:{{ .Values.preflightChecks.image.tag }}{{- end }}"
-        imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
-        {{- with .Values.preflightChecks.resources }}
-        resources:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: [ALL]
-          readOnlyRootFilesystem: true
+        {{- include "kubeflow.hookContainer" . | nindent 8 }}
         command:
         - /usr/bin/bash
         - -c

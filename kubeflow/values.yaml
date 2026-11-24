@@ -85,7 +85,7 @@
 #
 # Login: user@example.com. The password is generated on first install:
 #   kubectl -n kubeflow get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
-# Then remove the stored plaintext (README, "remove-stored-password"); upgrades keep the hash.
+# After the first login set your own auth.initialUser.passwordHash (README, "change-initial-password").
 # (With global.demoMode=true the published demo password 12341234 is used instead.)
 
 # Global configuration applied to all sub-charts
@@ -197,9 +197,9 @@ global:
       cloudflare: {}
       # cloudflare:
       #   email: your-email@example.com
-      #   apiTokenSecretRef:
-      #     name: cloudflare-api-token-secret
-      #     key: api-token
+      #   apiTokenSecretRef:             # install.sh --cloudflare-api-token creates it in cert-manager
+      #     name: cloudflare-api-token
+      #     key: token
 
 
   # Model Registry layout: perProfile (one registry per profile namespace, as upstream) or shared
@@ -425,13 +425,11 @@ oauth2-proxy:
     sidecar.istio.io/inject: "true"
   # Extra environment variables to pass to the oauth2-proxy container
   extraEnv:
-    # Automatically populated from the dynamic ConfigMap 'oauth2-proxy-dynamic-config'
-    # based on the parent chart's TLS / external HTTPS configuration.
+    # Secure session cookie exactly when users browse over HTTPS (any global.tls.source, including
+    # edge). A template (the sub-chart renders extraEnv with tpl), so a TLS change rolls oauth2-proxy.
+    # Keep this entry if you override extraEnv (the chart checks).
     - name: OAUTH2_PROXY_COOKIE_SECURE
-      valueFrom:
-        configMapKeyRef:
-          name: oauth2-proxy-dynamic-config
-          key: cookie-secure
+      value: '{{ ternary "true" "false" (ne (dig "tls" "source" "" (.Values.global | default dict)) "") }}'
     - name: OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY
       value: "false"
     - name: OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS
@@ -715,7 +713,8 @@ externalSecretsOperator:
   enabled: false
   installCRDs: true
 
-# Secret propagation to user namespaces — requires ESO (via externalSecretsOperator or pre-existing install).
+# Secret propagation to user namespaces — requires ESO (via externalSecretsOperator or pre-existing install)
+# serving the external-secrets.io/v1 API (ESO 0.16 or later; the chart checks).
 # Propagates registry pull secrets from sourceNamespace to all namespaces labelled
 # app.kubernetes.io/part-of: kubeflow-profile (user namespaces created by the profiles controller).
 externalSecrets:
@@ -943,8 +942,9 @@ externaldns:
   provider:
     name: cloudflare   # cloudflare | aws | azure | google | etc.
 
-  # Cloudflare API token: the chart stores it in the `cloudflare-api-token` Secret, which
-  # the default env below passes to external-dns. Or leave it empty and set env yourself.
+  # Cloudflare API token: the chart stores it in the `cloudflare-api-token` Secret (key token), which
+  # the default env below passes to external-dns. install.sh --cloudflare-api-token creates the same
+  # Secret instead (use one of the two, not both); or leave both out and set env yourself.
   cloudflare:
     apiToken: ""
 
@@ -958,15 +958,15 @@ externaldns:
   sources:
     - istio-gateway
 
-  # Provider credentials as env vars. The default reads cloudflare.apiToken's Secret (optional,
-  # so it is harmless without one). Setting env replaces it (keep a CF_API_TOKEN entry when
-  # apiToken is set; the chart checks), e.g. with your own Secret:
+  # Provider credentials as env vars. The default reads the cloudflare-api-token Secret, optionally so
+  # other providers can keep it; with Cloudflare the chart checks that the Secret exists. Setting env
+  # replaces it (keep a CF_API_TOKEN entry when apiToken is set; the chart checks), e.g. with your own Secret:
   #   env:
   #     - name: CF_API_TOKEN
   #       valueFrom:
   #         secretKeyRef:
-  #           name: cloudflare-api-key   # as created by runMe.sh --cloudflare-api-key
-  #           key: apiKey
+  #           name: my-cloudflare-token
+  #           key: token
   env:
     - name: CF_API_TOKEN
       valueFrom:

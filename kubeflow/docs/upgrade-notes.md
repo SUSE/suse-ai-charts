@@ -69,12 +69,19 @@ Presets now live in `presets/`: the trainer-only preset moved from `trainer-only
 `presets/trainer-only.yaml`; update `-f` paths in your scripts. `runMe.sh` and
 `installTrainerOnly.sh` accept the same arguments as before, but `runMe.sh` now rejects unknown
 options instead of ignoring them. With `--oci`, `--chart-version` or `--chart-ref`, the scripts run
-the install script shipped with that chart version.
+the install script shipped with that chart version; `--chart-ref` must point to the SUSE registry,
+or to the mirror given with `--suse-registry`, unless `--allow-any-chart-ref` is passed.
 
 The install scripts stop before an upgrade that would remove installed components (and their data),
 for example when a values file that kept a component on is left out. `--force` is gone, including
 from `installTrainerOnly.sh`: to change presets, uninstall and reinstall (see the README's Uninstall
 section); to remove a single component, run `helm upgrade` with the chart yourself.
+
+`--cloudflare-api-key` is deprecated: use `--cloudflare-api-token`. It creates the `cloudflare-api-token` Secret,
+key `token`, which the chart's default `externaldns.env` reads; the old `cloudflare-api-key` Secret
+(key `apiKey`) wasn't read by default. If your values reference `cloudflare-api-key` (an
+`externaldns.env` override or `global.tls.letsEncrypt.cloudflare.apiTokenSecretRef`), point them at
+`cloudflare-api-token` / `token`, then delete the old Secret in `kubeflow` and `cert-manager`.
 
 ### Credentials and uninstall
 
@@ -105,7 +112,7 @@ section); to remove a single component, run `helm upgrade` with the chart yourse
     ```bash
     kubectl -n kubeflow delete secret kubeflow-oidc-client mlpipeline-minio-artifact
     kubectl -n kubeflow delete secret kubeflow-initial-user --ignore-not-found   # if the error lists it
-    # helm upgrade / ./runMe.sh as usual, then:
+    # helm upgrade / bash ./runMe.sh as usual, then:
     kubectl -n kubeflow rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy
     ```
     and the Pipelines deployments, as in [Credential rotation (SeaweedFS)](#credential-rotation-seaweedfs).
@@ -147,10 +154,12 @@ The Jupyter, Volumes and TensorBoards web apps now set the `Secure` flag on thei
 users browse over HTTPS (any `global.tls.source`, including `edge`), like oauth2-proxy's session cookie.
 Before, Jupyter and Volumes always set it, so creating a notebook over plain HTTP failed with "Could not
 find CSRF cookie"; TensorBoards never set it (a typo in its default). Changing `global.tls.source`
-restarts the web apps and oauth2-proxy by itself (a post-upgrade Job restarts oauth2-proxy only when its
-cookie setting changes); before, oauth2-proxy kept its old setting until restarted, so turning TLS off
+restarts the web apps and oauth2-proxy by itself (oauth2-proxy's cookie setting is now part of its pod
+spec); before, oauth2-proxy kept its old setting until restarted, so turning TLS off
 broke logins with a 403 at `/oauth2/callback`. With TLS terminated in front of the gateway, use `global.tls.source: edge`.
-An explicit `env.APP_SECURE_COOKIES` on a web app still overrides.
+An explicit `env.APP_SECURE_COOKIES` on a web app still overrides. If you override `oauth2-proxy.extraEnv`,
+replace its `OAUTH2_PROXY_COOKIE_SECURE` entry (it read the removed `oauth2-proxy-dynamic-config`
+ConfigMap) with the one in `values.yaml`; the chart refuses the old entry.
 
 ---
 
@@ -773,7 +782,7 @@ and re-run `helm upgrade`:
 
 ```bash
 kubectl delete secret training-operator-webhook-cert -n kubeflow --ignore-not-found
-helm upgrade kubeflow charts/kubeflow -n kubeflow --force-conflicts --wait --timeout 15m
+helm upgrade kubeflow charts/kubeflow -n kubeflow --force-conflicts --server-side=true --wait --timeout 15m
 ```
 
 ### Switching database engines or changing StorageClass

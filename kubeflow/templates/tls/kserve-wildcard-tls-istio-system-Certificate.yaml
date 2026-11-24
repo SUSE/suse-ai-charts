@@ -1,7 +1,5 @@
 {{- if dig "kserve" "externalHttps" false (.Values.global | default dict) }}
 {{- $g := .Values.global | default dict }}
-{{- $tls := $g.tls | default dict }}
-{{- $tlsSource := include "kubeflow.tlsSource" . }}
 {{- $ks := $g.kserve | default dict }}
 {{- if include "kubeflow.certManagerTls" . }}
 apiVersion: cert-manager.io/v1
@@ -18,19 +16,7 @@ spec:
   privateKey:
     rotationPolicy: Always
   issuerRef:
-{{- if eq $tlsSource "selfSigned" }}
-    name: "kubeflow-selfsigned"
-    kind: Issuer
-{{- else if eq $tlsSource "letsEncrypt" }}
-    name: "kubeflow-letsencrypt"
-    kind: ClusterIssuer
-{{- else }}
-{{- if not (and $tls.issuerRef $tls.issuerRef.name) }}
-{{- fail "global.tls.issuerRef.name is required when global.tls.source is \"issuerRef\"" }}
-{{- end }}
-    name: {{ $tls.issuerRef.name | quote }}
-    kind: {{ $tls.issuerRef.kind | default "ClusterIssuer" | quote }}
-{{- end }}
+    {{- include "kubeflow.certIssuerRef" . | nindent 4 }}
   dnsNames:
   - {{ printf "*.%s" $ks.domain | quote }}
 {{- end }}
