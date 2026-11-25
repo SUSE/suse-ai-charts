@@ -6,6 +6,7 @@
 #      kubectl create namespace cert-manager
 #      kubectl create namespace istio-system
 #      kubectl create namespace kubeflow
+#      kubectl create namespace knative-serving
 #
 #   2. Create image pull secret in each namespace (for Rancher registry):
 #      for ns in cert-manager istio-system kubeflow knative-serving; do
@@ -16,9 +17,11 @@
 #          -n $ns
 #      done
 #
-#   3. Label kubeflow namespace for Helm:
-#      kubectl label namespace kubeflow app.kubernetes.io/managed-by=Helm
-#      kubectl annotate namespace kubeflow meta.helm.sh/release-name=kubeflow meta.helm.sh/release-namespace=kubeflow
+#   3. Label the kubeflow and knative-serving namespaces for Helm (the release adopts them):
+#      for ns in kubeflow knative-serving; do
+#        kubectl label namespace $ns app.kubernetes.io/managed-by=Helm
+#        kubectl annotate namespace $ns meta.helm.sh/release-name=kubeflow meta.helm.sh/release-namespace=kubeflow
+#      done
 #
 #   4. Install cert-manager (required):
 #      helm install cert-manager oci://dp.apps.rancher.io/charts/cert-manager \
@@ -28,12 +31,14 @@
 #        --set crds.keep=true \
 #        --set global.imagePullSecrets[0].name=application-collection
 #
-#   5. Install Istio (required):
+#   5. Install Istio (required), with the native gateway auth provider and istio-cni (both files
+#      ship in this chart):
 #      helm install istio oci://dp.apps.rancher.io/charts/istio \
-#        --version 1.1.3 \
+#        --version 1.3.0 \
 #        --namespace istio-system \
 #        --set global.imagePullSecrets[0].name=application-collection \
-#        --set gateway.enabled=true
+#        --set gateway.enabled=true \
+#        -f istio-native-authz-values.yaml -f istio-cni-values.yaml
 #
 #   6. Create suse.com registry pull secret in static namespaces only:
 #      for ns in cert-manager istio-system kubeflow knative-serving; do
@@ -45,7 +50,14 @@
 #      done
 #      NOTE: User namespaces are handled automatically by ESO (externalSecrets.enabled=true).
 #
-#   7. Ensure storage provisioner (K3s/RKE2 clusters):
+#   7. Install the External Secrets Operator (required while externalSecrets.enabled=true):
+#      helm install external-secrets-operator oci://dp.apps.rancher.io/charts/external-secrets-operator \
+#        --version 2.6.0 \
+#        --namespace kubeflow \
+#        --set installCRDs=true \
+#        --set global.imagePullSecrets[0].name=application-collection
+#
+#   8. Ensure storage provisioner (K3s/RKE2 clusters):
 #      # Option A: Local Path Provisioner (development/testing)
 #      kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
 #      kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
@@ -59,19 +71,22 @@
 #      Note: Delete any AWS-specific storage classes (e.g., gp2) before installing:
 #      kubectl delete storageclass gp2
 #
-# Installation (from project root):
-#   helm install kubeflow ./charts/kubeflow -n kubeflow
+# Installation (release name and namespace must both be kubeflow):
+#   helm upgrade --install kubeflow oci://registry.suse.com/ai/charts/kubeflow --version <chart-version> \
+#     -n kubeflow --force-conflicts --server-side=true --wait --timeout 15m
 #
-# Or from charts/kubeflow directory:
-#   helm install kubeflow . -n kubeflow
+# Or from a checkout of the chart repository (root directory):
+#   helm dependency build kubeflow
+#   helm upgrade --install kubeflow ./kubeflow -n kubeflow --force-conflicts --server-side=true --wait --timeout 15m
 #
 # Access:
 #   kubectl port-forward svc/istio -n istio-system 8080:80
 #   Open http://localhost:8080
 #
-# Default credentials:
-#   Email: user@example.com
-#   Password: 12341234
+# Login: user@example.com. The password is generated on first install:
+#   kubectl -n kubeflow get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
+# After the first login set your own auth.initialUser.passwordHash (README, "change-initial-password").
+# (With global.demoMode=true the published demo password 12341234 is used instead.)
 
 # Global configuration applied to all sub-charts
 global:
@@ -94,10 +109,9 @@ global:
     - name: application-collection
     - name: suse-ai-registry
 
-  # Private/air-gapped registry prefix.
-  # When set, sub-chart image helpers will prepend this value to all image references.
-  # Example (Rancher registry mirror): dp.apps.rancher.io/containers
-  # Example (air-gapped mirror):       my-registry.corp.com/kubeflow
+  # Private/air-gapped registry: replaces the registry of every image (SUSE AI and Application
+  # Collection); repositories keep their path, e.g. containers/kubectl -> <imageRegistry>/containers/kubectl.
+  # Example (air-gapped mirror): my-registry.corp.com
   # Leave empty to use the default registry specified in each sub-chart's values.
   imageRegistry: ""
 
@@ -115,8 +129,10 @@ global:
   # Precedence: global.imageRegistry > global.suseApplicationCollectionRegistry > component image.registry
   suseApplicationCollectionRegistry: ""
 
-  # Demo mode: set true ONLY for local development/tutorial.
-  # When false (default), Helm fails at render time if any credential is a known demo default.
+  # Demo mode: set true ONLY for local development/tutorial. When true, empty credentials
+  # (auth.oidc.*, auth.initialUser.passwordHash, pipelines.seaweedfs.*) take the published demo
+  # values (login user@example.com / 12341234) instead of being generated. When false (default),
+  # they are generated, and Helm fails at render time if any is set to a known demo value.
   # NEVER set true in production.
   demoMode: false
 
@@ -142,8 +158,48 @@ global:
     #                 (or runMe.sh --legacy-authz).
     gatewayAuthMode: native
 
+  # Dashboard gateway (kubeflow-gateway).
   gateway:
     name: "kubeflow/kubeflow-gateway"
+    # Dashboard FQDN (e.g. kubeflow.example.com). "" = wildcard listener for IP / NodePort access.
+    # Independent of TLS: a named hostname works over plain HTTP.
+    hostname: ""
+    # Annotate kubeflow-gateway so an external-dns (the bundled one, externaldns.enabled, or one already
+    # in the cluster) publishes a record for hostname. No effect without hostname.
+    externalDNS: false
+
+  # Gateway TLS. source:
+  #   ""          plain HTTP (default)
+  #   selfSigned  cert-manager self-signed Issuer (created by the chart)
+  #   letsEncrypt cert-manager Let's Encrypt ClusterIssuer (created by the chart; see letsEncrypt below)
+  #   issuerRef   your existing cert-manager issuer (issuerRef below)
+  #   secret      your TLS Secret in istio-system (secretName)
+  #   edge        TLS terminated in front of the gateway (load balancer, proxy): the gateway serves plain
+  #               HTTP and never redirects; cookies are marked Secure and URLs use https.
+  tls:
+    source: ""
+    # TLS Secret in istio-system: written by the chart's Certificate (selfSigned, letsEncrypt, issuerRef),
+    # or yours (secret).
+    secretName: kubeflow-gateway-tls
+    # source issuerRef: {name: <issuer>, kind: ClusterIssuer | Issuer (default ClusterIssuer)}
+    issuerRef: {}
+    # Redirect the dashboard host's :80 to :443 (gateway TLS sources; never with edge).
+    httpsRedirect: true
+    letsEncrypt:
+      email: ""             # optional (recommended): ACME account email for expiry notices
+      server: prod          # prod | staging
+      solver: cloudflare    # cloudflare (DNS-01, needs cloudflare below) | http01 (no wildcards)
+      # Cloudflare DNS-01 solver. The apiTokenSecretRef Secret must exist in cert-manager's own namespace
+      # (typically cert-manager): a ClusterIssuer resolves solver secretRefs there, so the chart's
+      # cloudflare-api-token Secret (externaldns.cloudflare.apiToken) can't be used. Token scope:
+      # Zone > DNS > Edit (plus Zone > Zone > Read) on the zones of the dashboard host and kserve.domain
+      # only, not "All zones". Required with kserve.externalHttps and solver cloudflare.
+      cloudflare: {}
+      # cloudflare:
+      #   email: your-email@example.com
+      #   apiTokenSecretRef:             # install.sh --cloudflare-api-token creates it in cert-manager
+      #     name: cloudflare-api-token
+      #     key: token
 
 
   # Model Registry layout: perProfile (one registry per profile namespace, as upstream) or shared
@@ -163,7 +219,7 @@ global:
   # Flipping Rancher <-> upstream Istio is a single change here.
   istio:
     # Must match how Istio is installed: true = with istio-cni (profile namespaces enforce Pod
-    # Security baseline), false = classic istio-init. See docs/production-and-tenancy.md#pod-security-standards-on-profile-namespaces.
+    # Security baseline), false = classic istio-init. See docs/production-and-tenancy.md#9-pod-security-standards-on-profile-namespaces.
     cni: true
     ingressGateway:
       # ServiceAccount principal of the ingress gateway (used by AuthorizationPolicy
@@ -182,42 +238,30 @@ global:
       selector:
         istio: istio
 
-  # Dedicated Istio Gateway ("<namespace>/<name>") for KServe/Knative inference.
-  # Single source of truth consumed by three subcharts:
-  #   - kubeflow-istio-resources renders the Gateway of this name/namespace
-  #   - knative-serving  config-istio       key "gateway.<namespace>.<name>"
-  #   - kserve           inferenceservice-config "ingressGateway"
-  # Kept separate from global.gateway.name (the dashboard gateway) so the Knative
-  # net-istio readiness prober only ever probes this gateway's ports, independent
-  # of the dashboard's :443 TLS. Use the "<namespace>/<name>" slash form.
-  kserveGateway:
-    name: "kubeflow/kserve-ingress-gateway"
-
-  # Base domain for KServe InferenceServices. Prefer a scoped subdomain
-  # (e.g. "models.example.com") over a bare org-wide domain ("example.com"):
-  # with kserveExternalHttps the cert is a "*.<kserveDomain>" wildcard, so a bare
-  # domain widens its blast radius to your whole DNS zone.
-  # Pushed automatically to knative-serving and kserve subcharts.
-  # Empty (default) = the whole stack uses "example.com" (knativeServing.domain and
-  # kserve.ingressDomain also default to "example.com"), which the dedicated
-  # kserve-ingress-gateway serves as "*.example.com".
-  # This is the SINGLE source of truth for the inference domain. To override the
-  # domain you MUST set it here — the legacy subchart-local knobs
-  # (knativeServing.domain / kserve.ingressDomain) alone are no longer sufficient:
-  # they feed the Knative/KServe configs but NOT the dedicated gateway's hosts, so
-  # setting them without global.kserveDomain diverges the gateway from the routes and
-  # breaks inference readiness. The umbrella validations.yaml fails fast on that
-  # combination. REQUIRED when global.kserveExternalHttps is true.
-  kserveDomain: ""
-
-  # Enable external HTTPS to KServe inference on the dedicated kserve-ingress-gateway
-  # (global.kserveGateway.name), separate from the dashboard's kubeflow-gateway.
-  # When true, creates a wildcard cert (*.kserveDomain) and exposes it on :443.
-  # Requires a DNS-01 solver. Flattens the route host to the single label
-  # "{name}-{namespace}.{domain}" so the wildcard covers it. Knative/KServe render
-  # this with Go's stdlib text/template (no Sprig), so the namespace cannot be
-  # hashed — see README for the cross-tenant naming caveat this implies.
-  kserveExternalHttps: false
+  # KServe inference exposure.
+  kserve:
+    # Base domain for InferenceServices; pushed to knative-serving and kserve. Prefer a scoped subdomain
+    # (e.g. models.example.com): with externalHttps the cert is a "*.<domain>" wildcard, so a bare domain
+    # widens its blast radius to your whole DNS zone. "" = example.com across the stack. The single source
+    # of truth: knativeServing.domain / kserve.ingressDomain alone don't reach the inference gateway, and
+    # the chart refuses setting them without this. Required with externalHttps.
+    domain: ""
+    # Inference over HTTPS on the dedicated inference gateway: a "*.<domain>" wildcard cert on :443, and
+    # route hosts flattened to the single label "{name}-{namespace}.<domain>" so the wildcard covers them
+    # (no hashing: Knative/KServe render with Go's text/template; see docs/access-and-tls.md for the
+    # cross-tenant naming caveat). Needs a gateway TLS source (not edge) and, with Let's Encrypt, DNS-01.
+    externalHttps: false
+    # Dedicated inference gateway ("<namespace>/<name>"), kept apart from the dashboard gateway so the
+    # Knative readiness prober only probes its ports. Consumed by kubeflow-istio-resources (the Gateway),
+    # knative-serving (config-istio) and kserve (inferenceservice-config). enabled: false only when
+    # neither KServe nor Knative Serving is installed (the chart refuses it otherwise).
+    gateway:
+      name: "kubeflow/kserve-ingress-gateway"
+      enabled: true
+    tls:
+      # Wildcard TLS Secret in istio-system. "" = kserve-wildcard-tls, issued by cert-manager. Required with
+      # tls.source secret: a Secret whose SAN covers "*.<domain>" (the dashboard's Secret only if it does).
+      secretName: ""
 
 # ============================================================================
 # Secrets / Credentials
@@ -226,26 +270,31 @@ global:
 # install, preserved on upgrade). Override with pre-created secrets for production.
 auth:
   # OIDC client credentials shared by Dex (staticClients) and oauth2-proxy.
-  # DEMO DEFAULT — CHANGE IN PRODUCTION.
   # This is the single source of truth: the chart writes these values to the
   # kubeflow-oidc-client Secret, and Dex and oauth2-proxy both read that Secret,
   # so overrides set here with -f/--set reach both components.
   oidc:
-    clientSecret: "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok"  # DEMO DEFAULT
-    cookieSecret: "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=" # DEMO DEFAULT
+    # "" generates a random value on first install and keeps it on upgrade (needs a render that
+    # sees the cluster: helm install/upgrade, not helm template). With global.demoMode=true, ""
+    # means the published demo value instead.
+    clientSecret: ""
+    cookieSecret: ""
     # true: don't create the kubeflow-oidc-client Secret; provide a Secret with that
     # name and the keys client-id, client-secret and cookie-secret yourself (e.g. with
     # External Secrets); client-id must be kubeflow-oidc-authservice, the id Dex registers.
     # clientSecret/cookieSecret are then unused.
     existingSecret: false
 
-  # Initial admin user for Dex login.
-  # WARNING: Change these credentials immediately after first login.
+  # Initial user for Dex's password login. The chart writes it to the kubeflow-initial-user Secret,
+  # which Dex reads (dex.envVars + staticPasswords[].hashFromEnv below). Unused when an external
+  # identity provider replaces the password login (dex.config.enablePasswordDB: false).
   initialUser:
-    email: "user@example.com"           # DEMO DEFAULT — CHANGE IN PRODUCTION
-    # bcrypt hash of the password. Default password: 12341234
-    # Generate: htpasswd -nbBC 12 "" <password> | tr -d ':\n' | sed 's/$2y/$2a/'
-    passwordHash: "$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm"  # DEMO DEFAULT
+    email: "user@example.com"  # keep equal to dex.config.staticPasswords[0].email
+    # bcrypt hash of the password. Generate: htpasswd -nbBC 12 "" <password> | tr -d ':\n' | sed 's/$2y/$2a/'
+    # "" generates a random password on first install and keeps it on upgrade (needs a render that
+    # sees the cluster); read it from the password key of Secret kubeflow/kubeflow-initial-user.
+    # With global.demoMode=true, "" means the demo password 12341234.
+    passwordHash: ""
 
 # ============================================================================
 # Infrastructure Components
@@ -272,24 +321,28 @@ istio:
     enabled: true
 
 # Kubeflow Istio resources (kubeflow-istio-resources sub-chart): the kubeflow-gateway
-# and kserve-ingress-gateway Gateways, the Dex/oauth2-proxy VirtualServices, the
+# and kserve-ingress-gateway Gateways (the latter switchable with
+# global.kserve.gateway.enabled), the Dex/oauth2-proxy VirtualServices, the
 # gateway AuthorizationPolicies/EnvoyFilters and the kubeflow-istio-* ClusterRoles.
 # Requires Istio CRDs. Disable only for installs without Istio (e.g. trainer-only,
 # see docs/use-cases/trainer-only-install.md). Every component that needs Istio must then be
-# disabled too; the chart fails fast and lists the ones still enabled (the list lives in
-# templates/validations.yaml).
+# disabled too; the chart fails fast and lists the ones still enabled (each component declares
+# whether it needs Istio in components.yaml).
 istioResources:
   enabled: true
+  # true: an auth layer this chart doesn't manage protects the gateway and sets kubeflow-userid,
+  # so global.oauth2Proxy.enabled=false is allowed. Otherwise that combination fails the install.
+  externalAuth: false
 
 # KServe / Knative external access — single source of truth.
-# See global.kserveDomain and global.kserveExternalHttps above.
+# See global.kserve.domain and global.kserve.externalHttps above.
 
-# Knative Serving (required for KServe)
+# Knative Serving (required for KServe, unless KServe's deployment mode is Standard)
 knativeServing:
-  enabled: true  # Required for KServe inference
-  # domain is driven by global.kserveDomain via the knative-serving.domain helper
+  enabled: true
+  # domain is driven by global.kserve.domain via the knative-serving.domain helper
   # (single source of truth); no need to set it here. domainTemplate is likewise
-  # auto-derived from global.kserveExternalHttps.
+  # auto-derived from global.kserve.externalHttps.
 
 # Knative Eventing
 knativeEventing:
@@ -299,7 +352,7 @@ knativeEventing:
 # Authentication
 # ============================================================================
 
-# Dex OIDC provider (official dexidp chart)
+# Dex OIDC provider (SUSE Application Collection dex-idp chart)
 dex:
   enabled: true
   # The OIDC client secret reaches Dex through the kubeflow-oidc-client Secret
@@ -314,6 +367,11 @@ dex:
         secretKeyRef:
           name: kubeflow-oidc-client  # created from auth.oidc.* (templates/secrets)
           key: client-secret
+    - name: KUBEFLOW_INITIAL_USER_HASH
+      valueFrom:
+        secretKeyRef:
+          name: kubeflow-initial-user  # created from auth.initialUser.* (templates/secrets)
+          key: hash
   config:
     issuer: "http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex"
     oauth2:
@@ -333,12 +391,11 @@ dex:
         # change auth.oidc.clientSecret, not this.
         secretEnv: KUBEFLOW_OIDC_CLIENT_SECRET
     staticPasswords:
-      # Default credentials (Email: user@example.com / Password: 12341234)
-      # DEMO DEFAULT — CHANGE IN PRODUCTION.
-      # In production, use auth.initialUser.email / auth.initialUser.passwordHash
-      # or configure an external LDAP/OIDC connector via dex.config.connectors.
-      - email: user@example.com  # DEMO DEFAULT
-        hash: "$2y$12$arGZ9p14vTUDsOg/GZ6DRu8UjXxtB60UI3A1Api5/UXjdBz5qTEjm"  # DEMO DEFAULT
+      # The password hash comes from auth.initialUser.passwordHash (via the env var above); change
+      # it there. For an external LDAP/OIDC/SAML provider, add dex.config.connectors and set
+      # staticPasswords: [] and enablePasswordDB: false.
+      - email: user@example.com  # keep equal to auth.initialUser.email
+        hashFromEnv: KUBEFLOW_INITIAL_USER_HASH
         username: user
         userID: "15841185641784"
     enablePasswordDB: true
@@ -360,7 +417,7 @@ dex:
 
 
 # oauth2-proxy sub-chart values
-# clientSecret MUST match dex.config.staticClients[0].secret — both reference auth.oidc.clientSecret
+# The OIDC client secret comes from the kubeflow-oidc-client Secret (auth.oidc.*), which Dex reads too.
 oauth2-proxy:
   replicaCount: 2
   # Enable Istio sidecar injection for oauth2-proxy
@@ -368,13 +425,11 @@ oauth2-proxy:
     sidecar.istio.io/inject: "true"
   # Extra environment variables to pass to the oauth2-proxy container
   extraEnv:
-    # Automatically populated from the dynamic ConfigMap 'oauth2-proxy-dynamic-config'
-    # based on the parent chart's TLS / external HTTPS configuration.
+    # Secure session cookie exactly when users browse over HTTPS (any global.tls.source, including
+    # edge). A template (the sub-chart renders extraEnv with tpl), so a TLS change rolls oauth2-proxy.
+    # Keep this entry if you override extraEnv (the chart checks).
     - name: OAUTH2_PROXY_COOKIE_SECURE
-      valueFrom:
-        configMapKeyRef:
-          name: oauth2-proxy-dynamic-config
-          key: cookie-secure
+      value: '{{ ternary "true" "false" (ne (dig "tls" "source" "" (.Values.global | default dict)) "") }}'
     - name: OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY
       value: "false"
     - name: OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS
@@ -521,8 +576,7 @@ pipelines:
           storage: 20Gi
     metrics:
       enabled: false
-    # Scheduled backup CronJob + PVC. Enabled by default.
-    # Set enabled: false on resource-constrained clusters.
+    # Scheduled backup CronJob + PVC. Disabled by default; needs extra storage when enabled.
     backup:
       enabled: false
       schedule: "0 2 * * *"  # daily at 02:00 UTC
@@ -533,8 +587,11 @@ pipelines:
     enabled: true
     storageClass: ""
     storageSize: 20Gi
-    accessKey: kubeflow      # DEMO DEFAULT
-    secretKey: kubeflow123   # DEMO DEFAULT
+    # "" generates a random value on first install and keeps it on upgrade (needs a render that
+    # sees the cluster). With global.demoMode=true, "" means kubeflow / kubeflow123.
+    # Use letters and digits only: SeaweedFS registers the keys through a shell command.
+    accessKey: ""
+    secretKey: ""
 
 # Jupyter Notebooks
 notebooks:
@@ -554,8 +611,8 @@ katib:
 # KServe - Model Serving
 kserve:
   enabled: true
-  # ingressDomain and urlScheme are driven by global.kserveDomain and
-  # global.kserveExternalHttps (via the kserve.kserveDomain / kserve.kserveUrlScheme
+  # ingressDomain and urlScheme are driven by global.kserve.domain and
+  # global.kserve.externalHttps (via the kserve.kserveDomain / kserve.kserveUrlScheme
   # helpers, single source of truth); no need to set them here.
 
 # Kubeflow Hub: Model Registry UI/BFF, (optional) catalog, controller and CSI. Where the registry
@@ -656,7 +713,8 @@ externalSecretsOperator:
   enabled: false
   installCRDs: true
 
-# Secret propagation to user namespaces — requires ESO (via externalSecretsOperator or pre-existing install).
+# Secret propagation to user namespaces — requires ESO (via externalSecretsOperator or pre-existing install)
+# serving the external-secrets.io/v1 API (ESO 0.16 or later; the chart checks).
 # Propagates registry pull secrets from sourceNamespace to all namespaces labelled
 # app.kubernetes.io/part-of: kubeflow-profile (user namespaces created by the profiles controller).
 externalSecrets:
@@ -669,6 +727,11 @@ externalSecrets:
   namespaceSelector:
     matchLabels:
       app.kubernetes.io/part-of: kubeflow-profile
+  # Also copy the pull secrets into these namespaces, by name (e.g. [knative-serving] when the
+  # secrets exist only in the kubeflow namespace). Don't list a namespace whose secrets of these
+  # names something else manages: ESO would then fail to take them over. With an empty
+  # namespaceSelector, only these namespaces get them.
+  extraNamespaces: []
   refreshInterval: "1h"
 
 # ============================================================================
@@ -677,16 +740,15 @@ externalSecrets:
 # Uncomment sections below to override default values of individual subcharts.
 # The key must match the dependency name (or alias) from Chart.yaml.
 #
-# For full reference, see each subchart's values.yaml:
-#   charts/apps/<chart>/values.yaml
-#   charts/common/<chart>/values.yaml
+# For full reference, see each subchart's values.yaml: charts/<chart>/values.yaml.
+# Image tags are left out of the examples; the sub-chart's values.yaml has the current ones.
+# Keys that already exist above (pipelines, katib, kserve, knativeServing): add the settings there.
 
 # --- Central Dashboard ---
 # central-dashboard:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/central-dashboard
-#     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
 #   resources: {}
@@ -702,17 +764,19 @@ externalSecrets:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/jupyter-web-app
-#     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
 #   resources: {}
+#   env:
+#     # Secure flag on the CSRF cookie (also volumes-web-app, tensorboards-web-app). "" = follow
+#     # global.tls.source: on for any HTTPS source (including edge), off on plain HTTP.
+#     APP_SECURE_COOKIES: ""
 
 # --- Notebook Controller ---
 # notebook-controller:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/notebook-controller
-#     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   resources: {}
 #   configMapData:
@@ -725,7 +789,6 @@ externalSecrets:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/volumes-web-app
-#     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
 #   resources: {}
@@ -735,7 +798,6 @@ externalSecrets:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/tensorboards-web-app
-#     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
 #   resources: {}
@@ -745,7 +807,6 @@ externalSecrets:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/models-web-app
-#     tag: v0.13.0
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
 #   resources: {}
@@ -755,7 +816,6 @@ externalSecrets:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/poddefaults-webhook
-#     tag: v1.10.0
 #     pullPolicy: IfNotPresent
 #   resources: {}
 
@@ -764,7 +824,6 @@ externalSecrets:
 #   image:
 #     registry: registry.suse.com
 #     repository: ai/containers/training-operator
-#     tag: v1-d6eb98e
 #     pullPolicy: IfNotPresent
 #   replicaCount: 1
 #   resources: {}
@@ -776,13 +835,11 @@ externalSecrets:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/kfam
-#       tag: v1.10.0
 #     resources: {}
 #   profileController:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/profile-controller
-#       tag: v1.10.0
 #     resources: {}
 
 # --- Tensorboard Controller ---
@@ -792,7 +849,6 @@ externalSecrets:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/tensorboard-controller
-#       tag: v1.10.0
 #     resources: {}
 
 # --- Katib ---
@@ -801,19 +857,16 @@ externalSecrets:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/katib-controller
-#       tag: v0.19.0
 #     resources: {}
 #   ui:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/katib-ui
-#       tag: v0.19.0
 #     resources: {}
 #   mariadb:
 #     image:
 #       registry: ""
 #       repository: mariadb
-#       tag: "11.8"
 #     persistence:
 #       storageSize: 10Gi
 
@@ -823,13 +876,11 @@ externalSecrets:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/kfp-api-server
-#       tag: "2.15.0"
 #     resources: {}
 #   frontend:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/kfp-frontend
-#       tag: "2.15.0"
 #     resources: {}
 
 # --- KServe ---
@@ -838,7 +889,6 @@ externalSecrets:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/kserve-controller
-#       tag: v0.16.0
 #       pullPolicy: Always
 #     resources:
 #       limits:
@@ -848,13 +898,12 @@ externalSecrets:
 #         cpu: 100m
 #         memory: 200Mi
 
-# --- Knative Serving ---
-# knative-serving:
+# --- Knative Serving (alias: knativeServing) ---
+# knativeServing:
 #   controller:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/serving/cmd/controller
-#       tag: "v1.20.0"  # unused when digest is set
 #       pullPolicy: IfNotPresent
 #     resources:
 #       limits:
@@ -870,7 +919,6 @@ externalSecrets:
 #     image:
 #       registry: registry.suse.com
 #       repository: ai/containers/eventing/cmd/controller
-#       tag: "v1.20.0" # unused when digest is set
 #       pullPolicy: IfNotPresent
 #     resources:
 #       requests:
@@ -878,89 +926,27 @@ externalSecrets:
 #         memory: 100Mi
 
 # --- Kubeflow Istio Resources ---
-kubeflow-istio-resources:
-  # Hostname for the Kubeflow web UI (e.g. kubeflow.example.com).
-  # Leave empty for wildcard / IP+NodePort access.
-  # Independent of TLS — a named hostname works over plain HTTP.
-  hostname: ""                        # CHANGE: set to your FQDN
-
-  # Indicate whether external-dns is enabled and that a DNS records shall be
-  # created for the given hostname. If hostname is not specified or have an
-  # empty value. Enabling external-dns has no effect.
-  externalDNSEnabled: false
-
-  tls:
-    source: ""          # "" | "selfSigned" | "letsEncrypt" | "secret" | "issuerRef"
-    issuer: ""          # Override ClusterIssuer name; auto-set to kubeflow-letsencrypt when source=letsEncrypt
-    existingSecret: ""  # Pre-existing Secret in istio-system (source: secret)
-    # Pre-existing Secret for the KServe wildcard server (source: secret +
-    # global.kserveExternalHttps). SAN MUST cover "*.<global.kserveDomain>".
-    # Reuse existingSecret here only if it is a multi-SAN/wildcard cert covering
-    # both the dashboard host and the wildcard; otherwise inference-host TLS
-    # handshakes fail. Required by chart validation in that mode.
-    kserveExistingSecret: ""
-    credentialName: kubeflow-gateway-tls
-    httpsRedirect: true
-    # Let's Encrypt ACME configuration (used when source: letsEncrypt).
-    # The chart creates a `kubeflow-letsencrypt` ClusterIssuer automatically —
-    # no manual kubectl steps required.
-    letsEncrypt:
-      email: ""               # Optional (recommended): ACME account email for expiry
-                              # notices (e.g. admin@example.com). Let's Encrypt issues
-                              # without it; when empty the ClusterIssuer omits the field.
-      server: prod            # prod | staging
-      solver: cloudflare      # cloudflare (dns01, requires externalDns.cloudflare.apiToken) | http01
-
-    # If solver is cloudflare, you MUST configure the cloudflare block below
-    # (chart validation fails fast if it is missing when global.kserveExternalHttps
-    # is set with source: letsEncrypt + solver: cloudflare). Make sure the
-    # apiTokenSecretRef is correctly configured with the name and key values. The
-    # email field must contain the valid email you registered with Cloudflare.
-    #
-    # NOTE: the Secret referenced by apiTokenSecretRef must exist in cert-manager's
-    # own namespace (typically `cert-manager`) — a ClusterIssuer resolves DNS-01
-    # solver secretRefs there, NOT in the release namespace. This is a DIFFERENT
-    # Secret from the chart-managed `cloudflare-api-token` (kubeflow namespace) used
-    # by external-dns; create/copy the token Secret into cert-manager's namespace.
-    #
-    # TOKEN SCOPE: the Cloudflare API token needs Zone > DNS > Edit on the zone(s)
-    # containing kserveDomain / the dashboard host (plus Zone > Zone > Read, which
-    # cert-manager uses to discover the zone). Scope it to those specific zones, not
-    # "All zones", to bound the blast radius if the Secret leaks.
-    #
-    # cloudflare:
-    #   email: your-email@example.com
-    #   apiTokenSecretRef:
-    #     name: cloudflare-api-token-secret
-    #     key: api-token
-
-    # If you are using an existing cluster issuer (i.e. by setting source to
-    # "issuerRef" above), you must fill in the issuerRef section.
-    # NOTE: the existing issuer must be a "clusterissuer".
-    #
-    # issuerRef:
-    #   name: <name of the existing cluster issuer>
+# Hostname, TLS and KServe exposure are set under global.gateway, global.tls and global.kserve.
+# kubeflow-istio-resources:
+#   gateway:
+#     annotations: {}   # extra annotations on kubeflow-gateway
 
 # --- External DNS (optional) ---
-# Automatically creates/updates DNS records for kubeflow-istio-resources.hostname.
+# Automatically creates/updates DNS records for global.gateway.hostname.
 # Watches the kubeflow-gateway Istio Gateway resource for the hostname.
 externaldns:
   enabled: false
 
-# see https://github.com/kubernetes-sigs/external-dns/tree/master/charts/external-dns
-# for more information
+# Bundled chart: AppCo external-dns (see docs/components.md).
 
   provider:
     name: cloudflare   # cloudflare | aws | azure | google | etc.
 
-  # Cloudflare API token. When set (and provider.name=cloudflare), the chart:
-  #   1. Creates a chart-managed `cloudflare-api-token` Secret in the kubeflow namespace.
-  #   2. Auto-injects CF_API_TOKEN into the external-dns pod (via the bitnami chart's
-  #      cloudflare.apiToken support — no manual env block needed).
-  #   3. Reuses the same Secret for the `kubeflow-letsencrypt` ClusterIssuer when
-  #      tls.source: letsEncrypt and tls.letsEncrypt.solver: cloudflare.
+  # Cloudflare API token: the chart stores it in the `cloudflare-api-token` Secret (key token), which
+  # the default env below passes to external-dns. install.sh --cloudflare-api-token creates the same
+  # Secret instead (use one of the two, not both); or leave both out and set env yourself.
   cloudflare:
-    apiToken: ""   # Set to your Cloudflare API token — chart manages the Secret
+    apiToken: ""
 
   # Limit DNS management to this domain (strongly recommended).
   domainFilters: []
@@ -972,18 +958,22 @@ externaldns:
   sources:
     - istio-gateway
 
-  # Advanced: extra provider env vars appended after auto-wired vars.
-  # Cloudflare: not needed — set cloudflare.apiToken above instead.
-  # AWS Route53 (with pod IAM role — no env vars needed):
-  #   env: []
-  # Other provider example:
+  # Provider credentials as env vars. The default reads the cloudflare-api-token Secret, optionally so
+  # other providers can keep it; with Cloudflare the chart checks that the Secret exists. Setting env
+  # replaces it (keep a CF_API_TOKEN entry when apiToken is set; the chart checks), e.g. with your own Secret:
   #   env:
-  #     - name: SOME_PROVIDER_TOKEN
+  #     - name: CF_API_TOKEN
   #       valueFrom:
   #         secretKeyRef:
-  #           name: my-provider-secret
+  #           name: my-cloudflare-token
   #           key: token
-  env: []
+  env:
+    - name: CF_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cloudflare-api-token
+          key: token
+          optional: true
 
 # --- Kubeflow Namespace ---
 # kubeflow-namespace:
@@ -999,9 +989,8 @@ userNamespace:
   enabled: true
 
 user-namespace:
-  # Additional user profiles. Each entry creates a Profile CR and deploys all
-  # KFP per-namespace resources (artifact server, viz server, credentials,
-  # authorization policies) in the user's namespace.
+  # Additional user profiles. Each entry creates a Profile and its namespace; the KFP profile
+  # controller sets up the profile's Pipelines objects there.
   #
   # Example:
   #   additionalUsers:
@@ -1015,7 +1004,7 @@ user-namespace:
   modelRegistry: {}
 
 # Test images for Helm hook test Pods.
-# These are used in charts/kubeflow/templates/tests/ for connectivity checks.
+# These are used in templates/tests/ for connectivity checks.
 testImages:
   # Default bci-busybox image for basic connectivity tests
   busybox:

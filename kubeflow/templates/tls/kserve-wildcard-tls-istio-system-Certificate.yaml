@@ -1,8 +1,7 @@
-{{- if .Values.global.kserveExternalHttps }}
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- $tls := $kir.tls | default dict }}
-{{- $tlsSource := include "kubeflow.tlsSource" . }}
-{{- if and $tlsSource (ne $tlsSource "secret") }}
+{{- if dig "kserve" "externalHttps" false (.Values.global | default dict) }}
+{{- $g := .Values.global | default dict }}
+{{- $ks := $g.kserve | default dict }}
+{{- if include "kubeflow.certManagerTls" . }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -12,25 +11,13 @@ spec:
   {{- /* Wildcard covering KServe inference hosts so the dedicated
          kserve-ingress-gateway can terminate TLS for them. Requires a DNS-01
          solver. */}}
-  commonName: {{ printf "*.%s" .Values.global.kserveDomain | quote }}
-  secretName: kserve-wildcard-tls
+  commonName: {{ printf "*.%s" $ks.domain | quote }}
+  secretName: {{ dig "tls" "secretName" "" $ks | default "kserve-wildcard-tls" }}
   privateKey:
     rotationPolicy: Always
   issuerRef:
-{{- if eq $tlsSource "selfSigned" }}
-    name: {{ $tls.issuer | default "kubeflow-selfsigned" | quote }}
-    kind: Issuer
-{{- else if eq $tlsSource "letsEncrypt" }}
-    name: {{ $tls.issuer | default "kubeflow-letsencrypt" | quote }}
-    kind: ClusterIssuer
-{{- else }}
-{{- if not (and $tls.issuerRef $tls.issuerRef.name) }}
-{{- fail "kubeflow-istio-resources.tls.issuerRef.name is required when tls.source is \"issuerRef\"" }}
-{{- end }}
-    name: {{ $tls.issuerRef.name | quote }}
-    kind: {{ $tls.issuerRef.kind | default "ClusterIssuer" | quote }}
-{{- end }}
+    {{- include "kubeflow.certIssuerRef" . | nindent 4 }}
   dnsNames:
-  - {{ printf "*.%s" .Values.global.kserveDomain | quote }}
+  - {{ printf "*.%s" $ks.domain | quote }}
 {{- end }}
 {{- end }}

@@ -6,6 +6,23 @@ with a human-readable error when required dependencies are misconfigured.
 {{- if hasKey (index .Values "user-namespace" | default dict) "pipelines" }}
 {{- fail "REMOVED VALUE KEY: user-namespace.pipelines.* is no longer read — the KFP profile controller creates the per-profile KFP objects. Remove it from your overrides; set the SeaweedFS credentials only in pipelines.seaweedfs.* (see docs/upgrade-notes.md#kfp-profile-controller)." }}
 {{- end }}
+{{- /* Moved in 0.7.0: hostname, TLS and KServe exposure live under global.gateway / global.tls /
+       global.kserve. Old keys are never read, so fail with every new location at once rather than
+       silently falling back to defaults (Helm accepts any key under global). */}}
+{{- $kirOld := index .Values "kubeflow-istio-resources" | default dict }}
+{{- $gOld := .Values.global | default dict }}
+{{- $moved := list }}
+{{- if hasKey $kirOld "hostname" }}{{ $moved = append $moved "kubeflow-istio-resources.hostname -> global.gateway.hostname" }}{{ end }}
+{{- if hasKey $kirOld "externalDNSEnabled" }}{{ $moved = append $moved "kubeflow-istio-resources.externalDNSEnabled -> global.gateway.externalDNS" }}{{ end }}
+{{- if hasKey $kirOld "tls" }}{{ $moved = append $moved "kubeflow-istio-resources.tls -> global.tls (credentialName and existingSecret -> secretName; cloudflare -> letsEncrypt.cloudflare; kserveExistingSecret -> global.kserve.tls.secretName; issuer removed: use source issuerRef with issuerRef.name)" }}{{ end }}
+{{- if hasKey $kirOld "kserveGateway" }}{{ $moved = append $moved "kubeflow-istio-resources.kserveGateway.enabled -> global.kserve.gateway.enabled" }}{{ end }}
+{{- if hasKey ($kirOld.gateway | default dict) "hosts" }}{{ $moved = append $moved "kubeflow-istio-resources.gateway.hosts -> removed (it was never read; use global.gateway.hostname)" }}{{ end }}
+{{- if hasKey $gOld "kserveDomain" }}{{ $moved = append $moved "global.kserveDomain -> global.kserve.domain" }}{{ end }}
+{{- if hasKey $gOld "kserveExternalHttps" }}{{ $moved = append $moved "global.kserveExternalHttps -> global.kserve.externalHttps" }}{{ end }}
+{{- if hasKey $gOld "kserveGateway" }}{{ $moved = append $moved "global.kserveGateway.name -> global.kserve.gateway.name" }}{{ end }}
+{{- if $moved }}
+{{- fail (printf "REMOVED VALUE KEY: these values moved in 0.7.0 (see docs/upgrade-notes.md, Moved values). Set the new keys instead:\n  - %s" (join "\n  - " $moved)) }}
+{{- end }}
 {{- /* Empty would make the profiles controller fall back to upstream's gateway SA, breaking Rancher Istio. */}}
 {{- $igw := dig "istio" "ingressGateway" (dict) (.Values.global | default dict) }}
 {{- if and (hasKey $igw "principal") (eq (toString ($igw.principal | default "")) "") }}
@@ -13,18 +30,70 @@ with a human-readable error when required dependencies are misconfigured.
 {{- end }}
 
 {{- /*
-  Cross-component guards for the optional infrastructure sub-charts
-  (istioResources, userNamespace). trainer-only-overrides.yaml disables them together
-  with everything that depends on them.
+  Component dependencies, all from the registry (components.yaml, via kubeflow.components):
+  unmet "requires" of enabled components, and, without istioResources, every enabled
+  setting that needs Istio. One error lists everything that is missing.
 */}}
-{{- if and .Values.userNamespace.enabled (not .Values.profiles.enabled) }}
-{{- fail "userNamespace.enabled=true requires profiles.enabled=true: the user-namespace sub-chart creates Profile CRs, and the Profile CRD ships with profiles-and-kfam. Set userNamespace.enabled=false or enable profiles." }}
+{{- $reqErrs := include "kubeflow.requirementErrors" . | fromJsonArray }}
+{{- $needGw := list }}
+{{- if not .Values.istioResources.enabled }}
+{{-   $needGw = include "kubeflow.istioUsers" . | fromJsonArray }}
+{{-   if dig "kserve" "externalHttps" false (.Values.global | default dict) }}{{ $needGw = append $needGw "global.kserve.externalHttps" }}{{ end }}
+{{-   if include "kubeflow.tlsSource" . }}{{ $needGw = append $needGw "global.tls.source" }}{{ end }}
 {{- end }}
-{{- /* The Profiles controller and KFAM bind the kubeflow-admin / kubeflow-edit /
-       kubeflow-view ClusterRoles by name; only kubeflow-roles creates them. Without
-       them the RoleBindings point at missing roles and user RBAC fails at runtime. */}}
-{{- if and .Values.profiles.enabled (not .Values.kubeflowRoles.enabled) }}
-{{- fail "profiles.enabled=true requires kubeflowRoles.enabled=true: the Profiles controller and KFAM bind the kubeflow-admin, kubeflow-edit and kubeflow-view ClusterRoles, which the kubeflow-roles sub-chart creates. Without them, Profile owners and contributors get no permissions. Set kubeflowRoles.enabled=true or disable profiles." }}
+{{- if or $reqErrs $needGw }}
+{{-   $msg := list }}
+{{-   if $reqErrs }}
+{{-     $msg = append $msg (printf "Component requirements not met:\n  - %s" (join "\n  - " $reqErrs)) }}
+{{-   end }}
+{{-   if $needGw }}
+{{-     $msg = append $msg (printf "istioResources.enabled=false is meant for installs without Istio (e.g. trainer-only), but these settings need Istio or the kubeflow-gateway (they render Istio resources, create them at runtime, or route through the gateway/Dex). Disable/unset them, or install Istio and set istioResources.enabled=true:\n  - %s" (join "\n  - " $needGw)) }}
+{{-   end }}
+{{-   fail (join "\n" $msg) }}
+{{- end }}
+{{- /* The dedicated KServe gateway is what KServe, Knative Serving and the external-HTTPS opt-in route through. */}}
+{{- $ksGwOn := dig "kserve" "gateway" "enabled" true (.Values.global | default dict) }}
+{{- if and .Values.istioResources.enabled (not $ksGwOn) (or .Values.kserve.enabled .Values.knativeServing.enabled (dig "kserve" "externalHttps" false (.Values.global | default dict))) }}
+{{- fail "global.kserve.gateway.enabled=false, but KServe, Knative Serving or global.kserve.externalHttps route inference through that gateway. Set global.kserve.gateway.enabled=true (or remove the override)." }}
+{{- end }}
+{{- /* oauth2-proxy's cookie-secure follows TLS through its extraEnv; a custom extraEnv replaces it. */}}
+{{- if .Values.global.oauth2Proxy.enabled }}
+{{-   $o2pEnv := dig "extraEnv" (list) (index .Values "oauth2-proxy" | default dict) }}
+{{-   $has := false }}
+{{-   $oldRef := false }}
+{{-   range $o2pEnv }}{{ if eq (.name | default "") "OAUTH2_PROXY_COOKIE_SECURE" }}{{ $has = true }}{{ if eq (dig "valueFrom" "configMapKeyRef" "name" "" .) "oauth2-proxy-dynamic-config" }}{{ $oldRef = true }}{{ end }}{{ end }}{{ end }}
+{{-   if $oldRef }}
+{{- fail "oauth2-proxy.extraEnv reads OAUTH2_PROXY_COOKIE_SECURE from the oauth2-proxy-dynamic-config ConfigMap, which this chart version no longer creates, so oauth2-proxy would not start. Replace that entry with the chart's (values.yaml, oauth2-proxy.extraEnv: a value that follows global.tls.source)." }}
+{{-   end }}
+{{-   if not $has }}
+{{- fail "oauth2-proxy.extraEnv has no OAUTH2_PROXY_COOKIE_SECURE entry: overriding extraEnv replaces the chart's list. Copy the chart's entries (values.yaml, oauth2-proxy.extraEnv) into yours, or the session cookie no longer follows global.tls.source." }}
+{{-   end }}
+{{- end }}
+{{- /* A custom externaldns.env replaces the default one that passes cloudflare.apiToken. */}}
+{{- $dns := .Values.externaldns }}
+{{- if and $dns.enabled (eq $dns.provider.name "cloudflare") $dns.cloudflare.apiToken }}
+{{-   $hasToken := false }}
+{{-   range $dns.env | default list }}{{ if eq (.name | default "") "CF_API_TOKEN" }}{{ $hasToken = true }}{{ end }}{{ end }}
+{{-   if not $hasToken }}
+{{- fail "externaldns.cloudflare.apiToken is set, but externaldns.env (which replaces the chart's default) has no CF_API_TOKEN, so external-dns would run without Cloudflare credentials. Add the CF_API_TOKEN entry from values.yaml (Secret cloudflare-api-token, key token) to your env, or remove apiToken and pass the token from your own Secret." }}
+{{-   end }}
+{{- end }}
+{{- /* The default env reads cloudflare-api-token optionally (other providers keep it), so for
+       Cloudflare check here that something provides that Secret: apiToken, or install.sh. Live only. */}}
+{{- if and $dns.enabled (eq $dns.provider.name "cloudflare") (not $dns.cloudflare.apiToken) (include "kubeflow.clusterVisible" .) }}
+{{-   $readsSecret := false }}
+{{-   range $dns.env | default list }}{{ if eq (dig "valueFrom" "secretKeyRef" "name" "" .) "cloudflare-api-token" }}{{ $readsSecret = true }}{{ end }}{{ end }}
+{{-   if and $readsSecret (not (lookup "v1" "Secret" .Release.Namespace "cloudflare-api-token")) }}
+{{- fail (printf "externaldns uses Cloudflare, but neither externaldns.cloudflare.apiToken nor Secret %s/cloudflare-api-token exists (install.sh --cloudflare-api-token creates it), so external-dns would run without credentials." .Release.Namespace) }}
+{{-   end }}
+{{- end }}
+{{- /* With apiToken the chart creates cloudflare-api-token; one install.sh created (not Helm-owned) would
+       make Helm fail with a generic ownership error, so say which two settings collide. Live only. */}}
+{{- if and $dns.enabled (eq $dns.provider.name "cloudflare") $dns.cloudflare.apiToken (include "kubeflow.clusterVisible" .) }}
+{{-   $cfSecret := lookup "v1" "Secret" .Release.Namespace "cloudflare-api-token" }}
+{{-   if and $cfSecret (ne (dig "metadata" "annotations" "meta.helm.sh/release-name" "" $cfSecret) .Release.Name) }}
+{{- fail (printf "externaldns.cloudflare.apiToken is set, but Secret %s/cloudflare-api-token already exists outside this release (e.g. from install.sh --cloudflare-api-token). Use one of the two: remove apiToken, or delete that Secret so the chart creates it." .Release.Namespace) }}
+{{-   end }}
 {{- end }}
 {{- /* externalSecrets renders ClusterSecretStore / ClusterExternalSecret
        (external-secrets.io/v1), so it needs the External Secrets Operator API. It is
@@ -35,51 +104,11 @@ with a human-readable error when required dependencies are misconfigured.
        for kind ClusterExternalSecret"); this guard reports that case as well.
        Skipped when rendering offline (helm template, --dry-run=client): .Capabilities
        then lists only built-in APIs, so the check would reject every offline render.
-       lookup returns an empty map offline, so an empty kube-system Namespace means
-       offline. */}}
+       kubeflow.clusterVisible tells the two apart. */}}
 {{- if and .Values.externalSecrets.enabled
            (not (.Capabilities.APIVersions.Has "external-secrets.io/v1"))
-           (lookup "v1" "Namespace" "" "kube-system") }}
+           (include "kubeflow.clusterVisible" .) }}
 {{- fail "externalSecrets.enabled=true, but the cluster has no External Secrets Operator API (external-secrets.io/v1). Install ESO before this chart, or set externalSecrets.enabled=false. (With externalSecretsOperator.enabled=true, ESO's CRDs are created by this release: install once with externalSecrets.enabled=false, then enable it.)" }}
-{{- end }}
-{{- /* network-policies renders policies into the knative-serving namespace, which
-       only exists when Knative Serving is installed. */}}
-{{- $np := index .Values "network-policies" | default dict }}
-{{- if and .Values.networkPolicies.enabled (not .Values.knativeServing.enabled) (dig "knativeServingPolicies" "enabled" true $np) }}
-{{- fail "networkPolicies.enabled=true with knativeServing.enabled=false: the network-policies sub-chart would render NetworkPolicies into the knative-serving namespace, which does not exist without Knative. Set network-policies.knativeServingPolicies.enabled=false." }}
-{{- end }}
-{{- if not .Values.istioResources.enabled }}
-{{- /* Components that render Istio resources (VirtualService, AuthorizationPolicy,
-       DestinationRule, Gateway, PeerAuthentication) or route through the
-       kubeflow-gateway / Dex. Without istioResources there is usually no Istio at
-       all, so these would fail mid-install with "no matches for kind ...". The
-       notebook and TensorBoard controllers render none at install time but create a
-       VirtualService per Notebook / Tensorboard at runtime; the notebook controller
-       can opt out with notebook-controller.configMapData.USE_ISTIO="false". */}}
-{{-   $needGw := list }}
-{{-   $nbUseIstio := printf "%v" (dig "configMapData" "USE_ISTIO" "true" (index .Values "notebook-controller" | default dict)) }}
-{{-   range $flag := list
-        (list .Values.centralDashboard.enabled "centralDashboard.enabled")
-        (list .Values.dex.enabled "dex.enabled")
-        (list .Values.global.oauth2Proxy.enabled "global.oauth2Proxy.enabled")
-        (list .Values.hub.enabled "hub.enabled")
-        (list .Values.pipelines.enabled "pipelines.enabled")
-        (list .Values.profiles.enabled "profiles.enabled")
-        (list .Values.knativeServing.enabled "knativeServing.enabled")
-        (list .Values.kserve.enabled "kserve.enabled")
-        (list .Values.katib.enabled "katib.enabled")
-        (list .Values.notebooks.webApp.enabled "notebooks.webApp.enabled")
-        (list (and .Values.notebooks.controller.enabled (ne $nbUseIstio "false")) "notebooks.controller.enabled (or set notebook-controller.configMapData.USE_ISTIO=\"false\")")
-        (list .Values.volumesWebApp.enabled "volumesWebApp.enabled")
-        (list .Values.tensorboard.webApp.enabled "tensorboard.webApp.enabled")
-        (list .Values.tensorboard.controller.enabled "tensorboard.controller.enabled")
-        (list .Values.global.kserveExternalHttps "global.kserveExternalHttps")
-        (list (include "kubeflow.tlsSource" $) "kubeflow-istio-resources.tls.source") }}
-{{-     if index $flag 0 }}{{ $needGw = append $needGw (index $flag 1) }}{{ end }}
-{{-   end }}
-{{-   if $needGw }}
-{{-     fail (printf "istioResources.enabled=false is meant for installs without Istio (e.g. trainer-only), but these settings need Istio or the kubeflow-gateway (they render Istio resources, create them at runtime, or route through the gateway/Dex). Disable/unset them, or install Istio and set istioResources.enabled=true:\n  - %s" (join "\n  - " $needGw)) }}
-{{-   end }}
 {{- end }}
 {{- /* Istio CNI must match the cluster, or Pod Security baseline rejects istio-init pods (live lookup;
      the preflight Job runs the same rules from kubeflow.istioCniProbe for helm template / GitOps). */}}
@@ -112,45 +141,23 @@ with a human-readable error when required dependencies are misconfigured.
 {{- $mrMode := include "kubeflow.modelRegistryMode" . }}
 {{- $mrDataPlane := include "kubeflow.modelRegistryDataPlane" . }}
 
-{{- /* Only the SHARED registry server uses KFP's MariaDB + mysql-secret. */}}
-{{- if and .Values.hub.enabled (eq $mrMode "shared") (not .Values.pipelines.enabled) }}
-{{- fail "global.modelRegistry.mode=shared requires pipelines.enabled=true (the shared Kubeflow Hub registry uses KFP's MariaDB and mysql-secret). Use global.modelRegistry.mode=perProfile (each profile gets its own Postgres) or enable pipelines." }}
-{{- end }}
 {{- /* A shared registry AND per-profile registries side by side is ambiguous for the UI and clients. */}}
 {{- if and .Values.hub.enabled (eq $mrMode "shared") $mrDataPlane }}
 {{- fail "user-namespace.modelRegistry.enabled=true conflicts with global.modelRegistry.mode=shared. Remove the explicit user-namespace.modelRegistry.enabled override (the data plane follows the mode)." }}
 {{- end }}
-{{- /* user-namespace cannot see hub.enabled: refuse registries without a UI. */}}
-{{- if and (not .Values.hub.enabled) $mrDataPlane }}
-{{- fail "hub.enabled=false: also set user-namespace.modelRegistry.enabled=false (or userNamespace.enabled=false) — otherwise per-profile Model Registry servers would be deployed with no Model Registry UI/control plane." }}
-{{- end }}
 
-{{- /*
-  Reject a literal '*' as the gateway hostname. Leaving hostname empty already
-  serves the wildcard '*' listener for IP/NodePort access; setting hostname: "*"
-  additionally makes the auth-bypass filter trust every host, reinstating the
-  auth bypass on an internet-facing named listener. Use "" for wildcard access.
-  NOTE: values.schema.json (hostname `not: { pattern: "\\*" }`) is now the PRIMARY
-  reject and fires before this template renders, so this fail() is normally
-  unreachable. It is kept as defense-in-depth: it still catches '*' if the schema
-  pattern is ever weakened or schema validation is skipped.
-*/}}
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- if and $kir $kir.hostname (eq $kir.hostname "*") }}
-{{- fail "kubeflow-istio-resources.hostname must not be '*'. Leave it empty (\"\") for wildcard / IP+NodePort access, or set a concrete FQDN to scope the gateway (and the auth bypass) to that host." }}
-{{- end }}
 
 {{- /*
   Enforce single source of truth for the inference domain.
   If the legacy sub-chart keys (knativeServing.domain or kserve.ingressDomain)
-  are set to something other than the "example.com" default, but global.kserveDomain
+  are set to something other than the "example.com" default, but global.kserve.domain
   is not set, fail fast to prevent the dedicated kserve-ingress-gateway hosts
   (which fall back to *.example.com) from silently diverging and breaking readiness.
   Each key is checked only when its component is enabled: Helm merges a disabled
   sub-chart's defaults into neither .Values.knativeServing nor .Values.kserve, so
   the key reads '' and would otherwise trip the guard on installs without them.
 */}}
-{{- if not .Values.global.kserveDomain }}
+{{- if not (dig "kserve" "domain" "" (.Values.global | default dict)) }}
 {{- /*
       Use `dig` with a "" fallback rather than hasKey: Helm drops a key whose
       value is null, so `--set-json knativeServing.domain=null` (or a bare
@@ -164,64 +171,12 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   $kdBad := and .Values.knativeServing.enabled (ne $kd "example.com") }}
 {{-   $idBad := and .Values.kserve.enabled (ne $id "example.com") }}
 {{-   if or $kdBad $idBad }}
-{{-     fail (printf "DIVERGENCE: knativeServing.domain is '%s' and kserve.ingressDomain is '%s' but global.kserveDomain is empty. When overriding the inference domain, you MUST set global.kserveDomain to the same value (e.g., --set global.kserveDomain=10.0.0.5.nip.io) so that the dedicated gateway's hosts stay in sync and route traffic." $kd $id) }}
+{{-     fail (printf "DIVERGENCE: knativeServing.domain is '%s' and kserve.ingressDomain is '%s' but global.kserve.domain is empty. When overriding the inference domain, you MUST set global.kserve.domain to the same value (e.g., --set global.kserve.domain=10.0.0.5.nip.io) so that the dedicated gateway's hosts stay in sync and route traffic." $kd $id) }}
 {{-   end }}
 {{- end }}
 
-{{- /*
-  KServe external HTTPS: the dedicated kserve-ingress-gateway wildcard cert only
-  works if a real gateway hostname is set and the ACME challenge can issue a
-  wildcard. These fail silently at runtime (readiness probe EOF / stuck cert
-  order), so fail fast here.
-
-  The companion knative/kserve settings (domainTemplate, urlScheme, ingressDomain)
-  are auto-derived from global.kserveExternalHttps / global.kserveDomain via chart
-  helpers, so the operator only needs the two globals plus a working TLS issuer —
-  no more hand-aligned sub-chart knobs, and no guards for them.
-*/}}
-{{- if .Values.global.kserveExternalHttps }}
-{{-   $kir := index .Values "kubeflow-istio-resources" }}
-{{-   $tls := $kir.tls | default dict }}
-{{-   $tlsSource := include "kubeflow.tlsSource" . }}
-{{- /*
-      Collect every unmet opt-in prerequisite and fail once with the full list.
-    */}}
-{{-   $errs := list }}
-{{-   if not .Values.global.kserveDomain }}
-{{-     $errs = append $errs "global.kserveDomain must be set (a scoped subdomain such as \"models.example.com\" is recommended over a bare org-wide domain) to use global.kserveExternalHttps — it is the base domain for the '*.<kserveDomain>' wildcard cert and inference hosts." }}
-{{-   end }}
-{{-   if not (and .Values.global.oauth2Proxy .Values.global.oauth2Proxy.enabled) }}
-{{-     $errs = append $errs "global.oauth2Proxy.enabled must be true to use global.kserveExternalHttps — the bundled ext_authz auth chain (authn-filter EnvoyFilter) is only rendered when oauth2-proxy is enabled, so with it disabled the '*.<kserveDomain>:443' wildcard server would perform no gateway auth. Because every app VirtualService binds hosts: ['*'], that exposes the ENTIRE Kubeflow surface (not just inference) unauthenticated. If you front Kubeflow with your own IdP at the gateway, do not enable the bundled global.kserveExternalHttps opt-in." }}
-{{-   end }}
-{{-   if not $kir.hostname }}
-{{-     $errs = append $errs "kubeflow-istio-resources.hostname must be set to use global.kserveExternalHttps — otherwise the gateway serves the '*' listener with the auth-bypass filter trusting every host, and the KServe wildcard server is refused." }}
-{{-   end }}
-{{-   if not (has $tlsSource (list "letsEncrypt" "selfSigned" "secret" "issuerRef")) }}
-{{-     $errs = append $errs "kubeflow-istio-resources.tls.source must be one of {letsEncrypt, selfSigned, secret, issuerRef} to use global.kserveExternalHttps — with source \"\" there is no :443 server or wildcard cert, so advertised https:// inference URLs would be dead." }}
-{{-   end }}
-{{-   if and (eq $tlsSource "secret") (not $tls.kserveExistingSecret) }}
-{{-     $errs = append $errs "kubeflow-istio-resources.tls.kserveExistingSecret must be set when tls.source is \"secret\" and global.kserveExternalHttps is true — the KServe wildcard server needs a Secret whose SAN covers \"*.<global.kserveDomain>\". Reusing the dashboard's tls.existingSecret silently fails the TLS handshake on inference hosts; point this at that Secret only if it is a multi-SAN/wildcard cert covering both hosts." }}
-{{-   end }}
-{{-   if eq $tlsSource "letsEncrypt" }}
-{{- /* `| default dict`: an explicit tls.letsEncrypt: null otherwise nil-derefs
-      on `.solver` with a raw Go panic instead of reaching this validation. */}}
-{{-     $le := $tls.letsEncrypt | default dict }}
-{{-     if eq $le.solver "http01" }}
-{{-       $errs = append $errs "tls.letsEncrypt.solver must be a DNS-01 solver (e.g. cloudflare) — Let's Encrypt HTTP-01 cannot issue wildcard certificates." }}
-{{-     else if eq ($le.solver | default "cloudflare") "cloudflare" }}
-{{- /*
-          A cloudflare DNS-01 solver with an unpopulated cloudflare block renders a
-          bare "- dns01:" the ClusterIssuer can't use, so the wildcard order hangs.
-        */}}
-{{-       if not (and $tls.cloudflare $tls.cloudflare.apiTokenSecretRef $tls.cloudflare.apiTokenSecretRef.name) }}
-{{-         $errs = append $errs "kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name must be set for the cloudflare DNS-01 solver — the token Secret must exist in cert-manager's namespace (see values.yaml)." }}
-{{-       end }}
-{{-     end }}
-{{-   end }}
-{{-   if $errs }}
-{{-     fail (printf "global.kserveExternalHttps is true, but the external-HTTPS-for-inference opt-in is incomplete. Fix all of the following:\n  - %s" (join "\n  - " $errs)) }}
-{{-   end }}
-{{- end }}
+{{- /* The KServe external-HTTPS checks live in kubeflow-istio-resources (templates/validations.yaml),
+       the chart that renders the gateways; they run here too, since it renders with this chart. */}}
 
 {{- /*
   Migration guard: the per-subchart ingress-gateway identity knobs were removed
@@ -285,7 +240,7 @@ with a human-readable error when required dependencies are misconfigured.
        that is 16/24/32 bytes; otherwise it uses the raw string (encryption.SecretBytes). Mirror
        that here so a bad value fails at render time instead of crash-looping the pod. Note that
        standard base64 with "+" or "/" is NOT decoded by oauth2-proxy. */}}
-{{- if and .Values.global.oauth2Proxy.enabled (not .Values.auth.oidc.existingSecret) }}
+{{- if and .Values.global.oauth2Proxy.enabled (not .Values.auth.oidc.existingSecret) $cookieSecret }}
 {{-   $trimmed := regexReplaceAll "=+$" $cookieSecret "" }}
 {{-   $decLen := 0 }}
 {{-   if and (regexMatch "^[A-Za-z0-9_-]+$" $trimmed) (ne (mod (len $trimmed) 4) 1) }}
@@ -298,8 +253,65 @@ with a human-readable error when required dependencies are misconfigured.
 {{-   end }}
 {{- end }}
 
+{{- /* Dex reads the initial user's hash from the kubeflow-initial-user Secret through an env var
+       (staticPasswords[].hashFromEnv); without it Dex fails to start ("no password hash provided"),
+       e.g. when dex.envVars is overridden. The staticPasswords email is a copy of auth.initialUser.email. */}}
+{{- if .Values.dex.enabled }}
+{{-   $envNames := list }}
+{{-   range (.Values.dex.envVars | default list) }}{{ $envNames = append $envNames .name }}{{ end }}
+{{-   range (.Values.dex.config.staticPasswords | default list) }}
+{{-     if and .hashFromEnv (not .hash) (not (has .hashFromEnv $envNames)) }}
+{{-       fail (printf "dex.config.staticPasswords[%s] reads its password hash from env var %s, which dex.envVars doesn't define, so Dex would not start. When overriding dex.envVars, keep the KUBEFLOW_INITIAL_USER_HASH entry from values.yaml." .email .hashFromEnv) }}
+{{-     end }}
+{{-     if and (eq (.hashFromEnv | default "") "KUBEFLOW_INITIAL_USER_HASH") (ne (.email | default "") $.Values.auth.initialUser.email) }}
+{{-       $credErrs = append $credErrs (printf "dex.config.staticPasswords[%s].email differs from auth.initialUser.email" .email) }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+
 {{- if $credErrs }}
 {{-   fail (printf "Credential mismatch. Values set with -f/--set do not follow the YAML anchors in values.yaml, so these copies still hold their old values. Set each one to the same value as its source (or use the existing-secret options):\n  - %s" (join "\n  - " $credErrs)) }}
+{{- end }}
+
+{{- /* Empty credentials are generated and kept via lookup (unless global.demoMode fills in the demo
+       values), and lookup sees nothing in a render without cluster access, so every such render would
+       generate new ones. The password counts only while Dex's password login uses it. */}}
+{{- $generated := list }}
+{{- if not .Values.global.demoMode }}
+{{- if and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) }}
+{{-   if not .Values.auth.oidc.clientSecret }}{{ $generated = append $generated "auth.oidc.clientSecret" }}{{ end }}
+{{-   if not .Values.auth.oidc.cookieSecret }}{{ $generated = append $generated "auth.oidc.cookieSecret" }}{{ end }}
+{{- end }}
+{{- if and (include "kubeflow.dexPasswordLogin" .) (not .Values.auth.initialUser.passwordHash) }}{{ $generated = append $generated "auth.initialUser.passwordHash" }}{{ end }}
+{{- if and .Values.pipelines.enabled (not .Values.pipelines.seaweedfs.existingSecret) }}
+{{-   if not .Values.pipelines.seaweedfs.accessKey }}{{ $generated = append $generated "pipelines.seaweedfs.accessKey" }}{{ end }}
+{{-   if not .Values.pipelines.seaweedfs.secretKey }}{{ $generated = append $generated "pipelines.seaweedfs.secretKey" }}{{ end }}
+{{- end }}
+{{- end }}
+{{- /* "Kept on upgrade" must not keep the published demo values: a release installed in demo mode and
+       then moved to generated credentials would silently stay on them. */}}
+{{- if and $generated (include "kubeflow.clusterVisible" .) }}
+{{-   $demo := include "kubeflow.demoCredentials" . | fromYaml }}
+{{-   $kept := list }}
+{{-   $ns := .Release.Namespace }}
+{{-   range $v := list (list "auth.oidc.clientSecret" $ns "kubeflow-oidc-client" "client-secret" $demo.clientSecret)
+                    (list "auth.oidc.cookieSecret" $ns "kubeflow-oidc-client" "cookie-secret" $demo.cookieSecret)
+                    (list "auth.initialUser.passwordHash" $ns "kubeflow-initial-user" "hash" $demo.passwordHash)
+                    (list "pipelines.seaweedfs.accessKey" "kubeflow" "mlpipeline-minio-artifact" "accesskey" $demo.accessKey)
+                    (list "pipelines.seaweedfs.secretKey" "kubeflow" "mlpipeline-minio-artifact" "secretkey" $demo.secretKey) }}
+{{-     if has (index $v 0) $generated }}
+{{-       $data := (lookup "v1" "Secret" (index $v 1) (index $v 2)).data | default dict }}
+{{-       if eq (index $data (index $v 3) | default "" | b64dec) (index $v 4) }}
+{{-         $kept = append $kept (printf "%s (Secret %s/%s, key %s)" (index $v 0) (index $v 1) (index $v 2) (index $v 3)) }}
+{{-       end }}
+{{-     end }}
+{{-   end }}
+{{-   if $kept }}
+{{- fail (printf "These values are empty, so the chart would keep them from their existing Secrets, but those hold the published demo values from an install with global.demoMode=true:\n  - %s\nTo keep the demo credentials (development only), keep demo mode: -f demo-overrides.yaml or --set global.demoMode=true. Otherwise set each value, or delete the listed Secrets so that new values are generated. Pods don't restart when a Secret changes, so then restart the ones that read them: kubectl -n kubeflow rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy (OIDC), and the Pipelines deployments for the SeaweedFS keys (docs/upgrade-notes.md, Credential rotation (SeaweedFS))." (join "\n  - " $kept)) }}
+{{-   end }}
+{{- end }}
+{{- if and $generated (not (include "kubeflow.clusterVisible" .)) }}
+{{- fail (printf "These values are empty, so the chart generates them and keeps them via lookup, but this render cannot see the cluster (helm template, Argo CD, --dry-run=client), so every render would generate new ones. Set them, install with helm install/upgrade against the cluster, or (for development only) set global.demoMode=true to use the published demo values:\n  - %s" (join "\n  - " $generated)) }}
 {{- end }}
 
 {{- /*
@@ -313,21 +325,26 @@ with a human-readable error when required dependencies are misconfigured.
        also unused when neither Dex nor oauth2-proxy is enabled (the same condition as
        templates/secrets/oidc-client-Secret.yaml). */}}
 {{- $oidcInUse := and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) }}
-{{- if and $oidcInUse (eq (.Values.auth.oidc.clientSecret | default "") "pUBnBOY80SnXgjibTYM9ZWNzY2xreNGQok") }}
+{{- $demoCreds := include "kubeflow.demoCredentials" . | fromYaml }}
+{{- if and $oidcInUse (eq (.Values.auth.oidc.clientSecret | default "") $demoCreds.clientSecret) }}
 {{- fail "SECURITY: auth.oidc.clientSecret is the well-known demo value.\nGenerate a real secret: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if and $oidcInUse (eq (.Values.auth.oidc.cookieSecret | default "") "3GvvtL75w3Y8ERsQ9ma81nIngIx4YrjXNtQpCNDa4Vc=") }}
+{{- if and $oidcInUse (eq (.Values.auth.oidc.cookieSecret | default "") $demoCreds.cookieSecret) }}
 {{- fail "SECURITY: auth.oidc.cookieSecret is the well-known demo value.\nGenerate: openssl rand -base64 32 | tr -- '+/' '-_'\nOr for development only: set global.demoMode=true in your values." }}
+{{- end }}
+
+{{- if and (include "kubeflow.dexPasswordLogin" .) (eq (toString .Values.auth.initialUser.passwordHash) $demoCreds.passwordHash) }}
+{{- fail "SECURITY: auth.initialUser.passwordHash is the hash of the well-known demo password 12341234.\nSet your own hash (htpasswd -nbBC 12 \"\" <password> | tr -d ':\\n' | sed 's/$2y/$2a/'), or \"\" to generate a password.\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
 {{- /* SeaweedFS credentials are only used by KFP (and its per-namespace servers in
        user-namespace), so skip them when pipelines are disabled. */}}
-{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.accessKey | default "") "kubeflow") }}
+{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.accessKey | default "") $demoCreds.accessKey) }}
 {{- fail "SECURITY: pipelines.seaweedfs.accessKey is the well-known demo value.\nSet a real value or for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
-{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.secretKey | default "") "kubeflow123") }}
+{{- if and .Values.pipelines.enabled (eq (.Values.pipelines.seaweedfs.secretKey | default "") $demoCreds.secretKey) }}
 {{- fail "SECURITY: pipelines.seaweedfs.secretKey is the well-known demo value.\nGenerate: openssl rand -hex 32\nOr for development only: set global.demoMode=true in your values." }}
 {{- end }}
 
@@ -336,7 +353,7 @@ with a human-readable error when required dependencies are misconfigured.
        would generate a new password that no longer matches the initialized database. */}}
 {{- $unDB := dig "modelRegistry" "db" (dict) (index .Values "user-namespace" | default dict) }}
 {{- if and (include "kubeflow.modelRegistryDataPlane" .) (eq (toString ($unDB.mode | default "embedded")) "embedded")
-           (not (dig "embedded" "existingSecret" "" $unDB)) (not (lookup "v1" "Namespace" "" "kube-system")) }}
+           (not (dig "embedded" "existingSecret" "" $unDB)) (not (include "kubeflow.clusterVisible" .)) }}
 {{- fail "user-namespace.modelRegistry.db.embedded.existingSecret is empty and this render cannot see the cluster (helm template, Argo CD, --dry-run=client), so each render would generate a new Model Registry database password that no longer matches the database. Create a Secret with POSTGRES_USER and POSTGRES_PASSWORD in every profile namespace and set existingSecret to its name, or install with helm install/upgrade against the cluster. For development only: set global.demoMode=true." }}
 {{- end }}
 

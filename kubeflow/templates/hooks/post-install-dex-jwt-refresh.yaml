@@ -1,0 +1,131 @@
+{{- $o := .Values.global.oauth2Proxy | default dict }}
+{{- if and .Values.istioResources.enabled .Values.dex.enabled $o.enabled (eq ($o.gatewayAuthMode | default "native") "native") }}
+# Post-install/upgrade hook: istiod fetches Dex's signing keys for the dex-jwt RequestAuthentication.
+# If that fetch ran before Dex was serving, istiod keeps a placeholder key and every login fails with
+# "Jwt verification fails" until dex-jwt changes. Once Dex serves its keys, the Job changes dex-jwt's
+# spec and changes it back (timeout: 5s is Istio's default), so istiod fetches them again. Never fails
+# the install; the wait and the 240s deadline stay inside helm's default --timeout (5m).
+# Workaround for https://github.com/istio/istio/issues/37456 (closed as stale, unfixed); drop it once
+# istiod retries a failed JWKS fetch.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dex-jwt-refresh
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-dex-jwt-refresh
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: [security.istio.io]
+  resources: [requestauthentications]
+  resourceNames: [dex-jwt]
+  verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-dex-jwt-refresh
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-dex-jwt-refresh
+subjects:
+- kind: ServiceAccount
+  name: dex-jwt-refresh
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dex-jwt-refresh
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    # Kept until the next install/upgrade so its log (warnings included) can be read.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 240
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: 'false'
+    spec:
+      serviceAccountName: dex-jwt-refresh
+      restartPolicy: Never
+      {{- include "kubeflow.hookPodSecurity" . | nindent 6 }}
+      containers:
+      - name: refresh
+        {{- include "kubeflow.hookContainer" . | nindent 8 }}
+        command:
+        - /usr/bin/bash
+        - -c
+        - |
+          # The image has no curl/wget: request Dex's keys with bash's /dev/tcp. HTTP/1.1, because Dex's
+          # Istio sidecar rejects HTTP/1.0 (426); each try is bounded so the Job stays within its deadline.
+          DEX=kubeflow-dex.kubeflow.svc.cluster.local
+          dex_serving() {
+            timeout 5 bash -c 'exec 3<>"/dev/tcp/$0/5556" || exit 1
+              printf "GET /dex/keys HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n" "$0" >&3
+              read -r status <&3; [[ $status == *" 200 "* ]]' "$DEX" 2>/dev/null
+          }
+          serving=no
+          for _ in $(seq 15); do dex_serving && { serving=yes; break; }; sleep 5; done
+          [[ $serving == yes ]] && echo "Dex is serving its keys." \
+            || echo "WARNING: Dex isn't serving its keys after 2.5 minutes; refreshing anyway."
+          # A spec change, not an annotation: istiod only fetches the keys again when it rebuilds the
+          # gateway's listeners, which annotation-only changes don't trigger (tested on a cluster).
+          # Every patch first tests that rule 0 is the Dex rule (a JSON patch is applied atomically), and
+          # the timeout is put back exactly as it was. CI checks the rendered dex-jwt matches these
+          # assumptions (rule 0 = Dex issuer, no timeout).
+          issuer=http://kubeflow-dex.kubeflow.svc.cluster.local:5556/dex
+          rule=/spec/jwtRules/0
+          is_dex="{\"op\":\"test\",\"path\":\"$rule/issuer\",\"value\":\"$issuer\"}"
+          old=$(kubectl -n istio-system get requestauthentication dex-jwt -o jsonpath='{.spec.jwtRules[0].timeout}' 2>/dev/null || true)
+          if [[ -z $old ]]; then
+            change="{\"op\":\"add\",\"path\":\"$rule/timeout\",\"value\":\"5s\"}"
+            restore="{\"op\":\"remove\",\"path\":\"$rule/timeout\"}"
+          else
+            other=5s; [[ $old == 5s ]] && other=6s
+            change="{\"op\":\"replace\",\"path\":\"$rule/timeout\",\"value\":\"$other\"}"
+            restore="{\"op\":\"replace\",\"path\":\"$rule/timeout\",\"value\":\"$old\"}"
+          fi
+          if kubectl -n istio-system patch requestauthentication dex-jwt --type=json -p "[$is_dex,$change]"; then
+            sleep 5
+            kubectl -n istio-system patch requestauthentication dex-jwt --type=json -p "[$is_dex,$restore]" \
+              || echo "WARNING: could not restore dex-jwt's timeout (was: ${old:-unset})."
+          else
+            echo "WARNING: could not update dex-jwt (missing, or rule 0 isn't the Dex rule). If logins fail with 'Jwt verification fails', restart istiod (docs/troubleshooting.md)."
+          fi
+          exit 0
+{{- end }}

@@ -10,7 +10,7 @@
 
 Runs outside the cluster using `kubectl`. Checks pod health, Deployment readiness, CRDs, Secrets, TCP
 service connectivity, SeaweedFS bucket presence, HTTP health endpoints, and the active
-[ingress gateway auth mode](../README.md#ingress-gateway-authentication-mode) (asserts the native
+[ingress gateway auth mode](access-and-tls.md#ingress-gateway-authentication-mode) (asserts the native
 CRs and the legacy EnvoyFilter are never both present, and that native mode's istiod extension
 provider is registered).
 
@@ -123,14 +123,14 @@ tensorboard-controller:
 ```bash
 # From source
 helm upgrade kubeflow . -n kubeflow \
-  --reuse-values --force-conflicts \
+  --reuse-values --force-conflicts --server-side=true \
   --set tensorboard-controller.configMapData.ISTIO_HOST="*" \
   --set tensorboard-controller.configMapData.ISTIO_GATEWAY=kubeflow/kubeflow-gateway
 
 # From OCI registry (production)
 helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> -n kubeflow \
-  --reuse-values --force-conflicts \
+  --reuse-values --force-conflicts --server-side=true \
   --set tensorboard-controller.configMapData.ISTIO_HOST="*" \
   --set tensorboard-controller.configMapData.ISTIO_GATEWAY=kubeflow/kubeflow-gateway
 ```
@@ -186,6 +186,61 @@ kubectl logs -n istio-system -l app=istiod | grep "RBAC"
 kubectl get authorizationpolicy -A
 ```
 
+### Login fails with 403 at `/oauth2/callback` after changing TLS
+
+oauth2-proxy still uses the session-cookie setting from before the change (a `Secure` cookie on plain
+HTTP, or the reverse). The upgrade rolls it out; check that the rollout finished
+(`kubectl -n kubeflow rollout status deploy/kubeflow-oauth2-proxy`) and that a custom
+`oauth2-proxy.extraEnv` still has the chart's `OAUTH2_PROXY_COOKIE_SECURE` entry.
+
+If instead the login page just keeps coming back over plain HTTP, the browser still holds a `Secure`
+`oauth2_proxy_kubeflow` cookie for this address (from an earlier HTTPS setup, possibly another cluster
+at the same address) and won't let plain HTTP replace it. Delete the cookies for the address, or use a
+private window.
+
+### "Could not find CSRF cookie" when creating a notebook
+
+The browser dropped the web app's CSRF cookie because it is marked `Secure` and the page was served
+over plain HTTP. The chart marks it `Secure` whenever `global.tls.source` is set (including `edge`), so
+open the HTTPS URL. If you browse over plain HTTP on purpose, leave `global.tls.source` empty; an explicit
+`env.APP_SECURE_COOKIES: "true"` on a web app also forces `Secure`, so remove it for HTTP access.
+
+### "Trainer control-plane version info is not available" (Kubeflow SDK)
+
+The SDK's `TrainerClient` looks for the `kubeflow-trainer-public` ConfigMap in `kubeflow-system`, where
+upstream installs Trainer; this chart installs Trainer in `kubeflow`. The warning is harmless (the client
+keeps working). To silence it, set the namespace before creating the client:
+
+```python
+import os
+os.environ["KUBEFLOW_SYSTEM_NAMESPACE"] = "kubeflow"
+```
+
+### "Jwt verification fails" after login
+
+The Dex login succeeds, then the gateway answers `Jwt verification fails`.
+Try clearing the cookies. If the login still fails after clearing the cookies:
+
+istiod may have fetched Dex's signing keys while Dex wasn't serving them; it then keeps a placeholder
+key that rejects every token. The chart refreshes the keys after every install and upgrade (the
+`dex-jwt-refresh` Job), but this can still happen after an istiod restart, or if that Job couldn't
+update `dex-jwt` (see `kubectl -n kubeflow logs job/dex-jwt-refresh`). istiod's log shows it:
+
+```bash
+kubectl -n istio-system logs deploy/istiod | grep "JWKS fetch failed"
+# ... using public-only JWKS with discarded private key - JWT requests will be rejected
+```
+
+Restart istiod once Dex is running, then log in again:
+
+```bash
+kubectl -n kubeflow rollout status deploy/kubeflow-dex
+kubectl -n istio-system rollout restart deploy/istiod
+```
+
+`Jwks doesn't have key to match kid` instead means the browser still holds a token from an earlier
+install: clear the cookies for the dashboard host, or use a private window.
+
 ---
 
 ## Known Limitations
@@ -210,12 +265,6 @@ kubectl get authorizationpolicy -A
 - **CRDs are not automatically upgraded by `helm upgrade`.** Kubeflow CRDs are placed in `crds/`
   subdirectories; Helm intentionally skips them on upgrade. After a chart version bump, apply them
   manually — see [Applying CRDs on upgrade](upgrade-notes.md#applying-crds).
-- **Dex must be v0.23.0 (dex 2.42.0).** v0.24.0 (dex 2.44.0) uses Go 1.25 which introduced strict IPv6
-  URL parsing. Kubernetes API server addresses like `[10.43.0.1]:443` are rejected, crashing Dex on
-  startup. The chart pins v0.23.0.
-- **SeaweedFS image is pulled from Docker Hub** (`chrislusf/seaweedfs:4.00`). Air-gapped clusters or
-  environments with Docker Hub pull-rate limits will fail to start Kubeflow Pipelines. Mirror the image
-  to a private registry and set `global.imageRegistry` (or `global.suseRegistry`) to override.
 - **Native ingress-auth denies cookie-less external KServe inference on the shared gateway.** In the
   default native mode (`global.oauth2Proxy.gatewayAuthMode: native`), the `require-jwt` `DENY` policy
   denies any request without a verified JWT request-principal on all paths except `/dex/*` and
@@ -224,4 +273,4 @@ kubectl get authorizationpolicy -A
   is unaffected. Serve external inference via the dedicated KServe gateway / wildcard-TLS opt-in, or use
   the legacy EnvoyFilter mode (`--legacy-authz` / `-f values-envoyfilter-authz.yaml`). See
   [Upgrade Notes](upgrade-notes.md) and
-  [Ingress gateway authentication mode](../README.md#ingress-gateway-authentication-mode).
+  [Ingress gateway authentication mode](access-and-tls.md#ingress-gateway-authentication-mode).

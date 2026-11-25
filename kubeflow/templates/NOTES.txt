@@ -1,7 +1,5 @@
 
 {{- $trainerOnly := eq (include "kubeflow.trainerOnly" .) "true" }}
-{{- /* installTrainerOnly.sh recognises a trainer-only release by the banner line
-       "Kubeflow Trainer has been installed!"; keep the two in sync. */}}
 {{- if $trainerOnly }}
 {{- $tr := .Values.trainer | default dict }}
 ===============================================================================
@@ -23,9 +21,17 @@ Namespace: {{ .Release.Namespace }}
 {{- end }}
 
 {{- $unsCreds := .Values.pipelines.seaweedfs | default dict }}
-{{- $usingDemoSeaweedCreds  := and .Values.pipelines.enabled (eq ($unsCreds.accessKey | default "kubeflow") "kubeflow") (eq ($unsCreds.secretKey | default "kubeflow123") "kubeflow123") }}
-{{- $usingDemoDexSecret     := and .Values.dex.enabled (contains "pUBnBOY80Sn" (.Values.dex.config.staticClients | toJson)) }}
-{{- $usingDemoUserCreds     := and .Values.dex.enabled (eq .Values.auth.initialUser.email "user@example.com") }}
+{{- /* A credential is the demo one when set to the demo value, or empty with global.demoMode=true. */}}
+{{- $demo                   := include "kubeflow.demoCredentials" . | fromYaml }}
+{{- $demoMode               := .Values.global.demoMode | default false }}
+{{- $isDemo                 := dict }}
+{{- range $k, $v := dict "accessKey" $unsCreds.accessKey "secretKey" $unsCreds.secretKey "clientSecret" .Values.auth.oidc.clientSecret "passwordHash" .Values.auth.initialUser.passwordHash }}
+{{-   $_ := set $isDemo $k (or (eq (toString $v) (toString (index $demo $k))) (and $demoMode (not $v))) }}
+{{- end }}
+{{- $passwordLogin          := include "kubeflow.dexPasswordLogin" . }}
+{{- $usingDemoSeaweedCreds  := and .Values.pipelines.enabled $isDemo.accessKey $isDemo.secretKey }}
+{{- $usingDemoDexSecret     := and (or .Values.dex.enabled .Values.global.oauth2Proxy.enabled) (not .Values.auth.oidc.existingSecret) $isDemo.clientSecret }}
+{{- $usingDemoUserCreds     := and $passwordLogin $isDemo.passwordHash }}
 {{- if or $usingDemoSeaweedCreds $usingDemoDexSecret $usingDemoUserCreds }}
 ⚠ ⚠ ⚠  SECURITY WARNING  ⚠ ⚠ ⚠
 -------------------------------------------------------------------------------
@@ -33,18 +39,43 @@ The following DEMO DEFAULTS are still in use. Change them before exposing
 this deployment to any network or storing sensitive data.
 
 {{- if $usingDemoUserCreds }}
-  • Default login credentials (user@example.com / 12341234) are active.
-    Update dex.config.staticPasswords in your values override.
+  • The demo login password (12341234) is active for {{ .Values.auth.initialUser.email }}.
+    Set auth.initialUser.passwordHash, or leave it "" without global.demoMode to generate one.
 {{- end }}
 {{- if $usingDemoDexSecret }}
-  • Dex OIDC client secret is the well-known demo value.
-    Update dex.config.staticClients[0].secret in your values override.
+  • The OIDC client secret is the well-known demo value.
+    Set auth.oidc.clientSecret, or leave it "" without global.demoMode to generate one.
 {{- end }}
 {{- if $usingDemoSeaweedCreds }}
   • SeaweedFS credentials are kubeflow / kubeflow123.
-    Update pipelines.seaweedfs.accessKey/secretKey in your values override.
+    Set pipelines.seaweedfs.accessKey/secretKey, or leave them "" without global.demoMode.
 {{- end }}
 -------------------------------------------------------------------------------
+{{- end }}
+{{- /* NOTES render before the upgrade applies, so lookup sees the stored hash. Dex reads the hash at
+       start-up and its pod spec doesn't change with it, so a new hash needs a Dex restart. No stored hash
+       means this upgrade generates the password (e.g. from 0.6.x, which had no such Secret). */}}
+{{- if and .Release.IsUpgrade $passwordLogin }}
+{{-   $storedHash := index ((lookup "v1" "Secret" .Release.Namespace "kubeflow-initial-user").data | default dict) "hash" | default "" | b64dec }}
+{{-   $newHash := .Values.auth.initialUser.passwordHash | default (ternary $demo.passwordHash "" $demoMode) | toString }}
+{{-   $generatedPw := and (not $newHash) (not $storedHash) }}
+{{-   $changedPw := and $newHash $storedHash (ne $newHash $storedHash) }}
+{{-   if or $generatedPw $changedPw }}
+
+⚠  LOGIN PASSWORD CHANGED
+-------------------------------------------------------------------------------
+{{-     if $generatedPw }}
+This upgrade generated a new login password for {{ .Values.auth.initialUser.email }}. Dex may keep
+the previous one (coming from 0.6.x: the demo password 12341234) until it restarts:
+  kubectl -n {{ .Release.Namespace }} rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy
+Then read the new one with the command under "3. Log in" below.
+{{-     else }}
+This upgrade changed the login password hash of {{ .Values.auth.initialUser.email }}. Dex keeps
+accepting the previous password until it restarts:
+  kubectl -n {{ .Release.Namespace }} rollout restart deploy/kubeflow-dex
+{{-     end }}
+-------------------------------------------------------------------------------
+{{-   end }}
 {{- end }}
 {{- if eq (include "kubeflow.modelRegistryMode" .) "shared" }}
 
@@ -90,21 +121,21 @@ GETTING STARTED
 
 2. Get the Kubeflow dashboard URL:
 
-{{- $kir := index .Values "kubeflow-istio-resources" }}
-{{- if $kir.hostname }}
-   Hostname: {{ $kir.hostname }}
-{{- if include "kubeflow.tlsSource" . }}
-   Dashboard URL: https://{{ $kir.hostname }}
+{{- $hostname := dig "gateway" "hostname" "" (.Values.global | default dict) }}
+{{- if $hostname }}
+   Hostname: {{ $hostname }}
+{{- if include "kubeflow.publicHttps" . }}
+   Dashboard URL: https://{{ $hostname }}
 {{- else }}
-   Dashboard URL: http://{{ $kir.hostname }}
+   Dashboard URL: http://{{ $hostname }}
 {{- end }}
 {{- if .Values.externaldns.enabled }}
    DNS: managed automatically by external-dns
 {{- else }}
    ⚠ DNS not managed automatically. Add one of:
-     /etc/hosts:   <node-ip>  {{ $kir.hostname }}
-     DNS provider: A record {{ $kir.hostname }} → <node-ip>
-     Auto:         set externalDns.enabled=true with provider credentials
+     /etc/hosts:   <node-ip>  {{ $hostname }}
+     DNS provider: A record {{ $hostname }} → <node-ip>
+     Auto:         set externaldns.enabled=true with provider credentials
 {{- end }}
 {{- else }}
    # Port-forward to access locally:
@@ -113,10 +144,27 @@ GETTING STARTED
    Dashboard URL: http://localhost:8080
 {{- end }}
 
-3. Default credentials (CHANGE IMMEDIATELY in production):
+3. Log in:
+{{- if not $passwordLogin }}
+
+   Through your identity provider (Dex connectors in dex.config.connectors).
+{{- else }}
 
    Email: {{ .Values.auth.initialUser.email }}
-   Password: 12341234  (update hash in dex.config.staticPasswords to change)
+{{- if $usingDemoUserCreds }}
+   Password: 12341234  (demo: set auth.initialUser.passwordHash to change it)
+{{- else if not .Values.auth.initialUser.passwordHash }}
+{{- $iu := (lookup "v1" "Secret" .Release.Namespace "kubeflow-initial-user").data | default dict }}
+{{- if and (hasKey $iu "hash") (not (hasKey $iu "password")) }}
+   Password: unchanged; no longer stored (the password key was removed from Secret kubeflow-initial-user)
+{{- else }}
+   Password: kubectl -n {{ .Release.Namespace }} get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
+   (for the first login; then set your own password: README, "change-initial-password")
+{{- end }}
+{{- else }}
+   Password: the one whose bcrypt hash is auth.initialUser.passwordHash
+{{- end }}
+{{- end }}
 
 {{- end }}
 
@@ -187,15 +235,21 @@ NEXT STEPS
    - Go to Notebooks in the dashboard
    - Click "New Notebook"
    - Select a container image and resources
+{{- if .Values.pipelines.enabled }}
 
 2. Create a pipeline:
    - Go to Pipelines in the dashboard
    - Upload a pipeline or use the SDK
+{{- else if .Values.trainer.enabled }}
+
+2. Submit a TrainJob from a notebook with the Kubeflow SDK:
+   https://www.kubeflow.org/docs/components/trainer/
+{{- end }}
 
 3. For production:
    - Change ALL default credentials (see SECURITY WARNING above)
    - Configure OIDC authentication with an external identity provider
-   - Set up TLS certificates (set kubeflow-istio-resources.tls.source=selfSigned|letsEncrypt|secret)
+   - Set up TLS (global.tls.source: selfSigned|letsEncrypt|issuerRef|secret, or edge when TLS ends in front of the gateway)
    - Configure persistent storage with a production-grade StorageClass
    - Set resource quotas per namespace
    - NetworkPolicies are enabled by default; disable with networkPolicies.enabled=false

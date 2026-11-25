@@ -6,16 +6,17 @@
 
 ## Production Hardening
 
-The chart ships with demo defaults that are **not suitable for production**. Address these before
-exposing the deployment to any network or storing sensitive data.
+Address these before exposing the deployment to any network or storing sensitive data.
 
-By default (`global.demoMode: false`) the chart **fails at render time** with a `SECURITY:` error if
-any well-known demo credential is still present. To suppress this during local development, set
-`global.demoMode: true` — never set this in production.
+### 1. Credentials
 
-### 1. Change all default credentials
+By default the chart generates the credentials on first install and keeps them on upgrade: the login
+password, the OIDC client and cookie secrets and the SeaweedFS keys (see
+[Values Reference](values-reference.md#credentials)). `global.demoMode: true` uses the published demo
+credentials instead; never set it in production. Without demo mode, setting any credential to its demo
+value **fails at render time** with a `SECURITY:` error.
 
-The credentials that trigger the render-time security check:
+To set your own instead:
 
 ```yaml
 # In your values override file
@@ -44,18 +45,13 @@ pipelines:
   seaweedfs:
     accessKey: "<STRONG-ACCESS-KEY>"
     secretKey: "<STRONG-SECRET-KEY>"
-
-user-namespace:
-  pipelines:
-    seaweedfs:
-      accessKey: "<STRONG-ACCESS-KEY>"    # must match pipelines.seaweedfs.accessKey
-      secretKey: "<STRONG-SECRET-KEY>"    # must match pipelines.seaweedfs.secretKey
 ```
 
 > **Rotating the OIDC secrets:** `auth.oidc.clientSecret` and `auth.oidc.cookieSecret` are stored
-> in the `kubeflow-oidc-client` Secret, which Dex and oauth2-proxy read at start-up. After changing
-> them on an existing installation, restart both so they load the new values together (this also
-> signs every user out):
+> in the `kubeflow-oidc-client` Secret, which Dex and oauth2-proxy read at start-up. Set new values,
+> or, for generated ones, delete that Secret and run `helm upgrade`. Then restart both so they load
+> the new values together (this also signs every user out). Rotating the SeaweedFS keys: see
+> [Credential rotation (SeaweedFS)](upgrade-notes.md#credential-rotation-seaweedfs).
 > ```bash
 > kubectl -n kubeflow rollout restart deploy/kubeflow-dex deploy/kubeflow-oauth2-proxy
 > ```
@@ -66,13 +62,14 @@ user-namespace:
 > ```bash
 > kubectl delete secret mysql-secret -n kubeflow        # KFP
 > kubectl delete secret katib-mysql-secrets -n kubeflow # Katib
-> helm upgrade kubeflow . -f my-values.yaml -n kubeflow
+> helm upgrade kubeflow . -f my-values.yaml -n kubeflow --force-conflicts --server-side=true
 > ```
 
 ### 2. Use an external identity provider
 
 Replace Dex static passwords with an LDAP, SAML, or upstream OIDC connector. Add a `connectors` block
-to `dex.config` and remove `staticPasswords` + `enablePasswordDB: true`.
+to `dex.config`, set `staticPasswords: []` and `enablePasswordDB: false`. The chart then generates no
+login password.
 
 ### 3. NetworkPolicies
 
@@ -161,7 +158,7 @@ controller, training-operator, and KServe controller to 2 replicas. KFP and Dex 
 are already enabled by default.
 
 ```bash
-helm upgrade kubeflow . -f <your-values>.yaml -f ha-overrides.yaml -n kubeflow
+helm upgrade kubeflow . -f <your-values>.yaml -f ha-overrides.yaml -n kubeflow --force-conflicts --server-side=true
 ```
 
 > PDBs protect against voluntary disruptions (node drains) but only provide meaningful coverage with
@@ -251,10 +248,10 @@ Add the user to your values file and run `helm upgrade`:
 # OCI (production)
 helm upgrade kubeflow oci://registry.suse.com/ai/charts/kubeflow \
   --version <version> \
-  -n kubeflow -f my-values.yaml
+  -n kubeflow -f my-values.yaml --force-conflicts --server-side=true
 
 # From source (development)
-helm upgrade kubeflow -n kubeflow --force-conflicts -f my-values.yaml .
+helm upgrade kubeflow -n kubeflow --force-conflicts --server-side=true -f my-values.yaml .
 ```
 
 This creates the Profile and namespace and the user's own Model Registry (server + Postgres) in a

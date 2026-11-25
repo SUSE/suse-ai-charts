@@ -1,0 +1,90 @@
+# components: trainer
+# install-checks: trainer helm-test
+# ============================================================================
+# TRAINER-ONLY PRESET
+# Deploys only Kubeflow Trainer V2 (TrainJob / TrainingRuntime /
+# ClusterTrainingRuntime) with JobSet. No Istio, cert-manager, Dex/oauth2-proxy,
+# Profiles or KFP are needed: every other component, including the Istio resources,
+# PodDefaults webhook, example profile and kubeflow-* roles, is off (generated block
+# at the end).
+#
+#   helm upgrade --install kubeflow oci://registry.suse.com/ai/charts/kubeflow \
+#     --version <chart-version> -n kubeflow -f trainer-only.yaml \
+#     --force-conflicts --server-side=true --wait --timeout 10m
+#
+# The kubeflow namespace must exist with Helm ownership labels first, and pull
+# secrets are needed: see docs/use-cases/trainer-only-install.md for all steps.
+# installTrainerOnly.sh (install.sh --preset trainer-only) and CI use this file as well.
+#
+# If you ship your own ClusterTrainingRuntimes,
+# also set trainer.runtimes.enabled=false.
+# ============================================================================
+
+# --- Trainer V2 (includes the JobSet CRD and controller) ---
+trainer:
+  enabled: true
+  runtimes:
+    # Bundled torch-distributed, deepspeed-distributed and mlx-distributed
+    # ClusterTrainingRuntimes. Set false if you bring your own runtimes.
+    enabled: true
+
+# Pull-secret propagation with the External Secrets Operator. Off because ESO may
+# not be installed, and the default namespaceSelector matches Profile namespaces,
+# which don't exist here. If ESO is installed, you can turn it on and point
+# namespaceSelector at your TrainJob namespaces instead (see the trainer-only guide,
+# "Propagate pull secrets with External Secrets"):
+#   externalSecrets:
+#     enabled: true
+#     namespaceSelector:
+#       matchLabels:
+#         app.kubernetes.io/part-of: null   # drop the default; Helm merges maps
+#         suse.com/trainjob-pull-secrets: "true"
+externalSecrets:
+  enabled: false
+
+# ---- Generated: every component not in "# components:" is off. Regenerate with
+# ---- test/ci/check_component_registry.py <chart-dir> --fix-presets; don't edit by hand.
+admissionWebhook:
+  enabled: false
+centralDashboard:
+  enabled: false
+dex:
+  enabled: false
+global:
+  oauth2Proxy:
+    enabled: false
+hub:
+  enabled: false
+istioResources:
+  enabled: false
+katib:
+  enabled: false
+knativeEventing:
+  enabled: false
+knativeServing:
+  enabled: false
+kserve:
+  enabled: false
+kubeflowRoles:
+  enabled: false
+notebooks:
+  controller:
+    enabled: false
+  webApp:
+    enabled: false
+pipelines:
+  enabled: false
+profiles:
+  enabled: false
+tensorboard:
+  controller:
+    enabled: false
+  webApp:
+    enabled: false
+trainingOperator:
+  enabled: false
+userNamespace:
+  enabled: false
+volumesWebApp:
+  enabled: false
+# ---- End of generated block ----

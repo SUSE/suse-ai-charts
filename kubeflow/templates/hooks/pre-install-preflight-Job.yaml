@@ -24,25 +24,10 @@ spec:
     spec:
       serviceAccountName: kubeflow-preflight
       restartPolicy: Never
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      {{- include "kubeflow.imagePullSecrets" . | nindent 6 }}
+      {{- include "kubeflow.hookPodSecurity" . | nindent 6 }}
       containers:
       - name: preflight
-        image: "{{- $registry := include "kubeflow.suseApplicationCollectionRegistry" (dict "ctx" . "registry" .Values.preflightChecks.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.preflightChecks.image.repository }}{{- if .Values.preflightChecks.image.digest }}@{{ .Values.preflightChecks.image.digest }}{{- else }}:{{ .Values.preflightChecks.image.tag }}{{- end }}"
-        imagePullPolicy: {{ .Values.preflightChecks.image.pullPolicy }}
-        {{- with .Values.preflightChecks.resources }}
-        resources:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: [ALL]
-          readOnlyRootFilesystem: true
+        {{- include "kubeflow.hookContainer" . | nindent 8 }}
         command:
         - /bin/sh
         - -ec
@@ -74,8 +59,8 @@ spec:
           {{- end }}
 
           echo "Check 3: Istio CNI mode (global.istio.cni={{ include "kubeflow.istioCni" . }})..."
-{{- if not (or .Values.profiles.enabled .Values.userNamespace.enabled) }}
-          echo "  skipped (no profile namespaces: profiles and userNamespace are disabled)"
+{{- if not (include "kubeflow.profileNamespacesEnabled" .) }}
+          echo "  skipped (no enabled component creates profile namespaces)"
 {{- else }}
 {{- $p := include "kubeflow.istioCniProbe" . | fromYaml }}
           # Same rules as validations.yaml (kubeflow.istioCniProbe). kubectl errors (e.g. RBAC) fail

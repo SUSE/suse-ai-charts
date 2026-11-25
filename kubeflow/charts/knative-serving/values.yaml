@@ -10,12 +10,15 @@ global:
   imagePullSecrets: []
   # -- Global override for image pull policy
   imagePullPolicy: IfNotPresent
-  # Dedicated KServe/Knative inference gateway ("<namespace>/<name>"). Single
-  # source of truth (umbrella parent overrides this); config-istio derives its
-  # "gateway.<namespace>.<name>" key from it so net-istio binds Knative ingress
-  # to the same Gateway the kubeflow-istio-resources sub-chart renders.
-  kserveGateway:
-    name: "kubeflow/kserve-ingress-gateway"
+  # KServe inference exposure (umbrella parent overrides): the dedicated inference gateway
+  # ("<namespace>/<name>"; config-istio derives its "gateway.<namespace>.<name>" key from it, so
+  # net-istio binds Knative ingress to the Gateway kubeflow-istio-resources renders), the external-HTTPS
+  # opt-in (flattens domainTemplate) and the base domain ("" = .Values.domain below).
+  kserve:
+    domain: ""
+    externalHttps: false
+    gateway:
+      name: "kubeflow/kserve-ingress-gateway"
   # Ingress-gateway identity, single-sourced at the umbrella parent and mirrored
   # here so standalone `helm template` of this sub-chart stays nil-safe. Only the
   # workload-label `selector` is consumed by knative-serving (the fronting
@@ -149,7 +152,7 @@ domain: "example.com"
 # Knative route domain template — controls the host generated for each Knative
 # Service/Route (this is the host net-istio probes for readiness).
 # Empty = Knative's upstream default dotted form ({name}.{namespace}.{domain}),
-# UNLESS global.kserveExternalHttps is set: the "knative-serving.domainTemplate"
+# UNLESS global.kserve.externalHttps is set: the "knative-serving.domainTemplate"
 # helper then auto-derives the flattened single-label form
 #   "{{ .Name }}-{{ .Namespace }}.{{ .Domain }}"
 # so a single wildcard cert (*.{domain}) can cover inference hosts — Let's Encrypt

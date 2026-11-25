@@ -1,14 +1,17 @@
-{{- if and .Values.externalDNSEnabled .Values.hostname }}
-{{- $_ := set .Values.gateway.annotations "external-dns.alpha.kubernetes.io/hostname" .Values.hostname}}
-{{- end }}
-{{- $tls := .Values.tls | default dict }}
+{{- $g := .Values.global | default dict }}
+{{- $gw := $g.gateway | default dict }}
+{{- $hostname := $gw.hostname | default "" }}
+{{- $tls := $g.tls | default dict }}
 {{- $tlsSource := $tls.source | default "" }}
+{{- if and $gw.externalDNS $hostname }}
+{{- $_ := set .Values.gateway.annotations "external-dns.alpha.kubernetes.io/hostname" $hostname }}
+{{- end }}
 {{- /*
   ── Dashboard gateway ───────────────────────────────────────────────────────
-  This gateway serves ONLY the Kubeflow dashboard host (.Values.hostname, or the
+  This gateway serves ONLY the Kubeflow dashboard host (global.gateway.hostname, or the
   '*' wildcard listener for IP/NodePort access). KServe/Knative inference has its
   own dedicated gateway (kserve-ingress-gateway-kubeflow-Gateway.yaml) — all the
-  "*.<kserveDomain>" wildcard / plain-HTTP inference server logic lives there, so
+  "*.<global.kserve.domain>" wildcard / plain-HTTP inference server logic lives there, so
   the net-istio status prober never probes this gateway's dashboard :443 server.
 */}}
 apiVersion: networking.istio.io/v1alpha3
@@ -28,8 +31,9 @@ spec:
            CRs use the SAME helper so the gateway and its auth chain can never diverge. */}}
     {{- include "kubeflow-istio-resources.ingressGatewaySelector" . | nindent 4 }}
   servers:
-  {{- $host := .Values.hostname | default "*" }}
-  {{- if ne $tlsSource "" }}
+  {{- $host := $hostname | default "*" }}
+  {{- /* edge: TLS ends in front of the gateway, which serves plain HTTP (below) and never redirects. */}}
+  {{- if and $tlsSource (ne $tlsSource "edge") }}
   - hosts:
     - {{ $host | quote }}
     port:
@@ -38,9 +42,9 @@ spec:
       protocol: HTTPS
     tls:
       mode: SIMPLE
-      credentialName: {{ .Values.tls.existingSecret | default .Values.tls.credentialName | quote }}
+      credentialName: {{ $tls.secretName | default "kubeflow-gateway-tls" | quote }}
       minProtocolVersion: TLSV1_2
-  {{- if .Values.tls.httpsRedirect }}
+  {{- if $tls.httpsRedirect }}
   {{- /* :80 HTTP→HTTPS redirect, scoped to the dashboard host. Never '*' unless
          hostname is unset (wildcard/IP access), so it cannot hijack the plain-HTTP
          inference hosts served by the dedicated kserve-ingress-gateway. */}}

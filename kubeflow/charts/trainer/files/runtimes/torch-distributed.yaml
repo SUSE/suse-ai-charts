@@ -23,6 +23,7 @@ spec:
               template:
                 {{- include "trainer.runtimePodMetadata" . | nindent 16 }}
                 spec:
+                  {{- include "trainer.runtimePullSecrets" . | nindent 18 }}
                   containers:
                     - name: node
                       image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torch.distributed.image.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torch.distributed.image.repository }}{{- if .Values.runtimes.torch.distributed.image.digest }}@{{ .Values.runtimes.torch.distributed.image.digest }}{{- else }}:{{ .Values.runtimes.torch.distributed.image.tag }}{{- end }}"

@@ -128,17 +128,12 @@ Usage: {{ include "knative-serving.suseImageRegistry" (dict "ctx" . "registry" .
 
 {{/*
 Dedicated KServe inference gateway reference ("<namespace>/<name>").
-Single source of truth is global.kserveGateway.name (umbrella parent); falls back
-to the chart-local default for standalone installs. config-istio derives its
-"gateway.<namespace>.<name>" key from the namespace/name parts below.
+Single source of truth is global.kserve.gateway.name (umbrella parent); falls back
+to the standard default for standalone installs. Nil-safe (dig). config-istio derives
+its "gateway.<namespace>.<name>" key from the namespace/name parts below.
 */}}
 {{- define "knative-serving.kserveGatewayRef" -}}
-{{- $g := .Values.global | default dict -}}
-{{- if and $g.kserveGateway $g.kserveGateway.name -}}
-{{- $g.kserveGateway.name -}}
-{{- else -}}
-{{- "kubeflow/kserve-ingress-gateway" -}}
-{{- end -}}
+{{- dig "kserve" "gateway" "name" "" (.Values.global | default dict) | default "kubeflow/kserve-ingress-gateway" -}}
 {{- end -}}
 
 {{- define "knative-serving.kserveGatewayNamespace" -}}
@@ -151,7 +146,7 @@ to the chart-local default for standalone installs. config-istio derives its
 
 {{/*
 Return the proper Knative domain template.
-If global.kserveExternalHttps is enabled, it returns the flattened single-label
+If global.kserve.externalHttps is enabled, it returns the flattened single-label
 template so a shared "*.{Domain}" wildcard cert covers the route host (Let's
 Encrypt cannot issue "*.*.domain"). Otherwise it returns the user-supplied
 .Values.domainTemplate (empty = Knative's dotted upstream default).
@@ -165,7 +160,7 @@ cross-tenant naming caveat this single-label form implies.
 {{- define "knative-serving.domainTemplate" -}}
 {{- $template := .Values.domainTemplate -}}
 {{- if not $template -}}
-  {{- if and .Values.global (hasKey .Values.global "kserveExternalHttps") .Values.global.kserveExternalHttps -}}
+  {{- if dig "kserve" "externalHttps" false (.Values.global | default dict) -}}
     {{- $template = `{{ .Name }}-{{ .Namespace }}.{{ .Domain }}` -}}
   {{- end -}}
 {{- end -}}
@@ -174,15 +169,11 @@ cross-tenant naming caveat this single-label form implies.
 
 {{/*
 Return the Knative Serving base domain (the key of the config-domain ConfigMap).
-Driven by global.kserveDomain when set (umbrella single source of truth), falling
+Driven by global.kserve.domain when set (umbrella single source of truth), falling
 back to the chart-local .Values.domain for standalone installs.
 */}}
 {{- define "knative-serving.domain" -}}
-{{- if and .Values.global .Values.global.kserveDomain -}}
-  {{- .Values.global.kserveDomain -}}
-{{- else -}}
-  {{- .Values.domain -}}
-{{- end -}}
+{{- dig "kserve" "domain" "" (.Values.global | default dict) | default .Values.domain -}}
 {{- end -}}
 
 {{/*

@@ -3,11 +3,8 @@ Sub-chart prerequisite validations. This file renders nothing but fails fast
 with a human-readable error when the gateway / KServe-external-HTTPS options are
 misconfigured.
 
-kubeflow-istio-resources is independently installable, so these guards must live
-here (not only in the umbrella templates/validations.yaml) — a standalone install
-sets .Values.hostname and global.kserveExternalHttps / global.kserveDomain
-directly, bypassing the umbrella checks. Keep the messages consistent with the
-umbrella copy.
+This is the one home for the gateway / TLS / KServe-exposure checks: they run whenever this
+chart renders, inside the umbrella chart and standalone alike, so the umbrella doesn't repeat them.
 */}}
 
 {{- /*
@@ -20,8 +17,10 @@ umbrella copy.
   unreachable. It is kept as defense-in-depth: it still catches '*' if the schema
   pattern is ever weakened or schema validation is skipped.
 */}}
-{{- if and .Values.hostname (eq .Values.hostname "*") }}
-{{- fail "kubeflow-istio-resources.hostname must not be '*'. Leave it empty (\"\") for wildcard / IP+NodePort access, or set a concrete FQDN to scope the gateway (and the auth bypass) to that host." }}
+{{- $g := .Values.global | default dict }}
+{{- $hostname := dig "gateway" "hostname" "" $g }}
+{{- if eq $hostname "*" }}
+{{- fail "global.gateway.hostname must not be '*'. Leave it empty (\"\") for wildcard / IP+NodePort access, or set a concrete FQDN to scope the gateway (and the auth bypass) to that host." }}
 {{- end }}
 
 {{- /*
@@ -30,40 +29,42 @@ umbrella copy.
   wildcard. Without a hostname the dashboard gateway serves the '*' listener with
   is_trusted_host=true; the dedicated kserve-ingress-gateway template refuses to
   render its "*.<domain>:443" wildcard server in that case, and we fail fast here
-  so the misconfiguration is explicit rather than silently dropped.
+  so the misconfiguration is explicit rather than silently dropped. This is the one
+  home for these checks: they run inside the umbrella chart and standalone alike.
 */}}
-{{- if and .Values.global .Values.global.kserveExternalHttps }}
-{{-   $tls := .Values.tls | default dict }}
+{{- $ks := $g.kserve | default dict }}
+{{- if $ks.externalHttps }}
+{{-   $tls := $g.tls | default dict }}
 {{-   $tlsSource := $tls.source | default "" }}
 {{-   $errs := list }}
-{{-   if not .Values.global.kserveDomain }}
-{{-     $errs = append $errs "global.kserveDomain must be set (a scoped subdomain such as \"models.example.com\" is recommended over a bare org-wide domain) to use global.kserveExternalHttps — it is the base domain for the '*.<kserveDomain>' wildcard cert and inference hosts." }}
+{{-   if not $ks.domain }}
+{{-     $errs = append $errs "global.kserve.domain must be set (a scoped subdomain such as \"models.example.com\" is recommended over a bare org-wide domain) to use global.kserve.externalHttps — it is the base domain for the '*.<domain>' wildcard cert and inference hosts." }}
 {{-   end }}
-{{-   if not (and .Values.global.oauth2Proxy .Values.global.oauth2Proxy.enabled) }}
-{{-     $errs = append $errs "global.oauth2Proxy.enabled must be true to use global.kserveExternalHttps — the bundled ext_authz auth chain (authn-filter EnvoyFilter) is only rendered when oauth2-proxy is enabled, so with it disabled the '*.<kserveDomain>:443' wildcard server would perform no gateway auth. Because every app VirtualService binds hosts: ['*'], that exposes the ENTIRE Kubeflow surface (not just inference) unauthenticated. If you front Kubeflow with your own IdP at the gateway, do not enable the bundled global.kserveExternalHttps opt-in." }}
+{{-   if not (and $g.oauth2Proxy $g.oauth2Proxy.enabled) }}
+{{-     $errs = append $errs "global.oauth2Proxy.enabled must be true to use global.kserve.externalHttps — the bundled ext_authz auth chain (authn-filter EnvoyFilter) is only rendered when oauth2-proxy is enabled, so with it disabled the '*.<domain>:443' wildcard server would perform no gateway auth. Because every app VirtualService binds hosts: ['*'], that exposes the ENTIRE Kubeflow surface (not just inference) unauthenticated. If you front Kubeflow with your own IdP at the gateway, do not enable the bundled global.kserve.externalHttps opt-in." }}
 {{-   end }}
-{{-   if not .Values.hostname }}
-{{-     $errs = append $errs "kubeflow-istio-resources.hostname must be set to use global.kserveExternalHttps — otherwise the gateway serves the '*' listener with the auth-bypass filter trusting every host, and the KServe wildcard server is refused." }}
+{{-   if not $hostname }}
+{{-     $errs = append $errs "global.gateway.hostname must be set to use global.kserve.externalHttps — otherwise the gateway serves the '*' listener with the auth-bypass filter trusting every host, and the KServe wildcard server is refused." }}
 {{-   end }}
-{{-   if not (has $tlsSource (list "letsEncrypt" "selfSigned" "secret" "issuerRef")) }}
-{{-     $errs = append $errs "kubeflow-istio-resources.tls.source must be one of {letsEncrypt, selfSigned, secret, issuerRef} to use global.kserveExternalHttps — with source \"\" there is no :443 server or wildcard cert, so advertised https:// inference URLs would be dead." }}
+{{-   if eq $tlsSource "edge" }}
+{{-     $errs = append $errs "global.kserve.externalHttps is not supported with global.tls.source \"edge\" yet (TLS terminated in front of the gateway): use a gateway TLS source (letsEncrypt, selfSigned, secret, issuerRef) for HTTPS inference." }}
+{{-   else if not (has $tlsSource (list "letsEncrypt" "selfSigned" "secret" "issuerRef")) }}
+{{-     $errs = append $errs "global.tls.source must be one of {letsEncrypt, selfSigned, secret, issuerRef} to use global.kserve.externalHttps — with source \"\" there is no :443 server or wildcard cert, so advertised https:// inference URLs would be dead." }}
 {{-   end }}
-{{-   if and (eq $tlsSource "secret") (not $tls.kserveExistingSecret) }}
-{{-     $errs = append $errs "kubeflow-istio-resources.tls.kserveExistingSecret must be set when tls.source is \"secret\" and global.kserveExternalHttps is true — the KServe wildcard server needs a Secret whose SAN covers \"*.<global.kserveDomain>\". Reusing the dashboard's tls.existingSecret silently fails the TLS handshake on inference hosts; point this at that Secret only if it is a multi-SAN/wildcard cert covering both hosts." }}
+{{-   if and (eq $tlsSource "secret") (not (dig "tls" "secretName" "" $ks)) }}
+{{-     $errs = append $errs "global.kserve.tls.secretName must be set when global.tls.source is \"secret\" and global.kserve.externalHttps is true — the KServe wildcard server needs a Secret whose SAN covers \"*.<global.kserve.domain>\". Reusing the dashboard's global.tls.secretName silently fails the TLS handshake on inference hosts; point this at that Secret only if it is a multi-SAN/wildcard cert covering both hosts." }}
 {{-   end }}
 {{-   if eq $tlsSource "letsEncrypt" }}
-{{- /* `| default dict`: an explicit tls.letsEncrypt: null otherwise nil-derefs
-      on `.solver` with a raw Go panic instead of reaching this validation. */}}
 {{-     $le := $tls.letsEncrypt | default dict }}
 {{-     if eq $le.solver "http01" }}
-{{-       $errs = append $errs "tls.letsEncrypt.solver must be a DNS-01 solver (e.g. cloudflare) — Let's Encrypt HTTP-01 cannot issue wildcard certificates." }}
+{{-       $errs = append $errs "global.tls.letsEncrypt.solver must be a DNS-01 solver (e.g. cloudflare) — Let's Encrypt HTTP-01 cannot issue wildcard certificates." }}
 {{-     else if eq ($le.solver | default "cloudflare") "cloudflare" }}
-{{-       if not (and $tls.cloudflare $tls.cloudflare.apiTokenSecretRef $tls.cloudflare.apiTokenSecretRef.name) }}
-{{-         $errs = append $errs "kubeflow-istio-resources.tls.cloudflare.apiTokenSecretRef.name must be set for the cloudflare DNS-01 solver — the token Secret must exist in cert-manager's namespace (see values.yaml)." }}
+{{-       if not (dig "cloudflare" "apiTokenSecretRef" "name" "" $le) }}
+{{-         $errs = append $errs "global.tls.letsEncrypt.cloudflare.apiTokenSecretRef.name must be set for the cloudflare DNS-01 solver — the token Secret must exist in cert-manager's namespace (see values.yaml)." }}
 {{-       end }}
 {{-     end }}
 {{-   end }}
 {{-   if $errs }}
-{{-     fail (printf "global.kserveExternalHttps is true, but the external-HTTPS-for-inference opt-in is incomplete. Fix all of the following:\n  - %s" (join "\n  - " $errs)) }}
+{{-     fail (printf "global.kserve.externalHttps is true, but the external-HTTPS-for-inference opt-in is incomplete. Fix all of the following:\n  - %s" (join "\n  - " $errs)) }}
 {{-   end }}
 {{- end }}

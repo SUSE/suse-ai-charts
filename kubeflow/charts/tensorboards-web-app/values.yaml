@@ -24,7 +24,9 @@ env:
   APP_PREFIX: /tensorboards
   USERID_HEADER: kubeflow-userid
   USERID_PREFIX: ""
-  APP_SECURE_COOKIES: "true "
+  # Secure flag on the CSRF cookie. "" = follow global.tls.source (on for any HTTPS source, including edge;
+  # off on plain HTTP, where browsers drop Secure cookies); standalone, the app's default (on).
+  APP_SECURE_COOKIES: ""
 
 parametersConfigMap:
   TWA_APP_SECURE_COOKIES: "true "

@@ -21,14 +21,15 @@ other components. **You don't need cert-manager, Istio or the External Secrets O
 
 **Shortcut for dev/test clusters:** `installTrainerOnly.sh`, in the chart root (also included in the
 packaged chart), runs Steps 1–6 for you, and Step 7 with `--sample`. It requires Helm 4 and refuses to
-convert an existing `kubeflow` release that isn't trainer-only unless you pass `--force`.
+convert an existing `kubeflow` release that isn't trainer-only; uninstall that first (see the README's
+Uninstall section).
 
 ```bash
 export APPCO_REGISTRY_USER=<appco-registry-username> APPCO_REGISTRY_TOKEN=<appco-registry-token>
 export SUSE_AI_REGISTRY_USER=regcode SUSE_AI_REGISTRY_TOKEN=<suse-ai-registry-token>
-./installTrainerOnly.sh --sample                       # from a chart checkout
-./installTrainerOnly.sh --chart-version <chart-version> # or install the released OCI chart
-./installTrainerOnly.sh --help                         # all options
+bash ./installTrainerOnly.sh --sample                       # from a chart checkout
+bash ./installTrainerOnly.sh --chart-version <chart-version> # or install the released OCI chart
+bash ./installTrainerOnly.sh --help                         # all options
 ```
 
 ---
@@ -113,16 +114,17 @@ their own pull secret. See [Step 7](#step-7-run-a-sample-trainjob).
 
 ## Step 4: Get the values file
 
-The chart ships the preset **`trainer-only-overrides.yaml`** in its root. It keeps Trainer and turns
-everything else off; its comments explain each switch. Take it from a chart checkout, or from the
-released chart:
+The chart ships the preset **`presets/trainer-only.yaml`**. It keeps Trainer and turns
+everything else off: its header and comments explain the Trainer settings, and a generated block at
+the end switches off every other component. Take it from a chart checkout, or from the released
+chart:
 
 ```bash
 helm pull oci://registry.suse.com/ai/charts/kubeflow --version <chart-version> --untar
-cp kubeflow/trainer-only-overrides.yaml .
+cp kubeflow/presets/trainer-only.yaml .
 ```
 
-Put your own settings in a second values file (`-f trainer-only-overrides.yaml -f my-values.yaml`)
+Put your own settings in a second values file (`-f trainer-only.yaml -f my-values.yaml`)
 rather than editing the preset, so you can take a newer copy on upgrade. You don't need
 `global.demoMode` or demo-credential overrides.
 
@@ -135,7 +137,7 @@ helm upgrade --install "$RELEASE" \
   oci://registry.suse.com/ai/charts/kubeflow \
   --version <chart-version> \
   -n kubeflow \
-  -f trainer-only-overrides.yaml \
+  -f trainer-only.yaml \
   --force-conflicts \
   --server-side=true \
   --wait --timeout 10m
@@ -175,9 +177,9 @@ helm test "$RELEASE" -n kubeflow
 
 TrainJobs run in any namespace. This example uses `team-a`.
 
-**1. Create the namespace and let its pods pull SUSE images.** The runtime pod templates don't set
-`imagePullSecrets`, so attach the secret to the namespace's `default` ServiceAccount, which the
-training pods use:
+**1. Create the namespace and let its pods pull SUSE images.** The bundled runtimes' pods reference the
+Secrets in `global.imagePullSecrets` by name, so the namespace needs a Secret named `suse-ai-registry`
+(the kubelet only warns about the other, `application-collection`, if it's missing):
 
 ```bash
 kubectl create namespace team-a
@@ -186,12 +188,12 @@ kubectl create secret docker-registry suse-ai-registry \
   --docker-username=regcode \
   --docker-password=<suse-ai-registry-token> \
   -n team-a
-kubectl patch serviceaccount default -n team-a \
-  -p '{"imagePullSecrets":[{"name":"suse-ai-registry"}]}'
 ```
 
+Runtimes you write yourself need their own `imagePullSecrets` in their pod templates.
+
 If the External Secrets Operator is installed, the chart can copy the pull secrets into labelled
-namespaces instead (you still attach them to the ServiceAccount):
+namespaces instead:
 
 ```yaml
 # my-values.yaml
@@ -234,7 +236,7 @@ jobs, start from that file and change `spec.trainer.command` (plus `image` and `
 
 ## Optional configuration
 
-Set these in your own values file (passed after `-f trainer-only-overrides.yaml`) or with `--set`.
+Set these in your own values file (passed after `-f trainer-only.yaml`) or with `--set`.
 
 | Key | Default | Use it when |
 |-----|---------|-------------|
@@ -291,7 +293,8 @@ everything, delete your TrainJobs, then the CRDs (`trainjobs`, `trainingruntimes
 
 - **Namespace:** the release namespace must be `kubeflow`.
 - **Kubernetes version:** the chart requires >= 1.35 even for trainer-only installs.
-- **Training pod pull secrets** aren't propagated by default; see Step 7.
+- **Training pod pull secrets:** each TrainJob namespace needs the pull Secret, created by you or
+  copied by the External Secrets Operator; see Step 7.
 - **Multi-tenancy:** there are no Profiles, so namespaces and RoleBindings are managed by you or by
   your platform.
 - **Gang scheduling** of multi-node TrainJobs depends on your scheduler. The bundled runtimes don't

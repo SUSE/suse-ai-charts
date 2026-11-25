@@ -13,30 +13,32 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `global.storageClass` | `""` | StorageClass for all PVCs; empty = cluster default |
 | `global.imagePullPolicy` | `IfNotPresent` | Image pull policy for all components |
 | `global.imagePullSecrets` | `[{name: application-collection}]` | Registry pull secrets — defined once, used everywhere |
+| `externalSecrets.extraNamespaces` | `[]` | Namespaces (by name) that also get the pull secrets copied from `externalSecrets.imagePullSecrets.sourceNamespace`, besides profile namespaces. Use it when the secrets exist only in `kubeflow`, e.g. `[knative-serving]`; don't list a namespace where something else already manages secrets of these names |
 | `global.imageRegistry` | `""` | Nuclear override — redirects **all** images (SUSE AI + Application Collection) to this registry |
 | `global.suseRegistry` | `"registry.suse.com"` | Override for SUSE AI images only (`registry.suse.com/*`); use for staging or mirror registries |
 | `global.suseApplicationCollectionRegistry` | `"dp.apps.rancher.io"` | Override for SUSE Application Collection images only (`dp.apps.rancher.io/*`); use for mirror registries |
 | `global.labels` | `{}` | Common labels applied to all managed resources |
 | `global.demoMode` | `false` | Set `true` to suppress credential validation; **never use in production** |
-| `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer. Disabling it removes the gateway's ext_authz auth chain, so it is **incompatible with `global.kserveExternalHttps: true`** (the chart fails fast on that combination — see [External HTTPS for KServe inference](access-and-tls.md#external-https-for-kserve-inference-opt-in)) |
+| `global.oauth2Proxy.enabled` | `true` | Master switch for the oauth2-proxy auth layer. Disabling it removes the gateway's ext_authz auth chain, so the install fails unless `istioResources.externalAuth: true`, and it is **incompatible with `global.kserve.externalHttps: true`** (the chart fails fast on that combination — see [External HTTPS for KServe inference](access-and-tls.md#external-https-for-kserve-inference-opt-in)) |
 | `global.istio.cni` | `true` | Set to match how Istio is installed: `true` with istio-cni (profile namespaces enforce Pod Security `baseline`), `false` for classic `istio-init`. See [Pod Security Standards on profile namespaces](production-and-tenancy.md#9-pod-security-standards-on-profile-namespaces) |
-| `global.gateway.name` | `kubeflow/kubeflow-gateway` | Istio Gateway (`<namespace>/<name>`) for the dashboard and app VirtualServices. KServe inference does **not** use this — it uses `global.kserveGateway.name` |
-| `global.kserveGateway.name` | `kubeflow/kserve-ingress-gateway` | Single source of truth for the **dedicated** KServe inference gateway (`<namespace>/<name>`). Threads through the Gateway CR that `kubeflow-istio-resources` renders, the `config-istio` `gateway.<ns>.<name>` key net-istio binds inference to, and kserve's `inferenceservice-config` `ingressGateway`. Keeps inference readiness independent of the dashboard's `:443` TLS |
+| `global.gateway.name` | `kubeflow/kubeflow-gateway` | Istio Gateway (`<namespace>/<name>`) for the dashboard and app VirtualServices. KServe inference uses `global.kserve.gateway.name` |
 
 ## Credentials
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `auth.oidc.clientSecret` | `pUBnBOY80Sn...` | **DEMO DEFAULT** — OIDC client secret shared between Dex and oauth2-proxy |
-| `auth.oidc.cookieSecret` | (demo value, 32-byte base64) | **DEMO DEFAULT** — oauth2-proxy cookie encryption key |
+| `auth.oidc.clientSecret` | `""` | OIDC client secret shared between Dex and oauth2-proxy; `""` = generated (see below) |
+| `auth.oidc.cookieSecret` | `""` | oauth2-proxy cookie encryption key (16, 24 or 32 bytes); `""` = generated |
 | `auth.oidc.existingSecret` | `false` | `true` = don't create the `kubeflow-oidc-client` Secret (keys `client-id`, `client-secret`, `cookie-secret`) that Dex and oauth2-proxy both read; provide it yourself (e.g. with External Secrets), with `client-id: kubeflow-oidc-authservice` |
-| `auth.initialUser.email` | `user@example.com` | **DEMO DEFAULT** — Default Dex login email |
-| `auth.initialUser.passwordHash` | bcrypt of `12341234` | **DEMO DEFAULT** — Change via `dex.config.staticPasswords` |
-| `pipelines.seaweedfs.accessKey` | `kubeflow` | **DEMO DEFAULT** — SeaweedFS S3 access key |
-| `pipelines.seaweedfs.secretKey` | `kubeflow123` | **DEMO DEFAULT** — SeaweedFS S3 secret key |
+| `auth.initialUser.email` | `user@example.com` | Dex login email; keep `dex.config.staticPasswords[0].email` equal |
+| `auth.initialUser.passwordHash` | `""` | bcrypt hash of the Dex login password, read by Dex from the `kubeflow-initial-user` Secret; `""` = generated (key `password` of that Secret). Unused when an external identity provider replaces the password login (`dex.config.enablePasswordDB: false`). Dex reads it at start: restart Dex after changing it |
+| `pipelines.seaweedfs.accessKey` | `""` | SeaweedFS S3 access key (letters and digits); `""` = generated |
+| `pipelines.seaweedfs.secretKey` | `""` | SeaweedFS S3 secret key (letters and digits); `""` = generated |
 
-> Change all of these before any production or networked use — see
-> [Production Hardening](production-and-tenancy.md#production-hardening).
+Generated values are created on first install and kept on upgrade. They need a render that sees the
+cluster (`helm install`/`upgrade`); `helm template`, Argo CD and `--dry-run=client` fail instead of
+generating new values on every render. With `global.demoMode: true`, empty values take the published
+demo credentials instead (login `user@example.com` / `12341234`); never use that in production.
 
 ## Component toggles
 
@@ -71,11 +73,12 @@ Full JSON schema: [`values.schema.json`](../values.schema.json)
 | `dex.enabled` | `true` | Dex OIDC identity provider |
 | `oauth2Proxy.enabled` | `true` | oauth2-proxy authentication broker |
 | `istioResources.enabled` | `true` | kubeflow-istio-resources: Gateways, Dex/oauth2-proxy VirtualServices, gateway AuthorizationPolicies/EnvoyFilters (requires Istio CRDs). When `false`, every component that needs Istio must be disabled; the install fails and its error lists the ones still enabled. |
+| `istioResources.externalAuth` | `false` | `true` when an auth layer this chart doesn't manage protects the gateway and sets `kubeflow-userid`; allows `global.oauth2Proxy.enabled: false`, which otherwise fails the install. |
 | `admissionWebhook.enabled` | `true` | PodDefaults admission webhook (requires cert-manager CRDs). When `false`, notebooks run without PodDefaults |
 | `userNamespace.enabled` | `true` | Example `kubeflow-user-example-com` Profile, `user-namespace.additionalUsers` and the per-profile Model Registry (requires `profiles.enabled=true`) |
 | `kubeflowRoles.enabled` | `true` | Aggregated `kubeflow-{admin,edit,view}` and `kubeflow-kubernetes-*` ClusterRoles |
 
-To install only Trainer V2 + JobSet, use the `trainer-only-overrides.yaml` preset in the chart root,
+To install only Trainer V2 + JobSet, use the `presets/trainer-only.yaml` preset,
 which sets all of the above (and every other component except `trainer`) to `false`. See
 [Trainer-only Install](use-cases/trainer-only-install.md) for the full instructions.
 
@@ -141,15 +144,23 @@ kill $PF
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `kubeflow-istio-resources.hostname` | `""` | Kubeflow FQDN; empty = wildcard (all hosts) |
-| `kubeflow-istio-resources.externalDNSEnabled` | `false` | Annotate Istio Gateway for external-dns |
-| `kubeflow-istio-resources.tls.source` | `""` | Dashboard TLS source (`""` \| `selfSigned` \| `letsEncrypt` \| `secret` \| `issuerRef`). |
-| `kubeflow-istio-resources.tls.letsEncrypt.email` | `""` | ACME account email — optional (recommended) for letsEncrypt; Let's Encrypt issues without it, omitted from the ClusterIssuer when empty |
-| `kubeflow-istio-resources.tls.letsEncrypt.server` | `prod` | `prod` \| `staging` |
-| `kubeflow-istio-resources.tls.letsEncrypt.solver` | `cloudflare` | `cloudflare` (DNS-01) \| `http01` |
-| `global.kserveExternalHttps` | `false` | Opt in to external HTTPS for KServe inference: adds a `*.<global.kserveDomain>` `:443` server (plus a `:80`→`:443` redirect) to the **dedicated** `kserve-ingress-gateway` (`global.kserveGateway.name`) using a dedicated `kserve-wildcard-tls` cert, and flattens the Knative route host to the single label `{name}-{namespace}.{domain}`. Requires a DNS-01 solver, `global.kserveDomain`, and `global.oauth2Proxy.enabled: true` (without gateway auth the wildcard would expose every tenant's inference endpoint unauthenticated — the chart fails fast). Default (`false`) keeps inference on plain `:80` on the dedicated gateway |
+| `global.gateway.hostname` | `""` | Dashboard FQDN; `""` = wildcard listener (IP / NodePort access). No `*`, no bare top-level domain |
+| `global.gateway.externalDNS` | `false` | Annotate `kubeflow-gateway` so an external-dns (bundled or existing) publishes a record for the hostname |
+| `global.tls.source` | `""` | Gateway TLS: `""` (plain HTTP) \| `selfSigned` \| `letsEncrypt` \| `issuerRef` \| `secret` \| `edge` (TLS terminated in front of the gateway: plain HTTP, no redirect, `Secure` cookies). See [Accessing & TLS](access-and-tls.md) |
+| `global.tls.secretName` | `kubeflow-gateway-tls` | TLS Secret in `istio-system`: written by the chart's Certificate (selfSigned, letsEncrypt, issuerRef) or yours (secret) |
+| `global.tls.issuerRef` | `{}` | Your cert-manager issuer for `source: issuerRef`: `{name, kind}` (`kind` defaults to `ClusterIssuer`) |
+| `global.tls.httpsRedirect` | `true` | Redirect the dashboard host's `:80` to `:443` (gateway TLS sources; never with `edge`) |
+| `global.tls.letsEncrypt.email` | `""` | ACME account email — optional (recommended); omitted from the ClusterIssuer when empty |
+| `global.tls.letsEncrypt.server` | `prod` | `prod` \| `staging` |
+| `global.tls.letsEncrypt.solver` | `cloudflare` | `cloudflare` (DNS-01) \| `http01` (no wildcards) |
+| `global.tls.letsEncrypt.cloudflare` | `{}` | Cloudflare DNS-01 solver: `{email, apiTokenSecretRef: {name, key}}`; the token Secret must be in cert-manager's namespace |
+| `global.kserve.domain` | `""` | Root domain for KServe InferenceService ingress — the **enforced single source of truth** and the recommended single place to set the inference domain. When set, it overrides and auto-wires the legacy `knativeServing.domain` / `kserve.ingressDomain`. Setting those subchart keys alone (without `global.kserve.domain`) **fails fast** — they feed the Knative/KServe configs but not the dedicated `kserve-ingress-gateway`'s hosts, so the chart rejects the divergence rather than silently stranding inference at `READY=Unknown`. Empty = the whole stack stays on `example.com` (the subchart-local defaults). With `global.kserve.externalHttps: true` it is also the wildcard cert/gateway base and is **required** |
+| `global.kserve.externalHttps` | `false` | Opt in to external HTTPS for KServe inference: adds a `*.<global.kserve.domain>` `:443` server (plus a `:80`→`:443` redirect) to the **dedicated** inference gateway using a dedicated wildcard cert, and flattens the Knative route host to the single label `{name}-{namespace}.{domain}`. Requires `global.kserve.domain`, `global.gateway.hostname`, a gateway TLS source (not `edge`; DNS-01 with Let's Encrypt) and `global.oauth2Proxy.enabled: true` (without gateway auth the wildcard would expose every tenant's inference endpoint unauthenticated; the chart fails fast). Default (`false`) keeps inference on plain `:80` |
+| `global.kserve.gateway.name` | `kubeflow/kserve-ingress-gateway` | The **dedicated** inference gateway (`<namespace>/<name>`), shared by the Gateway CR, `config-istio` and kserve's `inferenceservice-config`; keeps inference readiness independent of the dashboard's TLS |
+| `global.kserve.gateway.enabled` | `true` | Render the inference gateway; `false` only without KServe and Knative Serving (the notebooks-trainer preset sets it) |
+| `global.kserve.tls.secretName` | `""` | Wildcard TLS Secret in `istio-system`; `""` = `kserve-wildcard-tls` from cert-manager. **Required** with `global.tls.source: secret` (a Secret whose SAN covers `*.<global.kserve.domain>`) |
 | `externaldns.enabled` | `false` | Deploy external-dns |
-| `externaldns.cloudflare.apiToken` | `""` | Cloudflare API token; chart creates the Secret |
+| `externaldns.cloudflare.apiToken` | `""` | Cloudflare API token; the chart stores it in the `cloudflare-api-token` Secret, read by the default `externaldns.env` |
 | `externaldns.domainFilters` | `[]` | Restrict DNS management to these domains |
 | `externaldns.txtOwnerId` | `kubeflow` | Unique TXT record owner ID per cluster |
 
@@ -157,7 +168,6 @@ kill $PF
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `global.kserveDomain` | `""` | Root domain for KServe InferenceService ingress — the **enforced single source of truth** and the recommended single place to set the inference domain. When set, it overrides and auto-wires the legacy `knativeServing.domain` / `kserve.ingressDomain`. Setting those subchart keys alone (without `global.kserveDomain`) **fails fast** — they feed the Knative/KServe configs but not the dedicated `kserve-ingress-gateway`'s hosts, so the chart rejects the divergence rather than silently stranding inference at `READY=Unknown`. Empty = the whole stack stays on `example.com` (the subchart-local defaults). With `global.kserveExternalHttps: true` it is also the wildcard cert/gateway base and is **required** |
 | `dex.existingOidcClientSecret` | `""` | Not read by this chart. To supply the OIDC credentials yourself, set `auth.oidc.existingSecret: true` |
 | `dex.resources` | `{requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}` | CPU/memory for the Dex container |
 

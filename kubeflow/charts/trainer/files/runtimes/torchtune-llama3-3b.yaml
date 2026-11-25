@@ -23,6 +23,7 @@ spec:
               template:
                 {{- include "trainer.runtimePodMetadata" . | nindent 16 }}
                 spec:
+                  {{- include "trainer.runtimePullSecrets" . | nindent 18 }}
                   containers:
                     - name: dataset-initializer
                       image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.datasetInitializer.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torchtune.images.datasetInitializer.repository }}{{- if .Values.runtimes.torchtune.images.datasetInitializer.digest }}@{{ .Values.runtimes.torchtune.images.datasetInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.datasetInitializer.tag }}{{- end }}"
@@ -45,6 +46,7 @@ spec:
               template:
                 {{- include "trainer.runtimePodMetadata" . | nindent 16 }}
                 spec:
+                  {{- include "trainer.runtimePullSecrets" . | nindent 18 }}
                   containers:
                     - name: model-initializer
                       image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.modelInitializer.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torchtune.images.modelInitializer.repository }}{{- if .Values.runtimes.torchtune.images.modelInitializer.digest }}@{{ .Values.runtimes.torchtune.images.modelInitializer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.modelInitializer.tag }}{{- end }}"
@@ -72,6 +74,7 @@ spec:
               template:
                 {{- include "trainer.runtimePodMetadata" . | nindent 16 }}
                 spec:
+                  {{- include "trainer.runtimePullSecrets" . | nindent 18 }}
                   containers:
                     - name: node
                       image: "{{- $registry := include "trainer.suseImageRegistry" (dict "ctx" . "registry" .Values.runtimes.torchtune.images.trainer.registry) -}}{{- if $registry }}{{ $registry }}/{{ end }}{{ .Values.runtimes.torchtune.images.trainer.repository }}{{- if .Values.runtimes.torchtune.images.trainer.digest }}@{{ .Values.runtimes.torchtune.images.trainer.digest }}{{- else }}:{{ .Values.runtimes.torchtune.images.trainer.tag }}{{- end }}"

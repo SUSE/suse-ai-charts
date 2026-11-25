@@ -126,27 +126,18 @@ Return the proper KServe inference domain.
 Usage: {{ include "kserve.kserveDomain" . }}
 */}}
 {{- define "kserve.kserveDomain" -}}
-{{- if and .Values.global .Values.global.kserveDomain -}}
-  {{- .Values.global.kserveDomain -}}
-{{- else -}}
-  {{- .Values.ingressDomain -}}
-{{- end -}}
+{{- dig "kserve" "domain" "" (.Values.global | default dict) | default .Values.ingressDomain -}}
 {{- end -}}
 
 {{/*
 Return the dedicated KServe inference gateway reference ("<namespace>/<name>").
-Single source of truth is global.kserveGateway.name (umbrella parent); falls back
+Single source of truth is global.kserve.gateway.name (umbrella parent); falls back
 to the ingressGateway already set in .Values.inferenceServiceConfig.ingress for
-standalone installs. Written into inferenceservice-config's "ingressGateway".
+standalone installs. Nil-safe (dig). Written into inferenceservice-config's "ingressGateway".
 Usage: {{ include "kserve.kserveGatewayRef" . }}
 */}}
 {{- define "kserve.kserveGatewayRef" -}}
-{{- $g := .Values.global | default dict -}}
-{{- if and $g.kserveGateway $g.kserveGateway.name -}}
-  {{- $g.kserveGateway.name -}}
-{{- else -}}
-  {{- (.Values.inferenceServiceConfig.ingress | fromJson).ingressGateway -}}
-{{- end -}}
+{{- dig "kserve" "gateway" "name" "" (.Values.global | default dict) | default (.Values.inferenceServiceConfig.ingress | fromJson).ingressGateway -}}
 {{- end -}}
 
 {{/*
@@ -154,7 +145,7 @@ Return the proper KServe URL scheme.
 Usage: {{ include "kserve.kserveUrlScheme" . }}
 */}}
 {{- define "kserve.kserveUrlScheme" -}}
-{{- if and .Values.global (hasKey .Values.global "kserveExternalHttps") .Values.global.kserveExternalHttps -}}
+{{- if dig "kserve" "externalHttps" false (.Values.global | default dict) -}}
   {{- "https" -}}
 {{- else -}}
   {{- .Values.urlScheme | default "http" -}}
