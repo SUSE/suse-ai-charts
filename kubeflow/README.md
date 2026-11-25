@@ -100,7 +100,8 @@ Password: 12341234
 > [Production Hardening](docs/production-and-tenancy.md#production-hardening).
 
 Without `demo-overrides.yaml` the install generates the credentials (the login password, the OIDC
-client and cookie secrets and the SeaweedFS keys) and prints how to read the password. Pass your own
+client and cookie secrets and the SeaweedFS keys) and prints how to read the password; after the first
+login, [change it](#change-initial-password). Pass your own
 values file for anything else; see [Configuration Scenarios](docs/access-and-tls.md#configuration-scenarios):
 
 ```bash
@@ -341,16 +342,7 @@ The chart generates the login password and the other credentials on first instal
 kubectl -n kubeflow get secret kubeflow-initial-user -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-<a id="change-initial-password"></a>The generated password is for the first login. It is stored in Secret
-`kubeflow-initial-user`, and Helm also keeps a copy in its release history (`sh.helm.release.v1.*` Secrets),
-so deleting it from the Secret doesn't remove it from the cluster. After logging in, set your own password:
-every stored copy of the generated one then stops working, and the chart stops storing a plaintext password.
-
-```bash
-htpasswd -nbBC 12 "" '<new-password>' | tr -d ':\n' | sed 's/$2y/$2a/'   # bcrypt hash of your password
-# add it to your values as auth.initialUser.passwordHash: '<hash>', run your helm upgrade again, then:
-kubectl -n kubeflow rollout restart deploy/kubeflow-dex
-```
+After the first login, [change the password](#change-initial-password).
 
 > **GitOps (Argo CD) and `helm template`:** they render without access to the cluster, so the chart can't
 > generate or keep credentials and refuses to render. Set them yourself, e.g. from your secret manager:
@@ -416,6 +408,31 @@ helm upgrade --install kubeflow ./kubeflow \
 After installing, work through
 [Production Hardening](docs/production-and-tenancy.md#production-hardening) before any production or
 networked use.
+
+<a id="change-initial-password"></a>
+
+### Change the initial password
+
+Applies to both install modes. The generated password is for the first login. It is stored in Secret
+`kubeflow-initial-user`, and Helm also keeps a copy in its release history (`sh.helm.release.v1.*` Secrets),
+so deleting it from the Secret doesn't remove it from the cluster. After logging in, set your own password:
+every stored copy of the generated one then stops working, and the chart stops storing a plaintext password.
+
+```bash
+htpasswd -nbBC 12 "" '<new-password>' | tr -d ':\n' | sed 's/$2y/$2a/'   # bcrypt hash of your password
+# add it to your values as auth.initialUser.passwordHash: '<hash>'
+# run your helm upgrade again, then:
+kubectl -n kubeflow rollout restart deploy/kubeflow-dex
+```
+
+If `htpasswd` is not found, install it: on SLES `sudo zypper install apache2-utils`.
+
+```bash
+kubectl -n kubeflow get secret kubeflow-initial-user -o jsonpath='{.data}' | python3 -c 'import json,sys; print(sorted(json.load(sys.stdin)))'
+```
+
+This should print `['email', 'hash']`: the plaintext `password` key is gone. Then log in with the new password;
+the old one should be rejected.
 
 ---
 
