@@ -16,7 +16,7 @@
 #   --include-gateway-tests            Pass --include-gateway-tests to e2e (opt-in gateway Dex-login tests 12b and 12c; 12 always runs).
 #                                      They log in as E2E_DEX_USER / E2E_DEX_PASSWORD (export them; default: the initial
 #                                      user with the chart-generated password, else the demo password), which must be a Dex password login, not an external OIDC connector
-#   --additional-user-namespace=<ns>   Also run Tier 2+3 against this extra profile namespace
+#   --additional-user-namespace=<ns>   Also run Tier 2+3 against this extra profile namespace (skipped if it doesn't exist)
 #   --additional-user-email=<email>    Email for the extra profile (used by e2e KFP tests)
 #   --suse-registry=<mirror>           SUSE AI registry mirror (default: registry.suse.com)
 #   --suse-app-collection=<mirror>     Application Collection registry mirror (default: dp.apps.rancher.io)
@@ -62,6 +62,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ── Colour helpers ─────────────────────────────────────────────────────────────
 green()  { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
 red()    { printf '\033[31m  ✗  %s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m  !  %s\033[0m\n' "$*"; }
 header() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 info()   { printf '      %s\n' "$*"; }
 
@@ -130,7 +131,14 @@ else
 fi
 
 # ── Additional profile tests ───────────────────────────────────────────────────
-if [[ -n "$ADDITIONAL_USER_NS" ]]; then
+# Only for a namespace the install has (a profile, e.g. from user-namespace.additionalUsers).
+if [[ -n "$ADDITIONAL_USER_NS" ]] && ! kubectl get namespace "$ADDITIONAL_USER_NS" >/dev/null 2>&1; then
+  header "━━━ Additional profile: $ADDITIONAL_USER_NS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  yellow "Namespace $ADDITIONAL_USER_NS not found: this install has no such profile (add it with"
+  info "user-namespace.additionalUsers). Skipping its smoke and e2e tests."
+  T2_ADD_STATUS="SKIPPED (no namespace)"
+  T3_ADD_STATUS="SKIPPED (no namespace)"
+elif [[ -n "$ADDITIONAL_USER_NS" ]]; then
 
   header "━━━ Tier 2 — smoke tests (additional profile: $ADDITIONAL_USER_NS) ━━━━━━"
   if $SKIP_TIER2; then
